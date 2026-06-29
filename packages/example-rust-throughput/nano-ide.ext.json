@@ -1,0 +1,8 @@
+{
+  "id": "rust-throughput",
+  "kind": "example",
+  "displayName": "Rust throughput demo",
+  "requires": ["rust"],
+  "appDir": "app",
+  "summary": "Native pipelined producer that drives a clean engine to show where the command stream beats REST."
+}

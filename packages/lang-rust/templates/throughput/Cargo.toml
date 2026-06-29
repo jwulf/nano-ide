@@ -1,0 +1,16 @@
+[package]
+name = "throughput-rust"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "throughput-rust"
+path = "src/main.rs"
+
+[dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3

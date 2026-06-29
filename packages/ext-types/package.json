@@ -1,0 +1,16 @@
+{
+  "name": "@nanobpm/nano-ide-ext-types",
+  "version": "1.0.0",
+  "description": "TypeScript types for the nano-ide.ext.json extension manifest (ADR 0007).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "publishConfig": { "access": "public" },
+  "repository": { "type": "git", "url": "https://github.com/jwulf/nano-ide.git", "directory": "packages/ext-types" },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit"
+  }
+}

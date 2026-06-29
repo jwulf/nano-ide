@@ -1,0 +1,4 @@
+{
+  "imports": { "@nanobpm/nano-sdk": "npm:@nanobpm/nano-sdk@^1" },
+  "tasks": { "start": "deno run --allow-net --allow-read --allow-env main.ts" }
+}

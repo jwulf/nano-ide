@@ -1,0 +1,15 @@
+{
+  "id": "rust",
+  "kind": "lang",
+  "displayName": "Rust",
+  "fileTypes": [{ "ext": ".rs", "monacoLang": "rust" }],
+  "templates": [
+    { "id": "rust-throughput", "label": "Throughput (Rust) — native pipelined command-stream A/B" }
+  ],
+  "toolchain": {
+    "detect": ["cargo", "--version"],
+    "run": ["cargo", "run", "--release"],
+    "compile": ["cargo", "build", "--release"],
+    "targets": []
+  }
+}

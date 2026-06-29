@@ -1,0 +1,10 @@
+{
+  "id": "deno-gui",
+  "kind": "app",
+  "displayName": "Deno GUI app",
+  "fileTypes": [],
+  "templates": [
+    { "id": "gui-starter", "label": "GUI app — served UI binary (Deno.serve)" }
+  ],
+  "toolchain": {}
+}
