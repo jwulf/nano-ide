@@ -26,5 +26,5 @@ npm run validate     # check every nano-ide.ext.json
 npm run typecheck
 npm run build
 ```
-Publish via `npm publish --workspaces` (CI on main). Version each pack independently; npm skips
-already-published versions.
+Publish via `node scripts/publish.mjs` (CI on main). Version each pack independently; the
+script publishes only versions not yet on npm.

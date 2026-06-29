@@ -23,7 +23,7 @@ jobs:
       - run: npm ci
       - run: npm run validate
       - run: npm run build
-      # Publishes each workspace; npm skips versions already on the registry.
-      - run: npm publish --workspaces --access public --provenance
+      # Publishes each workspace whose version isn't on npm yet (idempotent).
+      - run: node scripts/publish.mjs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
