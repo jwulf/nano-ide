@@ -1,0 +1,57 @@
+{
+  "id": "theme-solarized",
+  "kind": "theme",
+  "displayName": "Solarized",
+  "themes": [
+    {
+      "id": "solarized-dark",
+      "label": "Solarized Dark",
+      "appearance": "dark",
+      "tokens": {
+        "app": "#002b36",
+        "panel": "#00212b",
+        "raised": "#073642",
+        "inset": "#001f27",
+        "hover": "#0a4553",
+        "edge": "#0e4756",
+        "edgeStrong": "#1a5b6e",
+        "text": "#eee8d5",
+        "textMuted": "#93a1a1",
+        "textFaint": "#657b83",
+        "accent": "#268bd2",
+        "accentStrong": "#5db0ea",
+        "accent2": "#2aa198",
+        "onAccent": "#fdf6e3",
+        "ok": "#859900",
+        "warn": "#b58900",
+        "danger": "#dc322f",
+        "info": "#2aa198"
+      }
+    },
+    {
+      "id": "solarized-light",
+      "label": "Solarized Light",
+      "appearance": "light",
+      "tokens": {
+        "app": "#fdf6e3",
+        "panel": "#f5eeda",
+        "raised": "#fffbee",
+        "inset": "#eee8d5",
+        "hover": "#e8e1cc",
+        "edge": "#e0d9c3",
+        "edgeStrong": "#c2bba4",
+        "text": "#073642",
+        "textMuted": "#586e75",
+        "textFaint": "#839496",
+        "accent": "#268bd2",
+        "accentStrong": "#1a6ba3",
+        "accent2": "#2aa198",
+        "onAccent": "#fdf6e3",
+        "ok": "#859900",
+        "warn": "#b58900",
+        "danger": "#dc322f",
+        "info": "#268bd2"
+      }
+    }
+  ]
+}

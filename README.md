@@ -13,11 +13,15 @@ parses each pack's `nano-ide.ext.json` manifest (mirror of `server/src/console/e
 | `@nanobpm/nano-ide-lang-rust` | lang | Rust file types + cargo toolchain + throughput template |
 | `@nanobpm/nano-ide-app-deno-gui` | app | Deno served-UI binary template |
 | `@nanobpm/nano-ide-example-rust-throughput` | example | Ready-to-run Rust command-stream A/B demo |
+| `@nanobpm/nano-ide-theme-nord` | theme | Nord Dark + Nord Light console themes |
+| `@nanobpm/nano-ide-theme-solarized` | theme | Solarized Dark + Light console themes |
+| `@nanobpm/nano-ide-theme-synthwave` | theme | Synthwave '84 neon console theme |
 
 ## Pack kinds
 - **lang** — file types (Monaco lazy-loads the grammar), toolchain (detect/run/compile/targets), templates.
 - **app** — project template producing a runnable/compilable binary (e.g. Deno GUI).
 - **example** — a complete app shipped under `appDir`, copied into a new project; `requires[]` lists needed lang packs.
+- **theme** — console colour themes as pure data: `themes[]` maps the console's design tokens (`app`, `panel`, `accent`, …) to CSS colours over a light or dark base. No code, no toolchain, no trust prompt.
 
 ## Dev
 ```

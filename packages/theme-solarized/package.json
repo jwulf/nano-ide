@@ -1,0 +1,10 @@
+{
+  "name": "@nanobpm/nano-ide-theme-solarized",
+  "version": "1.0.0",
+  "description": "Solarized theme pack for the Nano RAD console: Ethan Schoonover's precision light and dark colour schemes.",
+  "license": "Apache-2.0",
+  "keywords": ["nano-ide-ext", "nano-ide-theme", "nanobpm"],
+  "publishConfig": { "access": "public" },
+  "repository": { "type": "git", "url": "https://github.com/jwulf/nano-ide.git", "directory": "packages/theme-solarized" },
+  "files": ["nano-ide.ext.json"]
+}
