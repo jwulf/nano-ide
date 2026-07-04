@@ -7,7 +7,8 @@
     { "ext": ".xml", "monacoLang": "xml" }
   ],
   "templates": [
-    { "id": "java-starter", "label": "Starter (Java / Maven) — Camunda client hello + job worker" }
+    { "id": "java-starter", "label": "Starter (Java / Maven) — Camunda client hello + job worker" },
+    { "id": "java-throughput", "label": "Throughput (Java / Maven) — C8 REST/gRPC ↔ Nano REST/Falcon A/B" }
   ],
   "toolchain": {
     "detect": ["mvn", "--version"],
