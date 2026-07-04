@@ -1,0 +1,8 @@
+{
+  "id": "java-throughput",
+  "kind": "example",
+  "displayName": "Java throughput demo (C8 REST/gRPC ↔ Nano REST/Falcon)",
+  "requires": ["java"],
+  "appDir": "app",
+  "summary": "Java + Maven producer + JobWorker that maxes out create/complete throughput. Same code runs against Camunda 8 (REST or gRPC) or Nano (REST or Falcon) — swap one Maven dependency."
+}
