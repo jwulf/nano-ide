@@ -1,0 +1,32 @@
+{
+  "id": "theme-synthwave",
+  "kind": "theme",
+  "displayName": "Synthwave '84",
+  "themes": [
+    {
+      "id": "synthwave-84",
+      "label": "Synthwave '84",
+      "appearance": "dark",
+      "tokens": {
+        "app": "#1e1a29",
+        "panel": "#241f31",
+        "raised": "#2a2440",
+        "inset": "#171422",
+        "hover": "#342d52",
+        "edge": "#3b3266",
+        "edgeStrong": "#524889",
+        "text": "#f4f0ff",
+        "textMuted": "#b3a8d6",
+        "textFaint": "#7d729f",
+        "accent": "#ff7edb",
+        "accentStrong": "#ff9de6",
+        "accent2": "#36f9f6",
+        "onAccent": "#241b2f",
+        "ok": "#72f1b8",
+        "warn": "#fede5d",
+        "danger": "#fe4450",
+        "info": "#36f9f6"
+      }
+    }
+  ]
+}

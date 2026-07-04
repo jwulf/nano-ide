@@ -4,7 +4,14 @@
 import { readdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const KINDS = new Set(["lang", "app", "example"]);
+const KINDS = new Set(["lang", "app", "example", "theme"]);
+// Console design-token vocabulary (nanobpmn console/src/theme/tokens.css);
+// mirror of THEME_TOKEN_KEYS in packages/ext-types.
+const THEME_TOKEN_KEYS = new Set([
+  "app", "panel", "raised", "inset", "hover", "edge", "edgeStrong",
+  "text", "textMuted", "textFaint", "accent", "accentStrong", "accent2",
+  "onAccent", "ok", "warn", "danger", "info",
+]);
 const pkgRoot = new URL("../packages/", import.meta.url).pathname;
 let errors = 0;
 const fail = (m) => { console.error("  ✗ " + m); errors++; };
@@ -26,6 +33,18 @@ for (const dir of readdirSync(pkgRoot)) {
   if (m.kind === "example") {
     if (!m.appDir || !existsSync(join(base, m.appDir))) fail(`example appDir missing: ${m.appDir}`);
     if (!Array.isArray(m.requires)) fail("example requires[] missing");
+  }
+  if (m.kind === "theme") {
+    if (!Array.isArray(m.themes) || m.themes.length === 0) fail("theme pack needs themes[]");
+    for (const t of m.themes ?? []) {
+      if (!t.id || !t.label) fail(`theme needs id+label: ${JSON.stringify(t)}`);
+      if (t.appearance !== "light" && t.appearance !== "dark") fail(`theme ${t.id}: appearance must be light|dark`);
+      if (typeof t.tokens !== "object" || t.tokens === null) { fail(`theme ${t.id}: tokens{} missing`); continue; }
+      for (const [k, v] of Object.entries(t.tokens)) {
+        if (!THEME_TOKEN_KEYS.has(k)) fail(`theme ${t.id}: unknown token "${k}"`);
+        if (typeof v !== "string" || !v.trim()) fail(`theme ${t.id}: token ${k} needs a CSS colour string`);
+      }
+    }
   }
 }
 if (errors) { console.error(`\n${errors} error(s)`); process.exit(1); }

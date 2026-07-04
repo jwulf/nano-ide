@@ -1,0 +1,57 @@
+{
+  "id": "theme-nord",
+  "kind": "theme",
+  "displayName": "Nord",
+  "themes": [
+    {
+      "id": "nord-dark",
+      "label": "Nord Dark",
+      "appearance": "dark",
+      "tokens": {
+        "app": "#2e3440",
+        "panel": "#2b303b",
+        "raised": "#3b4252",
+        "inset": "#272c36",
+        "hover": "#434c5e",
+        "edge": "#434c5e",
+        "edgeStrong": "#4c566a",
+        "text": "#eceff4",
+        "textMuted": "#d8dee9",
+        "textFaint": "#7b88a1",
+        "accent": "#88c0d0",
+        "accentStrong": "#8fbcbb",
+        "accent2": "#b48ead",
+        "onAccent": "#2e3440",
+        "ok": "#a3be8c",
+        "warn": "#ebcb8b",
+        "danger": "#bf616a",
+        "info": "#81a1c1"
+      }
+    },
+    {
+      "id": "nord-light",
+      "label": "Nord Light",
+      "appearance": "light",
+      "tokens": {
+        "app": "#eceff4",
+        "panel": "#e5e9f0",
+        "raised": "#ffffff",
+        "inset": "#e5e9f0",
+        "hover": "#d8dee9",
+        "edge": "#d8dee9",
+        "edgeStrong": "#aeb8c9",
+        "text": "#2e3440",
+        "textMuted": "#4c566a",
+        "textFaint": "#7b88a1",
+        "accent": "#5e81ac",
+        "accentStrong": "#4f6f96",
+        "accent2": "#b48ead",
+        "onAccent": "#ffffff",
+        "ok": "#6a8f52",
+        "warn": "#b08b2e",
+        "danger": "#bf616a",
+        "info": "#5e81ac"
+      }
+    }
+  ]
+}
