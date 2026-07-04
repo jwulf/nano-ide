@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>io.nanobpm.examples</groupId>
+  <artifactId>java-throughput</artifactId>
+  <version>1.0.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+  <name>Nano IDE — Java throughput demo</name>
+
+  <properties>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <camunda.version>8.9.11</camunda.version>
+    <falcon.version>1.0.0</falcon.version>
+    <exec.mainClass>io.nanobpm.throughput.Throughput</exec.mainClass>
+  </properties>
+
+  <!--
+    ============================================================================
+    Transport is selected by profile — see the README.
+
+      -Pstock   (default) -> io.camunda:camunda-client-java
+                              REST against C8 / Nano, gRPC against C8 only.
+      -Pfalcon            -> io.github.jwulf:camunda-client-java-falcon
+                              Same code; auto-upgrades to Falcon WebSocket
+                              against a Nano gateway. Falls back to REST if
+                              the WS handshake fails, or if
+                              CAMUNDA_FORCE_REST=true is set.
+    ============================================================================
+  -->
+  <profiles>
+    <profile>
+      <id>stock</id>
+      <activation><activeByDefault>true</activeByDefault></activation>
+      <dependencies>
+        <dependency>
+          <groupId>io.camunda</groupId>
+          <artifactId>camunda-client-java</artifactId>
+          <version>${camunda.version}</version>
+        </dependency>
+      </dependencies>
+    </profile>
+    <profile>
+      <id>falcon</id>
+      <dependencies>
+        <dependency>
+          <groupId>io.github.jwulf</groupId>
+          <artifactId>camunda-client-java-falcon</artifactId>
+          <version>${falcon.version}</version>
+        </dependency>
+      </dependencies>
+    </profile>
+  </profiles>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>2.0.16</version>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.5.0</version>
+        <configuration>
+          <mainClass>${exec.mainClass}</mainClass>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
