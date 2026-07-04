@@ -1,0 +1,20 @@
+{
+  "id": "java",
+  "kind": "lang",
+  "displayName": "Java",
+  "fileTypes": [
+    { "ext": ".java", "monacoLang": "java" },
+    { "ext": ".xml", "monacoLang": "xml" }
+  ],
+  "templates": [
+    { "id": "java-starter", "label": "Starter (Java / Maven) — Camunda client hello + job worker" }
+  ],
+  "toolchain": {
+    "detect": ["mvn", "--version"],
+    "run": ["mvn", "-q", "-DskipTests", "compile", "exec:java"],
+    "compile": ["mvn", "-q", "-DskipTests", "package"],
+    "targets": [],
+    "installUrl": "https://maven.apache.org/install.html",
+    "installHint": "Install Apache Maven (brew install maven, apt install maven, or download from https://maven.apache.org/install.html) so `mvn` is on PATH. Requires a JDK 17+ (java -version)."
+  }
+}
