@@ -1,0 +1,15 @@
+{
+  "id": "embedded-jvm",
+  "kind": "app",
+  "displayName": "Embedded Nano (JVM)",
+  "fileTypes": [{ "ext": ".java", "monacoLang": "java" }],
+  "templates": [
+    { "id": "embedded-jvm-starter", "label": "KYC microservice — inner Bernd engine serves an outer BPMN task (ADR 0005)" }
+  ],
+  "toolchain": {
+    "detect": ["mvn", "--version"],
+    "run": ["mvn", "-q", "-f", "microservice/pom.xml", "exec:java"],
+    "compile": ["mvn", "-q", "-f", "microservice/pom.xml", "-DskipTests", "package"],
+    "targets": []
+  }
+}

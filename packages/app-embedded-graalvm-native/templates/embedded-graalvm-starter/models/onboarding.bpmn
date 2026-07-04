@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                  targetNamespace="http://example.com/onboarding"
+                  id="onboarding_defs">
+
+  <!--
+    Customer onboarding — the OUTER process. Runs on the Nano IDE gateway
+    (models/ is auto-deployed on save). One service task 'verify_kyc' is
+    served by the embedded KYC microservice under ../microservice/, which
+    itself orchestrates the individual checks on its own in-process Bernd
+    engine.
+
+    Compliance owns kyc.bpmn (the inner flow); onboarding owns this file.
+    Both are inspectable BPMN — audit trail = deploy both, log both instance
+    keys.
+  -->
+
+  <bpmn:process id="onboarding" name="Customer Onboarding" isExecutable="true">
+    <bpmn:startEvent id="start" name="New customer">
+      <bpmn:outgoing>f_start</bpmn:outgoing>
+    </bpmn:startEvent>
+
+    <bpmn:serviceTask id="verify_kyc" name="Verify KYC">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="verify_kyc" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>f_start</bpmn:incoming>
+      <bpmn:outgoing>f_to_gate</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:exclusiveGateway id="kyc_gate" name="KYC decision">
+      <bpmn:incoming>f_to_gate</bpmn:incoming>
+      <bpmn:outgoing>f_approved</bpmn:outgoing>
+      <bpmn:outgoing>f_manual</bpmn:outgoing>
+      <bpmn:outgoing>f_rejected</bpmn:outgoing>
+    </bpmn:exclusiveGateway>
+
+    <bpmn:serviceTask id="activate_account" name="Activate account">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="activate_account" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>f_approved</bpmn:incoming>
+      <bpmn:outgoing>f_activated</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="queue_for_ops" name="Queue for manual review">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="queue_for_ops" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>f_manual</bpmn:incoming>
+      <bpmn:outgoing>f_queued</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="notify_rejection" name="Notify rejection">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="notify_rejection" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>f_rejected</bpmn:incoming>
+      <bpmn:outgoing>f_notified</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="end_approved" name="Onboarded">
+      <bpmn:incoming>f_activated</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="end_manual" name="Manual review">
+      <bpmn:incoming>f_queued</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:endEvent id="end_rejected" name="Rejected">
+      <bpmn:incoming>f_notified</bpmn:incoming>
+    </bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="f_start" sourceRef="start" targetRef="verify_kyc" />
+    <bpmn:sequenceFlow id="f_to_gate" sourceRef="verify_kyc" targetRef="kyc_gate" />
+    <bpmn:sequenceFlow id="f_approved" name="approved" sourceRef="kyc_gate" targetRef="activate_account">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=decision = "approved"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f_manual" name="manual review" sourceRef="kyc_gate" targetRef="queue_for_ops">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=decision = "manual_review"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f_rejected" name="rejected" sourceRef="kyc_gate" targetRef="notify_rejection">
+      <bpmn:conditionExpression xsi:type="bpmn:tFormalExpression">=decision = "rejected"</bpmn:conditionExpression>
+    </bpmn:sequenceFlow>
+    <bpmn:sequenceFlow id="f_activated" sourceRef="activate_account" targetRef="end_approved" />
+    <bpmn:sequenceFlow id="f_queued" sourceRef="queue_for_ops" targetRef="end_manual" />
+    <bpmn:sequenceFlow id="f_notified" sourceRef="notify_rejection" targetRef="end_rejected" />
+  </bpmn:process>
+</bpmn:definitions>

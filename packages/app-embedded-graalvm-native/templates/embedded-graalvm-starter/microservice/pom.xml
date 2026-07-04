@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.example</groupId>
+  <artifactId>kyc-microservice-native</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <name>KYC Microservice (GraalVM native)</name>
+  <description>
+    Same code as the JVM embedded starter, packaged as a GraalVM Native
+    Image single binary (~30 MB). The KYC microservice — including its
+    embedded Bernd engine and the packaged kyc.bpmn — becomes a
+    standalone executable with no JVM required at runtime.
+  </description>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.source>21</maven.compiler.source>
+    <maven.compiler.target>21</maven.compiler.target>
+
+    <camunda-client.version>1.1.0-SNAPSHOT</camunda-client.version>
+    <nano-bernd.version>0.2.0</nano-bernd.version>
+    <native.maven.plugin.version>0.10.3</native.maven.plugin.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>io.github.jwulf</groupId>
+      <artifactId>camunda-client-java-falcon</artifactId>
+      <version>${camunda-client.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.jwulf</groupId>
+      <artifactId>nano-bernd</artifactId>
+      <version>${nano-bernd.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>2.0.13</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.11.0</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <profiles>
+    <profile>
+      <id>native</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.graalvm.buildtools</groupId>
+            <artifactId>native-maven-plugin</artifactId>
+            <version>${native.maven.plugin.version}</version>
+            <extensions>true</extensions>
+            <executions>
+              <execution>
+                <id>build-native</id>
+                <goals><goal>compile-no-fork</goal></goals>
+                <phase>package</phase>
+              </execution>
+            </executions>
+            <configuration>
+              <imageName>kyc-microservice</imageName>
+              <mainClass>com.example.KycMicroservice</mainClass>
+              <buildArgs>
+                <buildArg>--no-fallback</buildArg>
+                <buildArg>-H:+UnlockExperimentalVMOptions</buildArg>
+                <!-- Embed both BPMN files and the wasm engine into the binary. -->
+                <buildArg>-H:IncludeResources=kyc/.*\.bpmn</buildArg>
+                <buildArg>-H:IncludeResources=nano-bernd/nano_engine\.wasm</buildArg>
+                <buildArg>-H:IncludeResources=nano-bernd/manifest\.json</buildArg>
+                <buildArg>-J-Xmx4g</buildArg>
+              </buildArgs>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-jar-plugin</artifactId>
+        <version>3.4.2</version>
+        <configuration>
+          <archive><manifest><mainClass>com.example.KycMicroservice</mainClass></manifest></archive>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
