@@ -43,7 +43,7 @@ for (const dir of readdirSync(pkgRoot)) {
     fail("app pack has a toolchain but no requires[] — new projects would default to the Deno runtime");
   }
   if (m.requires !== undefined
-      && !(Array.isArray(m.requires) && m.requires.every((r) => typeof r === "string" && r))) {
+      && !(Array.isArray(m.requires) && m.requires.every((r) => typeof r === "string" && r.trim()))) {
     fail("requires[] must be an array of non-empty lang pack ids");
   }
   if (m.kind === "theme") {

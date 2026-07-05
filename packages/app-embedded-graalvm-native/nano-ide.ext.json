@@ -14,7 +14,7 @@
   "templates": [
     {
       "id": "embedded-graalvm-starter",
-      "label": "KYC microservice (GraalVM native) \u2014 same demo, ~30 MB standalone binary (ADR 0005)"
+      "label": "KYC microservice (GraalVM native) — same demo, ~30 MB standalone binary (ADR 0005)"
     }
   ],
   "toolchain": {
