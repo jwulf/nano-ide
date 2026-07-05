@@ -1,10 +1,10 @@
 {
   "id": "java-throughput",
   "kind": "example",
-  "displayName": "Java throughput demo (C8 REST/gRPC ↔ Nano REST/Falcon)",
+  "displayName": "Java throughput demo (C8 REST/gRPC ↔ Nano Falcon)",
   "requires": ["java"],
   "appDir": "app",
-  "summary": "Java + Maven producer + JobWorker that maxes out create/complete throughput. Same code runs against Camunda 8 (REST or gRPC) or Nano (REST or Falcon) — swap one Maven dependency.",
+  "summary": "Java + Maven producer + JobWorker that maxes out create/complete throughput. Same code runs against Camunda 8 (REST or gRPC) or Nano (Falcon transport) — swap one Maven dependency.",
   "toolchain": {
     "detect": ["mvn", "--version"],
     "run": ["mvn", "-q", "-Pstock", "compile", "exec:java", "-Dexec.args=rest"],
@@ -23,12 +23,6 @@
         "label": "Camunda 8 · gRPC",
         "run": ["mvn", "-q", "-Pstock", "compile", "exec:java", "-Dexec.args=grpc"],
         "compile": ["mvn", "-q", "-Pstock", "-DskipTests", "package"]
-      },
-      {
-        "id": "falcon-rest",
-        "label": "Nano · REST",
-        "run": ["mvn", "-q", "-Pfalcon", "compile", "exec:java", "-Dexec.args=rest"],
-        "compile": ["mvn", "-q", "-Pfalcon", "-DskipTests", "package"]
       },
       {
         "id": "falcon-nano",
