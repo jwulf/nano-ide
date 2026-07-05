@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
                   xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                   targetNamespace="http://example.com/onboarding"
@@ -86,4 +89,78 @@
     <bpmn:sequenceFlow id="f_queued" sourceRef="queue_for_ops" targetRef="end_manual" />
     <bpmn:sequenceFlow id="f_notified" sourceRef="notify_rejection" targetRef="end_rejected" />
   </bpmn:process>
+
+  <bpmndi:BPMNDiagram id="BPMNDiagram_onboarding">
+    <bpmndi:BPMNPlane id="BPMNPlane_onboarding" bpmnElement="onboarding">
+      <bpmndi:BPMNShape id="start_di" bpmnElement="start">
+        <dc:Bounds x="180" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="168" y="225" width="61" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="verify_kyc_di" bpmnElement="verify_kyc">
+        <dc:Bounds x="270" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="kyc_gate_di" bpmnElement="kyc_gate" isMarkerVisible="true">
+        <dc:Bounds x="425" y="175" width="50" height="50" />
+        <bpmndi:BPMNLabel><dc:Bounds x="411" y="145" width="78" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="activate_account_di" bpmnElement="activate_account">
+        <dc:Bounds x="530" y="60" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="queue_for_ops_di" bpmnElement="queue_for_ops">
+        <dc:Bounds x="530" y="160" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="notify_rejection_di" bpmnElement="notify_rejection">
+        <dc:Bounds x="530" y="280" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_approved_di" bpmnElement="end_approved">
+        <dc:Bounds x="690" y="82" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="680" y="125" width="57" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_manual_di" bpmnElement="end_manual">
+        <dc:Bounds x="690" y="182" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="676" y="225" width="66" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="end_rejected_di" bpmnElement="end_rejected">
+        <dc:Bounds x="690" y="302" width="36" height="36" />
+        <bpmndi:BPMNLabel><dc:Bounds x="684" y="345" width="49" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="f_start_di" bpmnElement="f_start">
+        <di:waypoint x="216" y="200" />
+        <di:waypoint x="270" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_to_gate_di" bpmnElement="f_to_gate">
+        <di:waypoint x="370" y="200" />
+        <di:waypoint x="425" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_approved_di" bpmnElement="f_approved">
+        <di:waypoint x="450" y="175" />
+        <di:waypoint x="450" y="100" />
+        <di:waypoint x="530" y="100" />
+        <bpmndi:BPMNLabel><dc:Bounds x="459" y="135" width="52" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_manual_di" bpmnElement="f_manual">
+        <di:waypoint x="475" y="200" />
+        <di:waypoint x="530" y="200" />
+        <bpmndi:BPMNLabel><dc:Bounds x="472" y="182" width="80" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_rejected_di" bpmnElement="f_rejected">
+        <di:waypoint x="450" y="225" />
+        <di:waypoint x="450" y="320" />
+        <di:waypoint x="530" y="320" />
+        <bpmndi:BPMNLabel><dc:Bounds x="459" y="290" width="47" height="14" /></bpmndi:BPMNLabel>
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_activated_di" bpmnElement="f_activated">
+        <di:waypoint x="630" y="100" />
+        <di:waypoint x="690" y="100" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_queued_di" bpmnElement="f_queued">
+        <di:waypoint x="630" y="200" />
+        <di:waypoint x="690" y="200" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="f_notified_di" bpmnElement="f_notified">
+        <di:waypoint x="630" y="320" />
+        <di:waypoint x="690" y="320" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
 </bpmn:definitions>
