@@ -23,8 +23,9 @@
     <maven.compiler.source>17</maven.compiler.source>
     <maven.compiler.target>17</maven.compiler.target>
 
-    <!-- Add NanoTransport.embedded() (v1.1+). Locally use SNAPSHOT until 1.1.0 releases. -->
-    <camunda-client.version>1.1.0-SNAPSHOT</camunda-client.version>
+    <!-- Ships NanoTransport.falcon() (outer gateway) and NanoTransport.embedded()
+         (in-process Bernd) in one jar; released to Maven Central. -->
+    <camunda-client.version>1.1.0</camunda-client.version>
     <nano-bernd.version>0.2.0</nano-bernd.version>
   </properties>
 

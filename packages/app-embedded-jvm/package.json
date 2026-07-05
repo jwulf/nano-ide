@@ -1,10 +1,27 @@
 {
   "name": "@nanobpm/nano-ide-app-embedded-jvm",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Embedded Nano JVM app pack for the Nano RAD IDE: run the Nano BPMN engine in-process inside the JVM via io.github.jwulf:nano-bernd + camunda-client-java-falcon (NanoTransport.embedded()). Same worker code as remote — swap the transport factory.",
   "license": "Apache-2.0",
-  "keywords": ["nano-ide-ext", "nano-ide-app", "nanobpm", "embedded", "jvm", "java", "bernd"],
-  "publishConfig": { "access": "public" },
-  "repository": { "type": "git", "url": "https://github.com/jwulf/nano-ide.git", "directory": "packages/app-embedded-jvm" },
-  "files": ["nano-ide.ext.json", "templates"]
+  "keywords": [
+    "nano-ide-ext",
+    "nano-ide-app",
+    "nanobpm",
+    "embedded",
+    "jvm",
+    "java",
+    "bernd"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jwulf/nano-ide.git",
+    "directory": "packages/app-embedded-jvm"
+  },
+  "files": [
+    "nano-ide.ext.json",
+    "templates"
+  ]
 }

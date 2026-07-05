@@ -1,10 +1,27 @@
 {
   "name": "@nanobpm/nano-ide-app-embedded-graalvm-native",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "GraalVM Native Image variant of the embedded Nano JVM template: same Bernd-in-JVM code, compiled to a single standalone binary (~30 MB, no JDK required at runtime).",
   "license": "Apache-2.0",
-  "keywords": ["nano-ide-ext", "nano-ide-app", "nanobpm", "embedded", "graalvm", "native-image", "bernd"],
-  "publishConfig": { "access": "public" },
-  "repository": { "type": "git", "url": "https://github.com/jwulf/nano-ide.git", "directory": "packages/app-embedded-graalvm-native" },
-  "files": ["nano-ide.ext.json", "templates"]
+  "keywords": [
+    "nano-ide-ext",
+    "nano-ide-app",
+    "nanobpm",
+    "embedded",
+    "graalvm",
+    "native-image",
+    "bernd"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jwulf/nano-ide.git",
+    "directory": "packages/app-embedded-graalvm-native"
+  },
+  "files": [
+    "nano-ide.ext.json",
+    "templates"
+  ]
 }
