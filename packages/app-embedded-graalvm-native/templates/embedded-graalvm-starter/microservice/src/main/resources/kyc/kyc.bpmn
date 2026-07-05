@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  targetNamespace="http://example.com/kyc"
+                  id="kyc_defs">
+
+  <!--
+    KYC verification — the INNER process, embedded into the microservice jar
+    (Maven picks up src/main/resources/kyc/kyc.bpmn automatically) and
+    orchestrated by an in-process Bernd engine (io.github.jwulf:nano-bernd).
+
+    Compliance owns this file. Add a step here (say, "check_adverse_media")
+    and bump the microservice — the onboarding team's outer flow doesn't
+    change.
+
+    ABI v2 note: variable-driven gateways aren't wired to inner engines yet,
+    so this flow is a linear sequence of checks. The microservice aggregates
+    the per-check results in Java-land and returns a single 'decision' to
+    the outer flow. When ABI v3 exposes variables-on-complete, branches
+    like "sanctions_hit → straight-to-rejected" move in here.
+  -->
+
+  <bpmn:process id="kyc" name="KYC Verification" isExecutable="true">
+    <bpmn:startEvent id="s"><bpmn:outgoing>f1</bpmn:outgoing></bpmn:startEvent>
+
+    <bpmn:serviceTask id="check_id" name="Verify ID document">
+      <bpmn:extensionElements><zeebe:taskDefinition type="check_id" /></bpmn:extensionElements>
+      <bpmn:incoming>f1</bpmn:incoming><bpmn:outgoing>f2</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="screen_sanctions" name="Screen OFAC / UN sanctions">
+      <bpmn:extensionElements><zeebe:taskDefinition type="screen_sanctions" /></bpmn:extensionElements>
+      <bpmn:incoming>f2</bpmn:incoming><bpmn:outgoing>f3</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="check_pep" name="Check politically-exposed person list">
+      <bpmn:extensionElements><zeebe:taskDefinition type="check_pep" /></bpmn:extensionElements>
+      <bpmn:incoming>f3</bpmn:incoming><bpmn:outgoing>f4</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:serviceTask id="risk_score" name="Compute risk score">
+      <bpmn:extensionElements><zeebe:taskDefinition type="risk_score" /></bpmn:extensionElements>
+      <bpmn:incoming>f4</bpmn:incoming><bpmn:outgoing>f5</bpmn:outgoing>
+    </bpmn:serviceTask>
+
+    <bpmn:endEvent id="e"><bpmn:incoming>f5</bpmn:incoming></bpmn:endEvent>
+
+    <bpmn:sequenceFlow id="f1" sourceRef="s" targetRef="check_id" />
+    <bpmn:sequenceFlow id="f2" sourceRef="check_id" targetRef="screen_sanctions" />
+    <bpmn:sequenceFlow id="f3" sourceRef="screen_sanctions" targetRef="check_pep" />
+    <bpmn:sequenceFlow id="f4" sourceRef="check_pep" targetRef="risk_score" />
+    <bpmn:sequenceFlow id="f5" sourceRef="risk_score" targetRef="e" />
+  </bpmn:process>
+</bpmn:definitions>

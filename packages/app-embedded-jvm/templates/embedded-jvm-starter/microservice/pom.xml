@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.example</groupId>
+  <artifactId>kyc-microservice</artifactId>
+  <version>0.1.0</version>
+  <packaging>jar</packaging>
+
+  <name>KYC Microservice</name>
+  <description>
+    An embedded-Nano microservice: subscribes to the outer onboarding flow's
+    'verify_kyc' job on a Nano gateway (Falcon transport), and orchestrates
+    its own internal KYC checks on an in-process Bernd engine
+    (io.github.jwulf:nano-bernd, ADR 0005). Two engines, two audit trails,
+    two team owners.
+  </description>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+
+    <!-- Add NanoTransport.embedded() (v1.1+). Locally use SNAPSHOT until 1.1.0 releases. -->
+    <camunda-client.version>1.1.0-SNAPSHOT</camunda-client.version>
+    <nano-bernd.version>0.2.0</nano-bernd.version>
+  </properties>
+
+  <dependencies>
+    <!-- Same client jar drives both transports: Falcon to the outer gateway
+         AND embedded to the in-process Bernd engine. -->
+    <dependency>
+      <groupId>io.github.jwulf</groupId>
+      <artifactId>camunda-client-java-falcon</artifactId>
+      <version>${camunda-client.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>io.github.jwulf</groupId>
+      <artifactId>nano-bernd</artifactId>
+      <version>${nano-bernd.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.slf4j</groupId>
+      <artifactId>slf4j-simple</artifactId>
+      <version>2.0.13</version>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.11.0</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <!-- src/main/resources/kyc/kyc.bpmn is picked up by the default
+         resource plugin and packaged into the jar. The Bernd engine
+         reads it back at boot via ClassLoader.getResourceAsStream. -->
+    <plugins>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>3.4.1</version>
+        <configuration>
+          <mainClass>com.example.KycMicroservice</mainClass>
+        </configuration>
+      </plugin>
+      <plugin>
+        <artifactId>maven-shade-plugin</artifactId>
+        <version>3.6.0</version>
+        <executions>
+          <execution>
+            <phase>package</phase>
+            <goals><goal>shade</goal></goals>
+            <configuration>
+              <transformers>
+                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                  <mainClass>com.example.KycMicroservice</mainClass>
+                </transformer>
+              </transformers>
+              <createDependencyReducedPom>false</createDependencyReducedPom>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

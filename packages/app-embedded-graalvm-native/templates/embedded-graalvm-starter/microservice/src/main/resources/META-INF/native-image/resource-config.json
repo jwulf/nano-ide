@@ -1,0 +1,9 @@
+{
+  "resources": {
+    "includes": [
+      { "pattern": "kyc/.*\\.bpmn" },
+      { "pattern": "nano-bernd/nano_engine\\.wasm" },
+      { "pattern": "nano-bernd/manifest\\.json" }
+    ]
+  }
+}
