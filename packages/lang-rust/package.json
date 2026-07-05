@@ -1,6 +1,6 @@
 {
   "name": "@nanobpm/nano-ide-lang-rust",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Rust language pack for the Nano RAD IDE: .rs grammar, cargo toolchain, and a Rust throughput project template.",
   "license": "Apache-2.0",
   "keywords": ["nano-ide-ext", "nano-ide-lang", "nanobpm"],
