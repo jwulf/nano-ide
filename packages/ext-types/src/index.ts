@@ -74,7 +74,12 @@ export interface ExtManifest {
   fileTypes?: FileType[];
   templates?: TemplateSpec[];
   toolchain?: Toolchain;
-  /** example packs: lang pack ids required to build/run this example. */
+  /** example/app packs: lang pack ids required to build/run this pack's
+   * projects. The FIRST entry sets the scaffolded project's language — which
+   * drives the host's run/compile toolchain — so any app or example pack that
+   * isn't Deno-based must declare it (else new projects fall back to the Deno
+   * runtime). Required for example packs; required for app packs whose
+   * toolchain declares a detect probe. */
   requires?: string[];
   /** example packs: subdir holding the ready-to-copy project. */
   appDir?: string;

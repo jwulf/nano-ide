@@ -34,6 +34,18 @@ for (const dir of readdirSync(pkgRoot)) {
     if (!m.appDir || !existsSync(join(base, m.appDir))) fail(`example appDir missing: ${m.appDir}`);
     if (!Array.isArray(m.requires)) fail("example requires[] missing");
   }
+  // An app pack with a real toolchain (a detect probe) scaffolds non-Deno
+  // projects, so it must name its language via requires[] — the host sets the
+  // new project's lang from requires[0]; without it the project silently runs
+  // on the Deno runtime (the "Java template creates a Deno app" bug).
+  if (m.kind === "app" && (m.toolchain?.detect?.length ?? 0) > 0
+      && !(Array.isArray(m.requires) && m.requires.length > 0)) {
+    fail("app pack has a toolchain but no requires[] — new projects would default to the Deno runtime");
+  }
+  if (m.requires !== undefined
+      && !(Array.isArray(m.requires) && m.requires.every((r) => typeof r === "string" && r))) {
+    fail("requires[] must be an array of non-empty lang pack ids");
+  }
   if (m.kind === "theme") {
     if (!Array.isArray(m.themes) || m.themes.length === 0) fail("theme pack needs themes[]");
     for (const t of m.themes ?? []) {
