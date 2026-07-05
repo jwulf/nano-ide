@@ -1,0 +1,10 @@
+{
+  "name": "@nanobpm/nano-ide-example-throughput-jvm",
+  "version": "1.0.0",
+  "description": "Switchable Java throughput demo for the Nano RAD IDE: same BPMN + same worker code, one env var picks the transport (Camunda 8 REST/gRPC vs Nano REST/Falcon). Prints PIs/s + p50/p95/p99 latency.",
+  "license": "Apache-2.0",
+  "keywords": ["nano-ide-ext", "nano-ide-example", "nanobpm", "throughput", "benchmark", "jvm", "java", "camunda"],
+  "publishConfig": { "access": "public" },
+  "repository": { "type": "git", "url": "https://github.com/jwulf/nano-ide.git", "directory": "packages/example-throughput-jvm" },
+  "files": ["nano-ide.ext.json", "templates"]
+}
