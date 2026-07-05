@@ -27,6 +27,7 @@
       "-q",
       "-f",
       "microservice/pom.xml",
+      "compile",
       "exec:java"
     ],
     "compile": [
