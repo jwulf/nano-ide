@@ -1,64 +1,34 @@
 /*
- * Smoke test: exercise the KycMicroservice inner-flow logic without a live
- * gateway. Verifies that (a) the packaged kyc.bpmn deploys, (b) the inner
- * flow drives to completion, (c) the aggregation produces the expected
- * decision for representative customer IDs.
+ * Smoke test for InnerKycService — exercises the inner flow without a live
+ * outer gateway. Verifies that (a) InnerKycService.boot() packages and
+ * deploys kyc.bpmn, (b) verify() drives the inner flow to completion, and
+ * (c) the aggregated decision matches the expected value for representative
+ * customer IDs.
+ *
+ * With the split into OuterKycService / InnerKycService there's no more
+ * reflection into a private helper — the service exposes verify() as its
+ * public seam and this test consumes it exactly like OuterKycService does.
  */
 package com.example;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import io.github.jwulf.nano.bernd.EmbeddedEngine;
-import java.io.InputStream;
-import java.lang.reflect.Method;
-import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
 class KycInnerFlowTest {
 
   @Test
   void inner_flow_approves_a_low_risk_customer() throws Exception {
-    try (EmbeddedEngine engine = EmbeddedEngine.create()) {
-      engine.deploy(loadBpmn());
-      final String instanceKey = engine.createInstance("kyc");
-      assertTrue(!"0".equals(instanceKey), "engine rejected inner instance");
-
-      final KycMicroservice.KycContext ctx = new KycMicroservice.KycContext("customer-42");
-      invokeDriveInnerFlow(engine, ctx);
-      assertEquals("approved", ctx.aggregate());
-      assertTrue(engine.isCompleted(instanceKey), "inner instance should complete");
+    try (InnerKycService inner = InnerKycService.boot()) {
+      assertEquals("approved", inner.verify("customer-42"));
     }
   }
 
   @Test
   void inner_flow_flags_vip_for_manual_review() throws Exception {
-    try (EmbeddedEngine engine = EmbeddedEngine.create()) {
-      engine.deploy(loadBpmn());
-      engine.createInstance("kyc");
-      final KycMicroservice.KycContext ctx = new KycMicroservice.KycContext("vip-alice");
-      invokeDriveInnerFlow(engine, ctx);
-      assertEquals("manual_review", ctx.aggregate());
+    try (InnerKycService inner = InnerKycService.boot()) {
+      assertEquals("manual_review", inner.verify("vip-alice"));
     }
-  }
-
-  private static String loadBpmn() throws Exception {
-    try (InputStream in = KycInnerFlowTest.class.getResourceAsStream("/kyc/kyc.bpmn")) {
-      if (in == null) {
-        throw new IllegalStateException(
-            "test resource /kyc/kyc.bpmn not found on classpath — "
-                + "check that src/main/resources/kyc/kyc.bpmn is packaged");
-      }
-      return new String(in.readAllBytes(), StandardCharsets.UTF_8);
-    }
-  }
-
-  private static void invokeDriveInnerFlow(
-      final EmbeddedEngine engine, final KycMicroservice.KycContext ctx) throws Exception {
-    final Method m =
-        KycMicroservice.class.getDeclaredMethod(
-            "driveInnerFlow", EmbeddedEngine.class, KycMicroservice.KycContext.class);
-    m.setAccessible(true);
-    m.invoke(null, engine, ctx);
   }
 }
+
