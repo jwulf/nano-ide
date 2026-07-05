@@ -1,15 +1,8 @@
 {
-  "id": "example-throughput-jvm",
+  "id": "throughput-jvm",
   "kind": "example",
-  "displayName": "Throughput demo — 4-transport matrix (JVM)",
-  "fileTypes": [{ "ext": ".java", "monacoLang": "java" }],
-  "templates": [
-    { "id": "throughput-starter", "label": "Same code, four transports: C8 REST/gRPC vs Nano REST/Falcon (pick with CAMUNDA_TRANSPORT env)" }
-  ],
-  "toolchain": {
-    "detect": ["mvn", "--version"],
-    "run": ["mvn", "-q", "-f", "app/pom.xml", "exec:java"],
-    "compile": ["mvn", "-q", "-f", "app/pom.xml", "-DskipTests", "package"],
-    "targets": []
-  }
+  "displayName": "Throughput demo (JVM) — 4-transport matrix",
+  "requires": ["java", "maven"],
+  "appDir": "app",
+  "summary": "One Java source file, four transports. Env vars pick server (C8 vs Nano); a Maven profile picks SDK jar (upstream REST/gRPC vs Falcon-aware fork). Reports PIs/s + p50/p95/p99 completion latency."
 }

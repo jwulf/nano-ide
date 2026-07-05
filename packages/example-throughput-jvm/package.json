@@ -6,5 +6,5 @@
   "keywords": ["nano-ide-ext", "nano-ide-example", "nanobpm", "throughput", "benchmark", "jvm", "java", "camunda"],
   "publishConfig": { "access": "public" },
   "repository": { "type": "git", "url": "https://github.com/jwulf/nano-ide.git", "directory": "packages/example-throughput-jvm" },
-  "files": ["nano-ide.ext.json", "templates"]
+  "files": ["nano-ide.ext.json", "app", "README.md"]
 }
