@@ -67,18 +67,25 @@ Java code, driven as hard as your machine will go.
 
 ## Switching what the IDE Run button does
 
-The scaffolded project's `nanobpm.project.json` snapshots the toolchain,
-so you can edit the `run` (and `compile`) argv to switch combos without
-leaving the IDE. Defaults to combo #1 (`stock` + REST). To switch to
-combo #4 (Nano + Falcon), open `nanobpm.project.json` and change:
+The pack ships **four named run configurations** — pick one in the IDE's
+Run dropdown (next to the Run button); the selection is persisted in the
+project's `nanobpm.project.json` as `toolchain.activeRunConfig`.
 
-```json
-"toolchain": {
-  "run":     ["mvn", "-q", "-Pfalcon", "compile", "exec:java"],
-  "compile": ["mvn", "-q", "-Pfalcon", "-DskipTests", "package"]
-}
-```
+| id            | Label            | What it runs                                                    |
+|---------------|------------------|-----------------------------------------------------------------|
+| `stock-rest`  | Camunda 8 · REST | `mvn -Pstock exec:java -Dexec.args=rest`  *(default)*           |
+| `stock-grpc`  | Camunda 8 · gRPC | `mvn -Pstock exec:java -Dexec.args=grpc`                        |
+| `falcon-rest` | Nano · REST      | `mvn -Pfalcon exec:java -Dexec.args=rest`                       |
+| `falcon-nano` | Nano · Falcon    | `mvn -Pfalcon exec:java -Dexec.args=falcon`                     |
 
-For gRPC (combo #2), keep `-Pstock` and append `"-Dexec.args=grpc"` to
-`run`. The runtime banner (`=== runtime: server=… wire=… ===`) confirms
-which combo you're actually speaking to.
+Each config carries its own `compile` argv, so pack/profile-specific jars
+are rebuilt correctly when you switch. Edits directly in
+`nanobpm.project.json` — either to `run`/`compile` argv or to add new
+configs — are respected too. The runtime banner
+(`=== runtime: server=… wire=… ===`) confirms which combo you're actually
+speaking to.
+
+Requires nanobpm-gateway ≥ the release that ships
+[Magikcraft/nano-bpm#42](https://github.com/Magikcraft/nano-bpm/issues/42);
+older gateways ignore the `runConfigs` block and always run the default
+`stock-rest` command.
