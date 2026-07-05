@@ -13,12 +13,38 @@ export interface FileType {
 export interface Toolchain {
   /** Probe argv proving the toolchain is installed (e.g. ["cargo","--version"]). */
   detect?: string[];
-  /** argv to run the project (cwd = project dir). Empty => built-in Deno runner. */
+  /** argv to run the project (cwd = project dir). Empty => built-in Deno runner.
+   * Serves as a fallback when the active run config's `run` argv is empty. */
   run?: string[];
-  /** argv to compile the project. Empty => Deno compile. */
+  /** argv to compile the project. Empty => Deno compile. Serves as a fallback
+   * when the active run config's `compile` argv is empty. */
   compile?: string[];
   /** Cross-compile target triples this toolchain offers. */
   targets?: string[];
+  /** Named run configurations the console surfaces in a Run/Target dropdown.
+   * When set, the supervisor prefers the active one (pinned →
+   * `default: true` → first) over the flat `run`/`compile`. */
+  runConfigs?: RunConfig[];
+}
+
+/**
+ * One named run/compile combo a pack exposes — e.g. an example that swaps
+ * transports or build profiles. The console persists the picked id in the
+ * project's `nanobpm.project.json` as `toolchain.activeRunConfig`.
+ */
+export interface RunConfig {
+  /** Stable id, unique within the pack (e.g. "stock-grpc"). */
+  id: string;
+  /** Human-facing label shown in the Run dropdown. */
+  label: string;
+  /** When no id is pinned by the user, this entry is picked; else the first. */
+  default?: boolean;
+  /** argv override for this config. Empty => fall back to `Toolchain.run`. */
+  run?: string[];
+  /** argv override for this config. Empty => fall back to `Toolchain.compile`. */
+  compile?: string[];
+  /** Env vars layered on top of the base spawn env (last wins on key clash). */
+  env?: Record<string, string>;
 }
 
 export interface TemplateSpec {
