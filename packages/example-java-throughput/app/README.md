@@ -64,3 +64,21 @@ Final summary line reports totals and per-second averages over the whole run.
 Compare the same run across the four rows in the table above — that's the
 apples-to-apples comparison of C8 REST/gRPC vs Nano REST/Falcon on the same
 Java code, driven as hard as your machine will go.
+
+## Switching what the IDE Run button does
+
+The scaffolded project's `nanobpm.project.json` snapshots the toolchain,
+so you can edit the `run` (and `compile`) argv to switch combos without
+leaving the IDE. Defaults to combo #1 (`stock` + REST). To switch to
+combo #4 (Nano + Falcon), open `nanobpm.project.json` and change:
+
+```json
+"toolchain": {
+  "run":     ["mvn", "-q", "-Pfalcon", "compile", "exec:java"],
+  "compile": ["mvn", "-q", "-Pfalcon", "-DskipTests", "package"]
+}
+```
+
+For gRPC (combo #2), keep `-Pstock` and append `"-Dexec.args=grpc"` to
+`run`. The runtime banner (`=== runtime: server=… wire=… ===`) confirms
+which combo you're actually speaking to.
