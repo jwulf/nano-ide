@@ -63,8 +63,13 @@ public final class KycMicroservice {
     //    inner kyc.bpmn to completion on the embedded engine, then acks the
     //    outer job with a { decision: approved|manual_review|rejected }
     //    variable so the outer gateway routes correctly.
+    // NOTE: maxJobs=1 (serial). The embedded engine + per-instance KycContext
+    // are shared state driven by driveInnerFlow, so handling multiple outer
+    // verify_kyc activations concurrently would let inner activateJobs polls
+    // race across KycContexts. For higher throughput, run several
+    // microservice instances (or refactor to a per-invocation engine).
     outer.subscribe(new FalconTransport.Subscription(
-        "verify_kyc", "kyc-microservice", 8, 30_000L, null,
+        "verify_kyc", "kyc-microservice", 1, 30_000L, null,
         (JsonNode job) -> handleVerifyKyc(job, kycEngine, outer))
     ).get(5, TimeUnit.SECONDS);
     System.out.println("[ready] subscribed to verify_kyc — start an onboarding instance in the IDE");
@@ -89,14 +94,22 @@ public final class KycMicroservice {
     System.out.println("[inner] starting kyc.bpmn instance for " + customerId);
 
     // Run the inner flow on Bernd. Aggregate check results in the context.
+    // If it throws, log and return WITHOUT completing the outer job so
+    // Nano's job timeout drives a retry.
     final KycContext ctx = new KycContext(customerId);
-    final String innerInstance = kycEngine.createInstance("kyc");
-    System.out.println("[inner] instance " + innerInstance + " running");
+    final String decision;
+    try {
+      final String innerInstance = kycEngine.createInstance("kyc");
+      System.out.println("[inner] instance " + innerInstance + " running");
+      driveInnerFlow(kycEngine, ctx);
+      decision = ctx.aggregate();
+    } catch (final Exception e) {
+      System.err.println("[inner] flow failed for customer=" + customerId + ": " + e);
+      e.printStackTrace(System.err);
+      System.err.println("[outer] NOT completing verify_kyc — outer job will time out and retry");
+      return;
+    }
 
-    driveInnerFlow(kycEngine, ctx);
-
-    // Aggregate into a decision the outer flow can branch on.
-    final String decision = ctx.aggregate();
     System.out.println("[inner] kyc.bpmn done — decision: " + decision);
     System.out.println("[outer] completing verify_kyc with decision=" + decision);
     System.out.println("═══════════════════════════════════════════════════════════════");
@@ -152,7 +165,13 @@ public final class KycMicroservice {
         engine.completeJob(job.key());
         return;
       }
-      try { Thread.sleep(10); } catch (final InterruptedException ie) { Thread.currentThread().interrupt(); return; }
+      try {
+        Thread.sleep(10);
+      } catch (final InterruptedException ie) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException(
+            "inner flow interrupted while waiting for " + type + " job", ie);
+      }
     }
     throw new IllegalStateException("inner flow stalled: no " + type + " job appeared within 5s");
   }

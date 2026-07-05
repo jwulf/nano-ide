@@ -7,7 +7,7 @@
     { "id": "embedded-graalvm-starter", "label": "KYC microservice (GraalVM native) — same demo, ~30 MB standalone binary (ADR 0005)" }
   ],
   "toolchain": {
-    "detect": ["native-image", "--version"],
+    "detect": ["mvn", "-version"],
     "run": ["./microservice/target/kyc-microservice"],
     "compile": ["mvn", "-q", "-f", "microservice/pom.xml", "-Pnative", "-DskipTests", "package"],
     "targets": []

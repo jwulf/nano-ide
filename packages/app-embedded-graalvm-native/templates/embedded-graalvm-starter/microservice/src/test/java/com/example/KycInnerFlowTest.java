@@ -44,6 +44,11 @@ class KycInnerFlowTest {
 
   private static String loadBpmn() throws Exception {
     try (InputStream in = KycInnerFlowTest.class.getResourceAsStream("/kyc/kyc.bpmn")) {
+      if (in == null) {
+        throw new IllegalStateException(
+            "test resource /kyc/kyc.bpmn not found on classpath — "
+                + "check that src/main/resources/kyc/kyc.bpmn is packaged");
+      }
       return new String(in.readAllBytes(), StandardCharsets.UTF_8);
     }
   }
