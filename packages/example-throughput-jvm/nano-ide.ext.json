@@ -1,0 +1,8 @@
+{
+  "id": "throughput-jvm",
+  "kind": "example",
+  "displayName": "Throughput demo (JVM) — 4-transport matrix",
+  "requires": ["java", "maven"],
+  "appDir": "app",
+  "summary": "One Java source file, four transports. Env vars pick server (C8 vs Nano); a Maven profile picks SDK jar (upstream REST/gRPC vs Falcon-aware fork). Reports PIs/s + p50/p95/p99 completion latency."
+}
