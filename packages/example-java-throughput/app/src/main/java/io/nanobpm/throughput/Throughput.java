@@ -42,9 +42,10 @@ public final class Throughput {
     final int workerConc = envInt("WORKER_CONCURRENCY", 100);
     final int seconds = envInt("DURATION_SECS", 15);
 
+    final String profile = detectProfile();
     System.out.printf(
         "profile=%s transport=%s rest=%s grpc=%s pid=%s jobType=%s prodConns=%d workerConc=%d dur=%ds%n",
-        detectProfile(), transport, rest, grpc, pid, jobType, prodConns, workerConc, seconds);
+        profile, transport, rest, grpc, pid, jobType, prodConns, workerConc, seconds);
 
     final CamundaClientBuilder b = CamundaClient.newClientBuilder()
         .restAddress(URI.create(rest))
@@ -53,7 +54,17 @@ public final class Throughput {
         .defaultRequestTimeout(java.time.Duration.ofSeconds(30));
 
     try (CamundaClient client = b.build()) {
-      System.out.printf("topology.gatewayVersion=%s%n", client.newTopologyRequest().send().join().getGatewayVersion());
+      final String gatewayVersion = client.newTopologyRequest().send().join().getGatewayVersion();
+      // What's actually in front of us, and what wire are we speaking to it on?
+      //   server = Nano vs Camunda 8 — inferred from the Falcon SPI (falcon
+      //           only exists in the Nano SDK bundle) with a topology-version
+      //           fallback so anyone reading logs can tell at a glance.
+      //   wire   = REST vs gRPC vs Falcon — Falcon replaces the gRPC path
+      //           only, so falcon+rest still speaks REST over the wire.
+      final String serverType = detectServerType(profile, gatewayVersion);
+      final String wire = detectWire(profile, transport);
+      System.out.printf("=== runtime: server=%s (gatewayVersion=%s)  wire=%s ===%n",
+          serverType, gatewayVersion, wire);
 
       try (InputStream bpmn = Throughput.class.getResourceAsStream("/processes/throughput.bpmn")) {
         if (bpmn == null) throw new IllegalStateException("throughput.bpmn missing from classpath");
@@ -124,6 +135,27 @@ public final class Throughput {
     } catch (final ClassNotFoundException e) {
       return "stock";
     }
+  }
+
+  /**
+   * Server identity from the client's perspective. If the Falcon transport SPI
+   * is on the classpath the target has to be Nano (Falcon has no reason to
+   * exist for Camunda 8), otherwise we fall back to the gateway version
+   * string, which for Nano contains "nano".
+   */
+  private static String detectServerType(final String profile, final String gatewayVersion) {
+    if ("falcon".equals(profile)) return "Nano";
+    if (gatewayVersion != null && gatewayVersion.toLowerCase().contains("nano")) return "Nano";
+    return "Camunda 8";
+  }
+
+  /**
+   * Effective wire protocol. Falcon only replaces the gRPC path, so a
+   * `falcon` build asked for REST still speaks REST over the wire.
+   */
+  private static String detectWire(final String profile, final String transport) {
+    if ("rest".equals(transport)) return "REST";
+    return "falcon".equals(profile) ? "Falcon" : "gRPC";
   }
 
   private static String env(final String k, final String def) {
