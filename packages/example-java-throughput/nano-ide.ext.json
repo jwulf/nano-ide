@@ -9,27 +9,6 @@
     "detect": ["mvn", "--version"],
     "run": ["mvn", "-q", "-Pstock", "compile", "exec:java"],
     "compile": ["mvn", "-q", "-Pstock", "-DskipTests", "package"],
-    "targets": [
-      {
-        "id": "stock-rest",
-        "label": "Camunda 8 · REST",
-        "run": ["mvn", "-q", "-Pstock", "compile", "exec:java", "-Dexec.args=rest"]
-      },
-      {
-        "id": "stock-grpc",
-        "label": "Camunda 8 · gRPC",
-        "run": ["mvn", "-q", "-Pstock", "compile", "exec:java", "-Dexec.args=grpc"]
-      },
-      {
-        "id": "falcon-rest",
-        "label": "Nano · REST",
-        "run": ["mvn", "-q", "-Pfalcon", "compile", "exec:java", "-Dexec.args=rest"]
-      },
-      {
-        "id": "falcon-nano",
-        "label": "Nano · Falcon",
-        "run": ["mvn", "-q", "-Pfalcon", "compile", "exec:java", "-Dexec.args=falcon"]
-      }
-    ]
+    "targets": []
   }
 }
