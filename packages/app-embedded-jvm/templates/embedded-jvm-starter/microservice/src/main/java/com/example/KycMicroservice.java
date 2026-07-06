@@ -1,15 +1,15 @@
 /*
  * KYC Microservice — embedded-Nano demo (ADR 0005).
  *
- *   [ Nano IDE gateway ]                         [ This JVM process ]
- *          │                                             │
+ *   [ Outer BPMN engine ]                          [ This JVM process ]
+ *          │                                              │
  *   models/onboarding.bpmn                        ┌─ OuterKycService ─┐
- *   (deployed by IDE)                             │ Falcon WebSocket  │
+ *   (deployed to the engine)                      │ Camunda REST      │
  *          │                                      │ verify_kyc worker │
- *          │  Falcon WebSocket (NanoTransport.falcon)│                │
- *          │◄──────────────── verify_kyc ───────────┤                │
- *          │                                      │        │         │
- *          │                                      │        ▼         │
+ *          │  stock Camunda REST (activateJobs)   │                   │
+ *          │◄──────────────── verify_kyc ─────────┤                   │
+ *          │                                      │        │          │
+ *          │                                      │        ▼          │
  *          │                                      │ ┌─ InnerKycService ─┐
  *          │                                      │ │ Bernd embedded    │
  *          │                                      │ │ engine + kyc.bpmn │
@@ -23,10 +23,14 @@
  *          │                                      │ └───────────────────┘
  *          │◄──── completeJob(decision) ──────────┤
  *
+ * The outer engine can be Camunda 8, Camunda Self-Managed, or a Nano
+ * gateway — we only speak stock Camunda REST on the outer path.
+ *
  * Two bounded contexts, two files:
- *   - OuterKycService owns the Falcon wire-up. Onboarding team's boundary.
- *   - InnerKycService owns the embedded engine + inner flow. Compliance team's
- *     boundary. Trivially extractable into its own process.
+ *   - OuterKycService owns the REST job worker wire-up. Onboarding team's
+ *     boundary.
+ *   - InnerKycService owns the embedded engine + inner flow. Compliance
+ *     team's boundary. Trivially extractable into its own process.
  *
  * This class only wires them together and keeps the JVM alive.
  */
@@ -37,15 +41,17 @@ import java.util.concurrent.CountDownLatch;
 
 public final class KycMicroservice {
 
-  // Set FALCON_URL to override; defaults to the Nano IDE gateway's Falcon endpoint.
-  private static final String DEFAULT_FALCON_URL = "ws://localhost:8080/falcon";
+  // Set CAMUNDA_REST_ADDRESS to override; defaults to the Nano IDE gateway's
+  // REST endpoint. A stock Camunda 8 gateway on :8080 also works (same REST
+  // API).
+  private static final String DEFAULT_REST_ADDRESS = "http://localhost:8080";
 
   public static void main(final String[] args) throws Exception {
-    final URI falconUrl = URI.create(
-        System.getenv().getOrDefault("FALCON_URL", DEFAULT_FALCON_URL));
+    final URI restAddress = URI.create(
+        System.getenv().getOrDefault("CAMUNDA_REST_ADDRESS", DEFAULT_REST_ADDRESS));
 
     final InnerKycService inner = InnerKycService.boot();
-    final OuterKycService outer = OuterKycService.boot(falconUrl, inner);
+    final OuterKycService outer = OuterKycService.boot(restAddress, inner);
 
     Runtime.getRuntime().addShutdownHook(new Thread(() -> {
       outer.close();
