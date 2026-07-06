@@ -50,6 +50,7 @@ REST regardless, set `CAMUNDA_FORCE_REST=true` (or pass `rest` as the arg).
 | `PROD_CONNS`            | `256`                      | Concurrent producer threads                  |
 | `PIPELINE_DEPTH`        | `32`                       | In-flight createInstance calls per producer  |
 | `WORKER_CONCURRENCY`    | `100`                      | `maxJobsActive` for the JobWorker            |
+| `SEPARATE_WORKER_CLIENT`| `true`                     | Give the JobWorker its own client (see below)|
 | `DURATION_SECS`         | `15`                       | Run length                                   |
 | `PID`                   | `throughput-demo`          | BPMN process id                              |
 | `JOB_TYPE`              | `demo-job`                 | Job type on the service task                 |
@@ -79,6 +80,21 @@ round-trip per create, so the aggregate rate is capped at roughly
 does, and Nano and Camunda 8 end up looking indistinguishable. Raise
 `PIPELINE_DEPTH` to push past that ceiling; the differences between servers
 only show up once the client is actually saturating the commit path.
+
+### Why `SEPARATE_WORKER_CLIENT` matters
+
+The stock Camunda Java client holds **one HTTP/2 or gRPC channel per
+`CamundaClient` instance**. When the JobWorker shares that client with the
+producer flood, its `activate-jobs` poll queues behind thousands of create
+RPCs on the same channel and returns few jobs (REST) or zero (gRPC). Nano
+Falcon avoids this because it multiplexes create + activate as independent
+credit-metered streams over the same WebSocket, each with its own flow
+window — so the worker doesn't starve. Setting `SEPARATE_WORKER_CLIENT=true`
+(the default) builds two `CamundaClient`s — one for producers, one for the
+worker — pointing at the same gateway, so C8 REST/gRPC get the same
+channel-isolation Falcon has by construction. Set to `false` to reproduce
+the single-channel starvation and see how much of C8's "slowness" was
+actually client-side head-of-line blocking.
 
 ## Switching what the IDE Run button does
 
