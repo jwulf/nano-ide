@@ -26,7 +26,6 @@
 package io.nanobpm.throughput;
 
 import io.camunda.client.CamundaClient;
-import io.camunda.client.CamundaClientBuilder;
 import io.camunda.client.api.response.DeploymentEvent;
 import io.camunda.client.api.worker.JobWorker;
 import java.io.InputStream;
@@ -64,14 +63,25 @@ public final class Throughput {
     // -Pfalcon. Keeping REST preferred by default lets falcon, falcon+rest,
     // and stock+rest all just work.
     final boolean preferRest = !"grpc".equals(transport);
-    final CamundaClientBuilder b = CamundaClient.newClientBuilder()
-        .restAddress(URI.create(rest))
-        .grpcAddress(URI.create(grpc))
-        .preferRestOverGrpc(preferRest)
-        .defaultRequestTimeout(java.time.Duration.ofSeconds(30));
+    final boolean separateWorkerClient =
+        Boolean.parseBoolean(env("SEPARATE_WORKER_CLIENT", "true"));
 
-    try (CamundaClient client = b.build()) {
-      final String gatewayVersion = client.newTopologyRequest().send().join().getGatewayVersion();
+    // On C8 (REST or gRPC) the client holds ONE HTTP/2 or gRPC channel per
+    // CamundaClient, so a JobWorker sharing the client with the producer flood
+    // gets starved: the worker's activate-jobs poll queues behind thousands of
+    // create RPCs on the same channel and returns few (REST) or zero (gRPC)
+    // jobs. Nano Falcon multiplexes create + activate on independent
+    // credit-metered streams over the same WS, so it doesn't have this
+    // problem — but building two clients here is a no-op on Falcon and levels
+    // the playing field for C8. Toggle off with SEPARATE_WORKER_CLIENT=false
+    // to reproduce the shared-channel starvation.
+    final CamundaClient producerClient = buildClient(rest, grpc, preferRest);
+    final CamundaClient workerClient =
+        separateWorkerClient ? buildClient(rest, grpc, preferRest) : producerClient;
+
+    try {
+      final String gatewayVersion =
+          producerClient.newTopologyRequest().send().join().getGatewayVersion();
       // What's actually in front of us, and what wire are we speaking to it on?
       //   server = Nano vs Camunda 8 — inferred from the Falcon SPI (falcon
       //           only exists in the Nano SDK bundle) with a topology-version
@@ -80,12 +90,14 @@ public final class Throughput {
       //           only, so falcon+rest still speaks REST over the wire.
       final String serverType = detectServerType(profile, gatewayVersion);
       final String wire = detectWire(profile, transport);
-      System.out.printf("=== runtime: server=%s (gatewayVersion=%s)  wire=%s ===%n",
-          serverType, gatewayVersion, wire);
+      System.out.printf(
+          "=== runtime: server=%s (gatewayVersion=%s)  wire=%s  workerClient=%s ===%n",
+          serverType, gatewayVersion, wire,
+          separateWorkerClient ? "separate" : "shared");
 
       try (InputStream bpmn = Throughput.class.getResourceAsStream("/processes/throughput.bpmn")) {
         if (bpmn == null) throw new IllegalStateException("throughput.bpmn missing from classpath");
-        final DeploymentEvent dep = client.newDeployResourceCommand()
+        final DeploymentEvent dep = producerClient.newDeployResourceCommand()
             .addResourceStream(bpmn, "throughput.bpmn").send().join();
         System.out.printf("deployed key=%s%n", dep.getKey());
       }
@@ -95,7 +107,7 @@ public final class Throughput {
       final AtomicLong done = new AtomicLong();
       final long tEnd = System.nanoTime() + TimeUnit.SECONDS.toNanos(seconds);
 
-      final JobWorker worker = client.newWorker()
+      final JobWorker worker = workerClient.newWorker()
           .jobType(jobType)
           .handler((jobClient, job) -> {
             jobClient.newCompleteCommand(job).send();
@@ -137,7 +149,7 @@ public final class Throughput {
               return;
             }
             try {
-              client.newCreateInstanceCommand()
+              producerClient.newCreateInstanceCommand()
                   .bpmnProcessId(pid).latestVersion()
                   .send()
                   .whenComplete((r, e) -> {
@@ -168,7 +180,27 @@ public final class Throughput {
       final long s = Math.max(1, seconds);
       System.out.printf("=== %d created (~%d/s), %d completed (~%d/s), %d errors over %ds ===%n",
           c, c / s, d, d / s, f, seconds);
+    } finally {
+      producerClient.close();
+      if (separateWorkerClient) workerClient.close();
     }
+  }
+
+  /**
+   * Builds a fresh CamundaClient. On C8 (REST or gRPC) each client owns its
+   * own HTTP/2 or gRPC channel, so calling this twice gives producers and the
+   * JobWorker independent bandwidth to the same broker. On Nano the Falcon
+   * shim intercepts client construction and opens its own WS multiplex — a
+   * second client just opens a second WS, still fast.
+   */
+  private static CamundaClient buildClient(
+      final String rest, final String grpc, final boolean preferRest) {
+    return CamundaClient.newClientBuilder()
+        .restAddress(URI.create(rest))
+        .grpcAddress(URI.create(grpc))
+        .preferRestOverGrpc(preferRest)
+        .defaultRequestTimeout(java.time.Duration.ofSeconds(30))
+        .build();
   }
 
   private static String detectProfile() {
