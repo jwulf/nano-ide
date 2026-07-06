@@ -11,7 +11,7 @@
     <maven.compiler.release>17</maven.compiler.release>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <camunda.version>8.9.11</camunda.version>
-    <falcon.version>1.0.0</falcon.version>
+    <falcon.version>1.1.1</falcon.version>
     <exec.mainClass>io.nanobpm.throughput.Throughput</exec.mainClass>
   </properties>
 
@@ -47,6 +47,22 @@
           <groupId>io.github.jwulf</groupId>
           <artifactId>camunda-client-java-falcon</artifactId>
           <version>${falcon.version}</version>
+        </dependency>
+        <!--
+          The falcon shim shades in CamundaClientBuilderImpl but not its
+          transitive dependencies (io.grpc.*, zeebe-gateway-protocol-impl,
+          etc.). The shaded builder eagerly wires up both channels at build()
+          time, so those classes must be resolvable at runtime even when only
+          REST/Falcon transports are used. Pulling the stock camunda-client-java
+          alongside supplies exactly the missing runtime deps; the falcon jar's
+          own CamundaClientBuilderImpl wins on the classpath (checked via
+          `mvn dependency:tree` — falcon appears first) and installs the
+          Falcon SPI hook that the stock builder doesn't know about.
+        -->
+        <dependency>
+          <groupId>io.camunda</groupId>
+          <artifactId>camunda-client-java</artifactId>
+          <version>${camunda.version}</version>
         </dependency>
       </dependencies>
     </profile>
