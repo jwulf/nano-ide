@@ -88,12 +88,14 @@ public final class Throughput {
       //           fallback so anyone reading logs can tell at a glance.
       //   wire   = REST vs gRPC vs Falcon — Falcon replaces the gRPC path
       //           only, so falcon+rest still speaks REST over the wire.
-      final String serverType = detectServerType(profile, gatewayVersion);
-      final String wire = detectWire(profile, transport);
+      final String serverType = detectServerType(gatewayVersion);
+      final String wire = detectWire(producerClient, profile, transport);
       System.out.printf(
-          "=== runtime: server=%s (gatewayVersion=%s)  wire=%s  workerClient=%s ===%n",
+          "=== runtime: server=%s (gatewayVersion=%s)  wire=%s  workerClient=%s ===%n"
+              + "=== target:  %s ===%n",
           serverType, gatewayVersion, wire,
-          separateWorkerClient ? "separate" : "shared");
+          separateWorkerClient ? "separate" : "shared",
+          "grpc".equals(transport) ? grpc : rest);
 
       try (InputStream bpmn = Throughput.class.getResourceAsStream("/processes/throughput.bpmn")) {
         if (bpmn == null) throw new IllegalStateException("throughput.bpmn missing from classpath");
@@ -213,24 +215,43 @@ public final class Throughput {
   }
 
   /**
-   * Server identity from the client's perspective. If the Falcon transport SPI
-   * is on the classpath the target has to be Nano (Falcon has no reason to
-   * exist for Camunda 8), otherwise we fall back to the gateway version
-   * string, which for Nano contains "nano".
+   * Server identity from the gateway topology (source of truth), not from what
+   * the client THINKS it's talking to. Nano's gateway reports a gatewayVersion
+   * containing "nano"; anything else is Camunda 8. This deliberately ignores
+   * the classpath profile — the Falcon shim may be present but silently fall
+   * back to REST when the topology doesn't identify as Nano, and in that case
+   * we're actually talking to C8 no matter what the profile says.
    */
-  private static String detectServerType(final String profile, final String gatewayVersion) {
-    if ("falcon".equals(profile)) return "Nano";
+  private static String detectServerType(final String gatewayVersion) {
     if (gatewayVersion != null && gatewayVersion.toLowerCase().contains("nano")) return "Nano";
     return "Camunda 8";
   }
 
   /**
-   * Effective wire protocol. Falcon only replaces the gRPC path, so a
-   * `falcon` build asked for REST still speaks REST over the wire.
+   * Effective wire protocol *as actually used by this client*. For Falcon
+   * builds this reflects the shim's runtime decision — the shim only routes
+   * createInstance through the WS command stream when its topology probe
+   * detected a Nano gateway; otherwise it silently falls back to REST. Detect
+   * that live state via reflection so stock builds don't need a hard dep on
+   * the shim class.
    */
-  private static String detectWire(final String profile, final String transport) {
-    if ("rest".equals(transport)) return "REST";
-    return "falcon".equals(profile) ? "Falcon" : "gRPC";
+  private static String detectWire(
+      final CamundaClient client, final String profile, final String transport) {
+    if ("falcon".equals(profile)) {
+      try {
+        final Class<?> impl = Class.forName("io.camunda.client.impl.CamundaClientImpl");
+        if (impl.isInstance(client)) {
+          final Object falcon = impl.getMethod("falconTransport").invoke(client);
+          if (falcon != null) return "Falcon";
+        }
+      } catch (final ReflectiveOperationException ignored) {
+        // Shim missing or API drifted — fall through to profile-agnostic detection.
+      }
+      // Falcon shim on classpath but not active — the shim's topology probe
+      // decided the gateway is not Nano, so createInstance actually goes REST.
+      return "REST (Falcon shim inactive — gateway is not Nano)";
+    }
+    return "rest".equals(transport) ? "REST" : "gRPC";
   }
 
   private static String env(final String k, final String def) {
