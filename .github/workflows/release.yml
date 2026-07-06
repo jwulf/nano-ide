@@ -20,10 +20,16 @@ jobs:
           node-version: 22
           cache: npm
           registry-url: https://registry.npmjs.org
+      # Trusted Publisher (OIDC) support needs npm >= 11.5.1; node 22 LTS ships
+      # with npm 10.x which still requires a long-lived NPM_TOKEN.
+      - run: npm install --global npm@latest
       - run: npm ci
       - run: npm run validate
       - run: npm run build
       # Publishes each workspace whose version isn't on npm yet (idempotent).
+      # Auth is via GitHub Actions OIDC — the workflow's id-token is exchanged
+      # for a short-lived npm publish token per package, so no long-lived
+      # NPM_TOKEN secret is needed. Each target package on npm must have the
+      # matching Trusted Publisher configured (repo: jwulf/nano-ide, workflow:
+      # release.yml). Provenance is signed automatically.
       - run: node scripts/publish.mjs
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
