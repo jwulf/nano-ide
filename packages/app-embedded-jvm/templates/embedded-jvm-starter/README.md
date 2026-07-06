@@ -3,15 +3,21 @@
 A working demonstration of **orchestration-of-orchestration** on Nano:
 
 ```
-Nano IDE gateway                          This microservice (JVM)
+Outer BPMN engine                         This microservice (JVM)
 ┌──────────────────────┐                 ┌──────────────────────────┐
-│ models/              │                 │ microservice/            │
-│ └─ onboarding.bpmn   │◄── Falcon ─────►│  Bernd (embedded engine) │
-│    (auto-deployed)   │  verify_kyc     │   └─ kyc.bpmn            │
+│ models/              │  Camunda REST   │ microservice/            │
+│ └─ onboarding.bpmn   │◄── job worker ─►│  Bernd (embedded engine) │
+│    (deployed to      │  verify_kyc     │   └─ kyc.bpmn            │
+│     the engine)      │                 │                          │
 └──────────────────────┘                 └──────────────────────────┘
        outer flow                              inner flow
    (onboarding team)                        (compliance team)
 ```
+
+The outer engine can be **Camunda 8**, **Camunda Self-Managed**, or a
+**Nano gateway** — the microservice only speaks stock Camunda REST on
+the outer path. The inner engine is always Bernd (in-process Nano)
+because that's the whole point of the demo.
 
 Two engines. Two audit trails. One team owns each file.
 
@@ -24,23 +30,28 @@ Two engines. Two audit trails. One team owns each file.
 - `microservice/` — a JVM project.
   - `src/main/resources/kyc/kyc.bpmn` — the **inner** KYC flow (check ID,
     screen sanctions, PEP check, risk score). Packaged into the jar.
-  - `src/main/java/com/example/KycMicroservice.java` — subscribes to the
-    outer `verify_kyc` job over Falcon, runs `kyc.bpmn` on an in-process
-    Bernd engine for each activation, aggregates the check results, and
+  - `src/main/java/com/example/OuterKycService.java` — stock Camunda REST
+    job worker subscribed to `verify_kyc`. Delegates to InnerKycService,
     completes the outer job with a `decision` variable.
+  - `src/main/java/com/example/InnerKycService.java` — in-process Bernd
+    engine that runs `kyc.bpmn` for each activation.
+  - `src/main/java/com/example/KycMicroservice.java` — wire-up only.
 
 ## Run
 
-1. **Start the Nano IDE** — it deploys `models/onboarding.bpmn` on save.
-2. **Start the microservice**:
+1. **Start a BPMN engine** — Nano IDE, Camunda 8 SaaS, or Camunda
+   Self-Managed. If it isn't reachable at `http://localhost:8080`, set
+   `CAMUNDA_REST_ADDRESS` to point at it.
+2. **Deploy `models/onboarding.bpmn`** — Nano IDE does this automatically;
+   for Camunda 8 use Modeler / Operate or `zbctl deploy`.
+3. **Start the microservice**:
    ```sh
    cd microservice
    mvn -q exec:java
    ```
-   You'll see: `[boot] Bernd engine up; kyc.bpmn deployed (v1)` then
-   `[ready] subscribed to verify_kyc`.
-3. **Kick off an onboarding instance** from the IDE (or `curl` the
-   gateway's `/v2/process-instances`), passing a `customerId` variable.
+   You'll see: `[inner] Bernd engine up; kyc.bpmn deployed` then
+   `[outer] subscribed to verify_kyc`.
+4. **Kick off an onboarding instance** — pass a `customerId` variable.
    Try `customer-42` (approved) and `vip-alice` (manual review).
 
 Console output shows each inner step firing in real time:
@@ -59,41 +70,30 @@ Console output shows each inner step firing in real time:
 ═══════════════════════════════════════════════════════════════
 ```
 
-The outer instance in the IDE then routes to `queue_for_ops`.
+The outer instance then routes to `queue_for_ops`.
 
 ## How it works
 
-- The microservice uses **one client jar** — `camunda-client-java-falcon`
-  — with **two transports** from the same API:
-  - `NanoTransport.falcon(URI)` → outer gateway over WebSocket
-  - internal `EmbeddedEngine` calls → in-process wasm engine (Bernd,
-    `io.github.jwulf:nano-bernd`)
+- **Outer path**: stock `io.camunda:camunda-client-java` REST job worker
+  (`client.newWorker().jobType("verify_kyc")...`). No Nano-specific
+  transport — the same code runs against Camunda 8, Camunda
+  Self-Managed, or a Nano gateway.
+- **Inner path**: `io.github.jwulf:nano-bernd`'s `EmbeddedEngine` for
+  the in-process inner engine (`kycEngine.deploy(kycBpmn)`,
+  `activateJobs`, `completeJob`).
 - The inner flow ships **inside the microservice jar** — Maven's default
   resource plugin packages `src/main/resources/kyc/kyc.bpmn`, and
-  `KycMicroservice` reads it via `ClassLoader.getResourceAsStream` on
+  `InnerKycService` reads it via `ClassLoader.getResourceAsStream` on
   boot. Compliance edits `kyc.bpmn`, bumps the jar, ships. Onboarding
   team's outer flow doesn't change.
-
-## Swap remote-vs-embedded (dev doubles)
-
-For local integration tests, replace the Falcon transport with a second
-embedded engine that holds `onboarding.bpmn`:
-
-```java
-var outerEngine = EmbeddedEngine.create();
-outerEngine.deploy(loadResource("/models/onboarding.bpmn"));
-var outer = NanoTransport.embedded(outerEngine);
-```
-
-Same worker code runs — no gateway process required in tests.
 
 ## ABI v2 notes
 
 - The inner flow is a **linear sequence**. When ABI v3 exposes variables-
   on-complete, branches like "sanctions_hit → straight-to-rejected" move
   into `kyc.bpmn`. Today the microservice aggregates in Java-land.
-- Only the outer gateway sees the `decision` variable on job completion —
-  that's the full REST engine, so gateway conditions work as expected.
+- The outer engine sees the `decision` variable on job completion — that
+  drives the exclusive gateway in `onboarding.bpmn`.
 
 ## For a native binary
 

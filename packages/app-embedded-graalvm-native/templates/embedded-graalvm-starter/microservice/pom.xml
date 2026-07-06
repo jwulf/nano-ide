@@ -22,15 +22,15 @@
     <maven.compiler.source>21</maven.compiler.source>
     <maven.compiler.target>21</maven.compiler.target>
 
-    <camunda-client.version>1.1.0</camunda-client.version>
+    <camunda-client.version>8.9.11</camunda-client.version>
     <nano-bernd.version>0.2.0</nano-bernd.version>
     <native.maven.plugin.version>0.10.3</native.maven.plugin.version>
   </properties>
 
   <dependencies>
     <dependency>
-      <groupId>io.github.jwulf</groupId>
-      <artifactId>camunda-client-java-falcon</artifactId>
+      <groupId>io.camunda</groupId>
+      <artifactId>camunda-client-java</artifactId>
       <version>${camunda-client.version}</version>
     </dependency>
     <dependency>

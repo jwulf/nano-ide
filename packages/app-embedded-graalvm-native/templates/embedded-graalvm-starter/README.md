@@ -31,8 +31,8 @@ and run.
 
 ```sh
 ./microservice/target/kyc-microservice
-# defaults to ws://localhost:8080/falcon; override:
-FALCON_URL=ws://gateway.example.com/falcon ./microservice/target/kyc-microservice
+# defaults to http://localhost:8080 (Camunda REST); override:
+CAMUNDA_REST_ADDRESS=http://gateway.example.com:8080 ./microservice/target/kyc-microservice
 ```
 
 ## What's inside the binary
@@ -43,15 +43,14 @@ FALCON_URL=ws://gateway.example.com/falcon ./microservice/target/kyc-microservic
 - The Nano engine's wasm blob shipped inside `nano-bernd` (kept by
   `-H:IncludeResources=nano-bernd/.*`)
 - Chicory (pure-Java wasm interpreter — AOT-compiles cleanly)
-- Jackson + java.net.http WebSocket for the outer Falcon transport
+- Stock `io.camunda:camunda-client-java` for the outer REST job worker
 
 ## Reflection config
 
 `microservice/src/main/resources/META-INF/native-image/reflect-config.json`
 flags the `EmbeddedEngine`, `ActivatedJob`, and `WasmManifest` types
-because `EmbeddedNanoTransport` (in `camunda-client-java-falcon`) uses
-reflection to talk to them — Graal's closed-world compilation needs this
-so the methods aren't stripped.
+because `nano-bernd` uses reflection to talk to them — Graal's
+closed-world compilation needs this so the methods aren't stripped.
 
 ## Notes
 

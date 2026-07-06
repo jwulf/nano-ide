@@ -11,11 +11,12 @@
 
   <name>KYC Microservice</name>
   <description>
-    An embedded-Nano microservice: subscribes to the outer onboarding flow's
-    'verify_kyc' job on a Nano gateway (Falcon transport), and orchestrates
-    its own internal KYC checks on an in-process Bernd engine
-    (io.github.jwulf:nano-bernd, ADR 0005). Two engines, two audit trails,
-    two team owners.
+    An embedded-Nano microservice: subscribes to the outer onboarding
+    flow's 'verify_kyc' job on any BPMN engine that speaks stock Camunda
+    REST (Camunda 8, Camunda Self-Managed, or a Nano gateway), and
+    orchestrates its own internal KYC checks on an in-process Bernd
+    engine (io.github.jwulf:nano-bernd, ADR 0005). Two engines, two
+    audit trails, two team owners.
   </description>
 
   <properties>
@@ -23,20 +24,20 @@
     <maven.compiler.source>17</maven.compiler.source>
     <maven.compiler.target>17</maven.compiler.target>
 
-    <!-- Ships NanoTransport.falcon() (outer gateway) and NanoTransport.embedded()
-         (in-process Bernd) in one jar; released to Maven Central. -->
-    <camunda-client.version>1.1.0</camunda-client.version>
+    <!-- Stock Camunda client for the outer job worker (REST only). -->
+    <camunda-client.version>8.9.11</camunda-client.version>
     <nano-bernd.version>0.2.0</nano-bernd.version>
   </properties>
 
   <dependencies>
-    <!-- Same client jar drives both transports: Falcon to the outer gateway
-         AND embedded to the in-process Bernd engine. -->
+    <!-- Outer path: stock Camunda REST client. Works against Camunda 8,
+         Camunda Self-Managed, and Nano gateways (same REST API). -->
     <dependency>
-      <groupId>io.github.jwulf</groupId>
-      <artifactId>camunda-client-java-falcon</artifactId>
+      <groupId>io.camunda</groupId>
+      <artifactId>camunda-client-java</artifactId>
       <version>${camunda-client.version}</version>
     </dependency>
+    <!-- Inner path: in-process Nano Bernd engine. -->
     <dependency>
       <groupId>io.github.jwulf</groupId>
       <artifactId>nano-bernd</artifactId>
