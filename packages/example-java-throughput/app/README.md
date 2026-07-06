@@ -48,6 +48,7 @@ REST regardless, set `CAMUNDA_FORCE_REST=true` (or pass `rest` as the arg).
 | `CAMUNDA_REST_ADDRESS`  | `http://localhost:8080`    | REST gateway                                 |
 | `CAMUNDA_GRPC_ADDRESS`  | `http://localhost:26500`   | gRPC gateway (C8 only)                       |
 | `PROD_CONNS`            | `256`                      | Concurrent producer threads                  |
+| `PIPELINE_DEPTH`        | `32`                       | In-flight createInstance calls per producer  |
 | `WORKER_CONCURRENCY`    | `100`                      | `maxJobsActive` for the JobWorker            |
 | `DURATION_SECS`         | `15`                       | Run length                                   |
 | `PID`                   | `throughput-demo`          | BPMN process id                              |
@@ -67,6 +68,17 @@ Final summary line reports totals and per-second averages over the whole run.
 Compare the same run across the three rows in the table above — that's the
 apples-to-apples comparison of C8 REST/gRPC vs Nano Falcon on the same
 Java code, driven as hard as your machine will go.
+
+### Why `PIPELINE_DEPTH` matters
+
+The default `PIPELINE_DEPTH=32` lets each producer thread keep 32
+`createInstance` requests in flight concurrently. With depth `1` (the naïve
+`.send().join()` pattern) every producer thread stalls for a full network
+round-trip per create, so the aggregate rate is capped at roughly
+`PROD_CONNS / RTT` — the *client* runs out of steam long before either server
+does, and Nano and Camunda 8 end up looking indistinguishable. Raise
+`PIPELINE_DEPTH` to push past that ceiling; the differences between servers
+only show up once the client is actually saturating the commit path.
 
 ## Switching what the IDE Run button does
 

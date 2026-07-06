@@ -13,7 +13,15 @@
  *
  * Env: CAMUNDA_REST_ADDRESS (default http://localhost:8080),
  *      CAMUNDA_GRPC_ADDRESS (default http://localhost:26500),
- *      PID, JOB_TYPE, PROD_CONNS, WORKER_CONCURRENCY, DURATION_SECS.
+ *      PID, JOB_TYPE, PROD_CONNS, PIPELINE_DEPTH, WORKER_CONCURRENCY, DURATION_SECS.
+ *
+ * PROD_CONNS is the number of producer threads; PIPELINE_DEPTH is how many
+ * createInstance requests each thread keeps in flight concurrently. Total
+ * ceiling of in-flight creates is PROD_CONNS * PIPELINE_DEPTH — raise the
+ * latter (not the former) to push the server harder without paying JVM
+ * thread-scheduling overhead on the client. With .send().join() (depth=1)
+ * every thread is stalled for a full RTT per create, so the client caps
+ * before either Nano or Camunda 8 breaks a sweat and the two look identical.
  */
 package io.nanobpm.throughput;
 
@@ -27,6 +35,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -39,13 +48,14 @@ public final class Throughput {
     final String pid = env("PID", "throughput-demo");
     final String jobType = env("JOB_TYPE", "demo-job");
     final int prodConns = envInt("PROD_CONNS", 256);
+    final int pipelineDepth = envInt("PIPELINE_DEPTH", 32);
     final int workerConc = envInt("WORKER_CONCURRENCY", 100);
     final int seconds = envInt("DURATION_SECS", 15);
 
     final String profile = detectProfile();
     System.out.printf(
-        "profile=%s transport=%s rest=%s grpc=%s pid=%s jobType=%s prodConns=%d workerConc=%d dur=%ds%n",
-        profile, transport, rest, grpc, pid, jobType, prodConns, workerConc, seconds);
+        "profile=%s transport=%s rest=%s grpc=%s pid=%s jobType=%s prodConns=%d pipelineDepth=%d workerConc=%d dur=%ds%n",
+        profile, transport, rest, grpc, pid, jobType, prodConns, pipelineDepth, workerConc, seconds);
 
     // Prefer REST unless the user explicitly asks for gRPC. Falcon (WebSocket)
     // is a drop-in upgrade of the REST path — it never speaks gRPC — and the
@@ -106,17 +116,40 @@ public final class Throughput {
         prev[0] = c; prev[1] = d;
       }, 1, 1, TimeUnit.SECONDS);
 
+      // Pipelined producer: each of prodConns threads keeps up to
+      // pipelineDepth createInstance requests in flight concurrently, gated by
+      // a shared semaphore so the total in-flight count is bounded. Without
+      // pipelining, .send().join() would stall each producer thread for a full
+      // RTT per create — capping aggregate throughput at ~prodConns/RTT and
+      // making Nano and Camunda 8 look identical because the client bottleneck
+      // hits first. With PIPELINE_DEPTH=32 the client can push ~8k in-flight
+      // creates at 256 conns, which is enough to saturate either server's
+      // commit path and let the differences actually show.
+      final Semaphore permits = new Semaphore(prodConns * pipelineDepth);
       final ExecutorService producers = Executors.newFixedThreadPool(prodConns);
       for (int i = 0; i < prodConns; i++) {
         producers.submit(() -> {
           while (System.nanoTime() < tEnd) {
             try {
+              permits.acquire();
+            } catch (final InterruptedException ie) {
+              Thread.currentThread().interrupt();
+              return;
+            }
+            try {
               client.newCreateInstanceCommand()
                   .bpmnProcessId(pid).latestVersion()
-                  .send().join();
-              created.incrementAndGet();
+                  .send()
+                  .whenComplete((r, e) -> {
+                    if (e != null) failed.incrementAndGet();
+                    else created.incrementAndGet();
+                    permits.release();
+                  });
             } catch (final Exception e) {
+              // Synchronous submission failure (e.g. client shutdown) — the
+              // future was never created so release the permit ourselves.
               failed.incrementAndGet();
+              permits.release();
             }
           }
         });
@@ -124,6 +157,9 @@ public final class Throughput {
 
       producers.shutdown();
       producers.awaitTermination(seconds + 60L, TimeUnit.SECONDS);
+      // Drain outstanding in-flight creates so the final count reflects work
+      // the server actually acked, not what we merely dispatched.
+      permits.acquire(prodConns * pipelineDepth);
       Thread.sleep(500); // let the worker drain the tail
       ticker.shutdownNow();
       worker.close();
