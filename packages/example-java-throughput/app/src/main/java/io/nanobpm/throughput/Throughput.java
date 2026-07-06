@@ -47,10 +47,17 @@ public final class Throughput {
         "profile=%s transport=%s rest=%s grpc=%s pid=%s jobType=%s prodConns=%d workerConc=%d dur=%ds%n",
         profile, transport, rest, grpc, pid, jobType, prodConns, workerConc, seconds);
 
+    // Prefer REST unless the user explicitly asks for gRPC. Falcon (WebSocket)
+    // is a drop-in upgrade of the REST path — it never speaks gRPC — and the
+    // camunda-client-java-falcon shim doesn't bundle io.grpc.*, so any code
+    // path that touches the gRPC channel throws NoClassDefFoundError under
+    // -Pfalcon. Keeping REST preferred by default lets falcon, falcon+rest,
+    // and stock+rest all just work.
+    final boolean preferRest = !"grpc".equals(transport);
     final CamundaClientBuilder b = CamundaClient.newClientBuilder()
         .restAddress(URI.create(rest))
         .grpcAddress(URI.create(grpc))
-        .preferRestOverGrpc("rest".equals(transport))
+        .preferRestOverGrpc(preferRest)
         .defaultRequestTimeout(java.time.Duration.ofSeconds(30));
 
     try (CamundaClient client = b.build()) {
