@@ -5,7 +5,7 @@
   "icon": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='4' fill='#3776AB'/><g fill='none' stroke='#FFD43B' stroke-width='1.6' stroke-linecap='round'><path d='M7 8c2.5-2 4 2 6.5 0M7 12c2.5-2 4 2 6.5 0M7 16c2.5-2 4 2 6.5 0'/></g><circle cx='16.5' cy='7.6' r='0.9' fill='#FFD43B'/></svg>",
   "fileTypes": [{ "ext": ".py", "monacoLang": "python" }],
   "templates": [
-    { "id": "python-starter", "label": "Starter (Python / uv) — Camunda client hello + job worker" }
+    { "id": "python-starter", "label": "Starter (Python / uv) — deploy a process, create an instance, run a worker" }
   ],
   "toolchain": {
     "detect": ["uv", "--version"],

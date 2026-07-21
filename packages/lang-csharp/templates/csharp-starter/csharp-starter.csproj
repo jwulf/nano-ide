@@ -15,4 +15,10 @@
     <PackageReference Include="Camunda.Orchestration.Sdk" Version="10.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Ship the BPMN alongside the built app so it is deployable from either
+         the project dir (dotnet run) or the output dir. -->
+    <Content Include="resources/**/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

@@ -6,8 +6,9 @@ Python language pack for the [Nano RAD IDE](https://github.com/jwulf/nano-ide).
 - **Toolchain**: [`uv`](https://docs.astral.sh/uv/) — `uv run main.py` provisions a
   Python 3.10+ interpreter and installs dependencies from `pyproject.toml` in one
   step (no manual venv). `uv sync` is the compile step.
-- **Template** `python-starter`: a Camunda 8 hello-world that connects, prints the
-  gateway topology, and registers a job worker for the `hello` job type using the
+- **Template** `python-starter`: a complete, runnable Camunda 8 app — connects,
+  prints the gateway topology, deploys `resources/processes/starter.bpmn`, creates
+  one process instance, and runs a job worker for the `hello` service task using the
   official [`camunda-orchestration-sdk`](https://pypi.org/project/camunda-orchestration-sdk/).
 
 ## Zero-code path to Falcon

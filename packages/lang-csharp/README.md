@@ -5,8 +5,9 @@ C# / .NET language pack for the [Nano RAD IDE](https://github.com/jwulf/nano-ide
 - **Grammar**: `.cs` → Monaco `csharp`, `.csproj` → `xml`.
 - **Toolchain**: `dotnet` — `dotnet run -c Release` restores NuGet dependencies and
   runs in one step; `dotnet build -c Release` is the compile step.
-- **Template** `csharp-starter`: a Camunda 8 hello-world that connects, prints the
-  gateway topology, and registers a job worker for the `hello` job type using the
+- **Template** `csharp-starter`: a complete, runnable Camunda 8 app — connects,
+  prints the gateway topology, deploys `resources/processes/starter.bpmn`, creates
+  one process instance, and runs a job worker for the `hello` service task using the
   official [`Camunda.Orchestration.Sdk`](https://www.nuget.org/packages/Camunda.Orchestration.Sdk).
 
 ## Zero-code path to Falcon
