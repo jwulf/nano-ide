@@ -8,7 +8,7 @@
     { "ext": ".csproj", "monacoLang": "xml" }
   ],
   "templates": [
-    { "id": "csharp-starter", "label": "Starter (C# / .NET) — Camunda client hello + job worker" }
+    { "id": "csharp-starter", "label": "Starter (C# / .NET) — deploy a process, create an instance, run a worker" }
   ],
   "toolchain": {
     "detect": ["dotnet", "--version"],
