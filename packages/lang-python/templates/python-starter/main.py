@@ -26,6 +26,7 @@ stock Camunda 8.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 from pathlib import Path
@@ -81,21 +82,28 @@ async def main() -> None:
             callback=handle_hello,
         )
         workers_task = asyncio.create_task(client.run_workers())
-
-        # Create one instance to exercise the full loop end to end.
-        instance = await client.create_process_instance(
-            data=ProcessCreationById(
-                process_definition_id=ProcessDefinitionId(PID),
-                variables=ProcessInstanceCreationInstructionByIdVariables.from_dict(
-                    {"greeting": "hello from python-starter"}
-                ),
-                await_completion=False,
+        try:
+            # Create one instance to exercise the full loop end to end.
+            instance = await client.create_process_instance(
+                data=ProcessCreationById(
+                    process_definition_id=ProcessDefinitionId(PID),
+                    variables=ProcessInstanceCreationInstructionByIdVariables.from_dict(
+                        {"greeting": "hello from python-starter"}
+                    ),
+                    await_completion=False,
+                )
             )
-        )
-        print(f"created process instance {instance.process_instance_key}")
+            print(f"created process instance {instance.process_instance_key}")
 
-        print("worker `hello` open. Ctrl-C to stop.")
-        await workers_task
+            print("worker `hello` open. Ctrl-C to stop.")
+            await workers_task
+        finally:
+            # Don't leak the worker task if instance creation (or the await
+            # above) raised — cancel and await it so the loop shuts down clean
+            # rather than emitting "Task was destroyed but it is pending".
+            workers_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await workers_task
 
 
 if __name__ == "__main__":

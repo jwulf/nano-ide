@@ -81,22 +81,29 @@ Console.CancelKeyPress += (_, e) =>
 
 var workers = client.RunWorkersAsync(ct: cts.Token);
 
-// Create one instance to exercise the full loop end to end.
-var instance = await client.CreateProcessInstanceAsync(
-    new ProcessInstanceCreationInstructionById
-    {
-        ProcessDefinitionId = ProcessDefinitionId.AssumeExists(pid),
-        Variables = new Dictionary<string, object> { ["greeting"] = "hello from csharp-starter" },
-        AwaitCompletion = false,
-    },
-    cts.Token);
-Console.WriteLine($"created process instance {instance.ProcessInstanceKey}");
-
-Console.WriteLine("worker `hello` open. Ctrl-C to stop.");
 try
 {
+    // Create one instance to exercise the full loop end to end.
+    var instance = await client.CreateProcessInstanceAsync(
+        new ProcessInstanceCreationInstructionById
+        {
+            ProcessDefinitionId = ProcessDefinitionId.AssumeExists(pid),
+            Variables = new Dictionary<string, object> { ["greeting"] = "hello from csharp-starter" },
+            AwaitCompletion = false,
+        },
+        cts.Token);
+    Console.WriteLine($"created process instance {instance.ProcessInstanceKey}");
+
+    Console.WriteLine("worker `hello` open. Ctrl-C to stop.");
     await workers;
 }
 catch (OperationCanceledException)
 {
+}
+finally
+{
+    // Don't leave the worker task unobserved if instance creation raised —
+    // cancel and await it so the app shuts down cleanly.
+    cts.Cancel();
+    try { await workers; } catch (OperationCanceledException) { }
 }
