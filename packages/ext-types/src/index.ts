@@ -25,6 +25,12 @@ export interface Toolchain {
    * When set, the supervisor prefers the active one (pinned →
    * `default: true` → first) over the flat `run`/`compile`. */
   runConfigs?: RunConfig[];
+  /** Official install instructions for this toolchain, surfaced in the IDE
+   * config panel when the `detect` probe fails (e.g. the Rust toolchain page). */
+  installUrl?: string;
+  /** One-line, actionable hint shown when the toolchain is missing (e.g.
+   * "`cargo` was not found. Install the Rust toolchain…"). */
+  installHint?: string;
 }
 
 /**

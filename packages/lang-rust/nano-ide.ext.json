@@ -11,6 +11,8 @@
     "detect": ["cargo", "--version"],
     "run": ["cargo", "run", "--release"],
     "compile": ["cargo", "build", "--release"],
-    "targets": []
+    "targets": [],
+    "installUrl": "https://www.rust-lang.org/tools/install",
+    "installHint": "`cargo` was not found. Install the Rust toolchain (see the link) so `cargo` is on PATH. Until then, Rust projects cannot run or compile."
   }
 }
