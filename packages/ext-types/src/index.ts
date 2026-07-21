@@ -97,6 +97,10 @@ export interface ExtManifest {
   id: string;
   kind: ExtKind;
   displayName: string;
+  /** Optional pack icon: an inline SVG XML string (preferred; use single-quoted
+   * attributes so it nests in JSON) or a data:/http: URL. Lang packs supply this
+   * so the console can badge project cards with a language icon. */
+  icon?: string;
   fileTypes?: FileType[];
   templates?: TemplateSpec[];
   toolchain?: Toolchain;
