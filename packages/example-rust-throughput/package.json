@@ -1,10 +1,24 @@
 {
   "name": "@nanobpm/nano-ide-example-rust-throughput",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Distributable example app for the Nano RAD IDE: a native Rust pipelined command-stream throughput demo.",
   "license": "Apache-2.0",
-  "keywords": ["nano-ide-ext", "nano-ide-example", "nanobpm", "rust"],
-  "publishConfig": { "access": "public" },
-  "repository": { "type": "git", "url": "https://github.com/jwulf/nano-ide.git", "directory": "packages/example-rust-throughput" },
-  "files": ["nano-ide.ext.json", "app"]
+  "keywords": [
+    "nano-ide-ext",
+    "nano-ide-example",
+    "nanobpm",
+    "rust"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jwulf/nano-ide.git",
+    "directory": "packages/example-rust-throughput"
+  },
+  "files": [
+    "nano-ide.ext.json",
+    "app"
+  ]
 }
