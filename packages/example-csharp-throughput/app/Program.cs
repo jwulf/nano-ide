@@ -44,7 +44,7 @@ var bpmn = new[]
 {
     Path.Combine(Directory.GetCurrentDirectory(), "resources", "processes", "throughput.bpmn"),
     Path.Combine(AppContext.BaseDirectory, "resources", "processes", "throughput.bpmn"),
-}.First(File.Exists);
+}.FirstOrDefault(File.Exists) ?? throw new FileNotFoundException("throughput.bpmn not found (expected resources/processes/throughput.bpmn).");
 
 Console.WriteLine($"deploying {Path.GetFileName(bpmn)} -> {rest}");
 var deployment = await client.DeployResourcesFromFilesAsync(new[] { bpmn });
