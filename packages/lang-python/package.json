@@ -1,0 +1,27 @@
+{
+  "name": "@nanobpm/nano-ide-lang-python",
+  "version": "1.0.0",
+  "description": "Python language pack for the Nano RAD IDE: .py grammar, uv toolchain, and a Camunda 8 client starter project that uses the official camunda-orchestration-sdk (transparently upgrades to Falcon against a Nano gateway).",
+  "license": "Apache-2.0",
+  "keywords": [
+    "nano-ide-ext",
+    "nano-ide-lang",
+    "nanobpm",
+    "camunda",
+    "python",
+    "uv"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jwulf/nano-ide.git",
+    "directory": "packages/lang-python"
+  },
+  "files": [
+    "nano-ide.ext.json",
+    "templates",
+    "README.md"
+  ]
+}

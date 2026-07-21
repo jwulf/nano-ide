@@ -11,8 +11,12 @@ parses each pack's `nano-ide.ext.json` manifest (mirror of `server/src/console/e
 | --- | --- | --- |
 | `@nanobpm/nano-ide-ext-types` | — | TypeScript types for `nano-ide.ext.json` |
 | `@nanobpm/nano-ide-lang-rust` | lang | Rust file types + cargo toolchain + throughput template |
+| `@nanobpm/nano-ide-lang-python` | lang | Python file types + uv toolchain + Camunda SDK starter template |
+| `@nanobpm/nano-ide-lang-csharp` | lang | C# file types + dotnet toolchain + Camunda SDK starter template |
 | `@nanobpm/nano-ide-app-deno-gui` | app | Deno served-UI binary template |
 | `@nanobpm/nano-ide-example-rust-throughput` | example | Ready-to-run Rust command-stream A/B demo |
+| `@nanobpm/nano-ide-example-python-throughput` | example | Python throughput demo on the Camunda 8 REST SDK |
+| `@nanobpm/nano-ide-example-csharp-throughput` | example | C# throughput demo on the Camunda 8 REST SDK |
 | `@nanobpm/nano-ide-theme-nord` | theme | Nord Dark + Nord Light console themes |
 | `@nanobpm/nano-ide-theme-solarized` | theme | Solarized Dark + Light console themes |
 | `@nanobpm/nano-ide-theme-synthwave` | theme | Synthwave '84 neon console theme |

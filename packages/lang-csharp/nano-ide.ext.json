@@ -1,0 +1,21 @@
+{
+  "id": "csharp",
+  "kind": "lang",
+  "displayName": "C#",
+  "icon": "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='4' fill='#68217A'/><text x='11.5' y='16.4' font-family='Segoe UI, Helvetica, Arial, sans-serif' font-size='11' font-weight='700' fill='#ffffff' text-anchor='middle'>C#</text></svg>",
+  "fileTypes": [
+    { "ext": ".cs", "monacoLang": "csharp" },
+    { "ext": ".csproj", "monacoLang": "xml" }
+  ],
+  "templates": [
+    { "id": "csharp-starter", "label": "Starter (C# / .NET) — Camunda client hello + job worker" }
+  ],
+  "toolchain": {
+    "detect": ["dotnet", "--version"],
+    "run": ["dotnet", "run", "-c", "Release"],
+    "compile": ["dotnet", "build", "-c", "Release"],
+    "targets": [],
+    "installUrl": "https://dotnet.microsoft.com/download",
+    "installHint": "`dotnet` was not found. Install the .NET SDK 8.0+ (brew install dotnet-sdk, or download from https://dotnet.microsoft.com/download) so `dotnet` is on PATH. Until then, C# projects cannot run or compile."
+  }
+}

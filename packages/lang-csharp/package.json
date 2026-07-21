@@ -1,0 +1,27 @@
+{
+  "name": "@nanobpm/nano-ide-lang-csharp",
+  "version": "1.0.0",
+  "description": "C# / .NET language pack for the Nano RAD IDE: .cs grammar, dotnet toolchain, and a Camunda 8 client starter project that uses the official Camunda.Orchestration.Sdk (transparently upgrades to Falcon against a Nano gateway).",
+  "license": "Apache-2.0",
+  "keywords": [
+    "nano-ide-ext",
+    "nano-ide-lang",
+    "nanobpm",
+    "camunda",
+    "csharp",
+    "dotnet"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jwulf/nano-ide.git",
+    "directory": "packages/lang-csharp"
+  },
+  "files": [
+    "nano-ide.ext.json",
+    "templates",
+    "README.md"
+  ]
+}

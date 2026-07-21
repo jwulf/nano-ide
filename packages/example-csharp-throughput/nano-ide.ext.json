@@ -1,0 +1,8 @@
+{
+  "id": "csharp-throughput",
+  "kind": "example",
+  "displayName": "C# throughput demo (C8 REST ↔ Nano Falcon)",
+  "requires": ["csharp"],
+  "appDir": "app",
+  "summary": "Parallel producer flood + JobWorker on the official Camunda.Orchestration.Sdk. One code path runs against Camunda 8 (REST) or Nano (Falcon) — the SDK upgrades transparently. Streams live creates/s and completes/s."
+}
