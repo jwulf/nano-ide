@@ -5,3 +5,11 @@ dist/
 # Rust build artifacts from example/template smoke builds
 target/
 Cargo.lock
+# C# / .NET build artifacts from example/template smoke builds
+bin/
+obj/
+# Python (uv) artifacts from example/template smoke builds
+.venv/
+__pycache__/
+*.egg-info/
+uv.lock
