@@ -13,3 +13,7 @@ obj/
 __pycache__/
 *.egg-info/
 uv.lock
+
+# Keep the rust-throughput template lock committed so the IntelliSense
+# generator (cargo rustdoc --locked) is deterministic in CI.
+!packages/lang-rust/templates/rust-throughput/Cargo.lock

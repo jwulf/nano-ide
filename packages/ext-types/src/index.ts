@@ -99,6 +99,100 @@ export interface ThemeSpec {
   tokens: Partial<Record<ThemeTokenKey, string>>;
 }
 
+/**
+ * IntelliSense data a lang pack ships for the console's Monaco editor. The
+ * console has a real language service only for TypeScript/JavaScript (Monaco's
+ * built-in TS worker); every other language gets tokenisation only. A pack can
+ * light up completion, hover, and signature help for its `monacoLang` by
+ * shipping this curated data — no in-browser language server required. The host
+ * registers one provider per `monacoLang` and feeds it every pack's entries.
+ */
+export interface LangIntellisense {
+  /** Monaco language id these entries apply to (e.g. "csharp", "rust"). */
+  monacoLang: string;
+  /** Extra characters that reopen the completion popup (e.g. ["."]). The word
+   * character set always triggers completion; add member-access dots etc. */
+  triggerCharacters?: string[];
+  /** Completion items offered in files of this language. */
+  completions?: CompletionSpec[];
+  /** Hover cards keyed by the exact symbol under the cursor. */
+  hovers?: HoverSpec[];
+  /** Signature-help entries shown while typing a call's arguments. */
+  signatures?: SignatureSpec[];
+}
+
+/**
+ * Monaco `CompletionItemKind` names a pack may use. The listed names are the
+ * commonly-emitted ones and exist only as authoring hints — the real authority
+ * is the host's kind→Monaco mapping, which renders any unknown value as
+ * `Value`. The union is intentionally open (`string & {}`) because the mapping
+ * lives in a separate repo (the console), so a closed set here can't be
+ * compile-time reconciled with it and would only drift; keeping it open means a
+ * new generator-emitted kind never breaks consumers of this package.
+ */
+export type CompletionKind =
+  | "keyword"
+  | "snippet"
+  | "function"
+  | "method"
+  | "constructor"
+  | "class"
+  | "struct"
+  | "interface"
+  | "enum"
+  | "module"
+  | "property"
+  | "field"
+  | "variable"
+  | "constant"
+  | "value"
+  | (string & {});
+
+/** One completion item. `insertText` defaults to `label`. */
+export interface CompletionSpec {
+  /** Text shown in the completion list. */
+  label: string;
+  /** Icon/category. Defaults to "value" when omitted. */
+  kind?: CompletionKind;
+  /** Text inserted on accept. Defaults to `label`. */
+  insertText?: string;
+  /** When true, `insertText` is a Monaco snippet (`${1:name}` placeholders). */
+  snippet?: boolean;
+  /** Short right-aligned signature/type (e.g. the return type). */
+  detail?: string;
+  /** Markdown documentation shown in the details flyout. */
+  documentation?: string;
+}
+
+/** A hover card: shown when the pointer rests on `symbol`. */
+export interface HoverSpec {
+  /** Exact identifier that triggers this hover (whole-word match). */
+  symbol: string;
+  /** Markdown rendered in the hover card. */
+  contents: string;
+}
+
+/** One function/method signature surfaced by signature help. */
+export interface SignatureSpec {
+  /** Identifier that, when followed by `(`, triggers this help (e.g.
+   * "CreateProcessInstanceAsync"). */
+  trigger: string;
+  /** Full signature line shown in the popup. */
+  label: string;
+  /** Markdown documentation for the call. */
+  documentation?: string;
+  /** Ordered parameters; the active one is highlighted by comma position. */
+  parameters?: SignatureParam[];
+}
+
+/** One parameter within a {@link SignatureSpec}. */
+export interface SignatureParam {
+  /** Parameter label as it appears in the signature (e.g. "id: string"). */
+  label: string;
+  /** Markdown documentation for this parameter. */
+  documentation?: string;
+}
+
 export interface ExtManifest {
   id: string;
   kind: ExtKind;
@@ -123,6 +217,10 @@ export interface ExtManifest {
   summary?: string;
   /** theme packs: the console colour themes this pack contributes. */
   themes?: ThemeSpec[];
+  /** lang packs: curated IntelliSense (completion/hover/signature) for the
+   * pack's languages, since the console has no in-browser language server for
+   * anything but TypeScript. One entry per `monacoLang`. */
+  intellisense?: LangIntellisense[];
   /** Built-in packs set this; published packs omit it. */
   builtin?: boolean;
 }

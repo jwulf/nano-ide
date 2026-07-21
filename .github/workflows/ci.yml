@@ -20,3 +20,50 @@ jobs:
       - run: npm run typecheck
       - run: npm run build
       - run: npm test --if-present
+
+  # The `intellisense` block in each language pack's nano-ide.ext.json is a
+  # committed, generated artifact — derived from the pack's SDK's own strongly
+  # typed metadata (C# XML docs, Python introspection, Rust rustdoc JSON). This
+  # job re-runs every generator in `--check` mode so a stale manifest (e.g. after
+  # an SDK version bump) fails CI instead of silently shipping outdated
+  # IntelliSense. Regenerate + commit with `npm run gen:intellisense`.
+  intellisense:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      # C# — populate the NuGet cache so the SDK's Camunda.Orchestration.Sdk.xml
+      # (the derive source) is on disk. Version is pinned exactly in the csproj.
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Restore C# SDK (fills the doc-XML cache)
+        run: dotnet restore packages/lang-csharp/templates/csharp-starter
+
+      # Python — install the SDK so introspection can import it.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install Python SDK
+        run: pip install "camunda-orchestration-sdk>=9,<10"
+
+      # Rust — nightly is required for rustdoc JSON (-Z unstable-options). The
+      # generator builds --locked against the template's committed Cargo.lock, so
+      # the derived output is deterministic (SDK pinned to 0.2.2).
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: packages/lang-rust/templates/rust-throughput
+
+      - name: Check IntelliSense manifests are up to date
+        run: npm run check:intellisense --workspaces --if-present
+        env:
+          # Build rustdoc into the template's own target dir so rust-cache
+          # (keyed on that workspace) can persist the artifacts across runs.
+          CARGO_TARGET_DIR: ${{ github.workspace }}/packages/lang-rust/templates/rust-throughput/target
+
