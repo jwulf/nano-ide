@@ -1,8 +1,12 @@
 {
   "name": "@nanobpm/nano-ide-lang-rust",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Rust language pack for the Nano RAD IDE: .rs grammar, cargo toolchain, and a Rust throughput project template.",
   "license": "Apache-2.0",
+  "scripts": {
+    "gen:intellisense": "node scripts/gen-intellisense.mjs",
+    "check:intellisense": "node scripts/gen-intellisense.mjs --check"
+  },
   "keywords": [
     "nano-ide-ext",
     "nano-ide-lang",
