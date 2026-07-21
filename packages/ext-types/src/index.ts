@@ -121,12 +121,21 @@ export interface LangIntellisense {
   signatures?: SignatureSpec[];
 }
 
-/** Monaco `CompletionItemKind` names a pack may use (mapped by the host). */
+/**
+ * Monaco `CompletionItemKind` names a pack may use. The listed names are the
+ * commonly-emitted ones and exist only as authoring hints — the real authority
+ * is the host's kind→Monaco mapping, which renders any unknown value as
+ * `Value`. The union is intentionally open (`string & {}`) because the mapping
+ * lives in a separate repo (the console), so a closed set here can't be
+ * compile-time reconciled with it and would only drift; keeping it open means a
+ * new generator-emitted kind never breaks consumers of this package.
+ */
 export type CompletionKind =
   | "keyword"
   | "snippet"
   | "function"
   | "method"
+  | "constructor"
   | "class"
   | "struct"
   | "interface"
@@ -136,7 +145,8 @@ export type CompletionKind =
   | "field"
   | "variable"
   | "constant"
-  | "value";
+  | "value"
+  | (string & {});
 
 /** One completion item. `insertText` defaults to `label`. */
 export interface CompletionSpec {
