@@ -854,6 +854,14 @@
           "documentation": "Get process start form"
         },
         {
+          "label": "get_status",
+          "kind": "method",
+          "insertText": "get_status()",
+          "snippet": true,
+          "detail": "get_status()",
+          "documentation": "Get cluster status"
+        },
+        {
           "label": "get_system_configuration",
           "kind": "method",
           "insertText": "get_system_configuration()",
@@ -1031,12 +1039,12 @@
         {
           "label": "ProcessDefinitionId",
           "kind": "class",
-          "detail": "type alias over str"
+          "detail": "camunda_orchestration_sdk"
         },
         {
           "label": "ProcessDefinitionKey",
           "kind": "class",
-          "detail": "type alias over str"
+          "detail": "camunda_orchestration_sdk"
         },
         {
           "label": "ProcessInstanceCreationInstructionByIdVariables",
@@ -1338,6 +1346,14 @@
           "snippet": true,
           "detail": "search_process_instances(data: ProcessInstanceSearchQuery | Unset = ...)",
           "documentation": "Search process instances"
+        },
+        {
+          "label": "search_resources",
+          "kind": "method",
+          "insertText": "search_resources()",
+          "snippet": true,
+          "detail": "search_resources(data: ResourceSearchQuery | Unset = ...)",
+          "documentation": "Search resources"
         },
         {
           "label": "search_roles",
@@ -2097,6 +2113,10 @@
           "contents": "**`await CamundaAsyncClient.get_start_process_form(process_definition_key: ProcessDefinitionKey)`**\n\nGet process start form\n\n---\n\n**`CamundaClient.get_start_process_form(process_definition_key: ProcessDefinitionKey)`**\n\nGet process start form"
         },
         {
+          "symbol": "get_status",
+          "contents": "**`await CamundaAsyncClient.get_status()`**\n\nGet cluster status\n\n---\n\n**`CamundaClient.get_status()`**\n\nGet cluster status"
+        },
+        {
           "symbol": "get_system_configuration",
           "contents": "**`await CamundaAsyncClient.get_system_configuration()`**\n\nSystem configuration (alpha)\n\n---\n\n**`CamundaClient.get_system_configuration()`**\n\nSystem configuration (alpha)"
         },
@@ -2198,11 +2218,11 @@
         },
         {
           "symbol": "ProcessDefinitionId",
-          "contents": "**`ProcessDefinitionId`** — type alias over str"
+          "contents": "**`ProcessDefinitionId`** — camunda_orchestration_sdk"
         },
         {
           "symbol": "ProcessDefinitionKey",
-          "contents": "**`ProcessDefinitionKey`** — type alias over str"
+          "contents": "**`ProcessDefinitionKey`** — camunda_orchestration_sdk"
         },
         {
           "symbol": "ProcessInstanceCreationInstructionByIdVariables",
@@ -2359,6 +2379,10 @@
         {
           "symbol": "search_process_instances",
           "contents": "**`await CamundaAsyncClient.search_process_instances(data: ProcessInstanceSearchQuery | Unset = ...)`**\n\nSearch process instances\n\n---\n\n**`CamundaClient.search_process_instances(data: ProcessInstanceSearchQuery | Unset = ...)`**\n\nSearch process instances"
+        },
+        {
+          "symbol": "search_resources",
+          "contents": "**`await CamundaAsyncClient.search_resources(data: ResourceSearchQuery | Unset = ...)`**\n\nSearch resources\n\n---\n\n**`CamundaClient.search_resources(data: ResourceSearchQuery | Unset = ...)`**\n\nSearch resources"
         },
         {
           "symbol": "search_roles",
@@ -5682,6 +5706,26 @@
           "parameters": [
             {
               "label": "data: ProcessInstanceSearchQuery | Unset = ..."
+            }
+          ]
+        },
+        {
+          "trigger": "search_resources",
+          "label": "search_resources(data: ResourceSearchQuery | Unset = ...)",
+          "documentation": "Search resources",
+          "parameters": [
+            {
+              "label": "data: ResourceSearchQuery | Unset = ..."
+            }
+          ]
+        },
+        {
+          "trigger": "search_resources",
+          "label": "search_resources(data: ResourceSearchQuery | Unset = ...)",
+          "documentation": "Search resources",
+          "parameters": [
+            {
+              "label": "data: ResourceSearchQuery | Unset = ..."
             }
           ]
         },
