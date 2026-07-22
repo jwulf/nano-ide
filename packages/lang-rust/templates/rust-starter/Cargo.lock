@@ -1448,7 +1448,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "throughput-rust"
+name = "rust-starter"
 version = "0.1.0"
 dependencies = [
  "camunda-orchestration-sdk",
