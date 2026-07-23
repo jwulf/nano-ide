@@ -1,0 +1,20 @@
+{
+  "name": "node-starter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Camunda 8 starter — hello + job worker on the official @camunda8 JS SDK, run on the local Node (Deno-free; works on 32-bit ARM / Raspberry Pi).",
+  "scripts": {
+    "prestart": "npm install --no-audit --no-fund --loglevel=error",
+    "start": "node --experimental-strip-types --no-warnings main.ts",
+    "pretypecheck": "npm install --no-audit --no-fund --loglevel=error",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@camunda8/orchestration-cluster-api": "^9"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "typescript": "^5.6.0"
+  }
+}

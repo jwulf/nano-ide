@@ -1,0 +1,28 @@
+{
+  "name": "@nanobpm/nano-ide-lang-node",
+  "version": "1.0.0",
+  "description": "Node.js/TypeScript language pack for the Nano RAD IDE: .ts/.js grammar, a Node toolchain (run on `node --experimental-strip-types`, typecheck with `tsc`), and a Camunda 8 client starter that uses the official @camunda8/orchestration-cluster-api SDK. Lets Deno-less hosts (e.g. Raspberry Pi 2B / 32-bit ARM) author and run JS/TS workers on the local Node.",
+  "license": "Apache-2.0",
+  "keywords": [
+    "nano-ide-ext",
+    "nano-ide-lang",
+    "nanobpm",
+    "camunda",
+    "typescript",
+    "javascript",
+    "node"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jwulf/nano-ide.git",
+    "directory": "packages/lang-node"
+  },
+  "files": [
+    "nano-ide.ext.json",
+    "templates",
+    "README.md"
+  ]
+}
