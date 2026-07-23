@@ -17,7 +17,7 @@
 // Usage:  node scripts/gen-intellisense.mjs [--check]
 //   --check  exit non-zero if the manifest is out of date (for CI), no write.
 //
-// The SDK version constraint is read from the throughput template's Cargo.toml.
+// The SDK version constraint is read from the starter template's Cargo.toml.
 // rustdoc JSON is a nightly-only format; override the toolchain with
 // NANO_RUSTDOC_TOOLCHAIN (default "nightly"). Pre-generated JSON can be supplied
 // via NANO_RUSTDOC_DIR (dir containing the two *.json files) to skip the build.
@@ -37,7 +37,7 @@ import { fileURLToPath } from "node:url";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PACK_ROOT = join(HERE, "..");
 const MANIFEST = join(PACK_ROOT, "nano-ide.ext.json");
-const TEMPLATE_DIR = join(PACK_ROOT, "templates", "rust-throughput");
+const TEMPLATE_DIR = join(PACK_ROOT, "templates", "rust-starter");
 const TEMPLATE_CARGO = join(TEMPLATE_DIR, "Cargo.toml");
 
 const FACADE_CRATE = "camunda-orchestration-sdk";

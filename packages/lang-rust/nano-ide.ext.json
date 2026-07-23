@@ -11,8 +11,8 @@
   ],
   "templates": [
     {
-      "id": "rust-throughput",
-      "label": "Throughput (Rust) — native pipelined command-stream A/B"
+      "id": "rust-starter",
+      "label": "Starter (Rust / Cargo) — deploy a process, create an instance, run a worker"
     }
   ],
   "toolchain": {

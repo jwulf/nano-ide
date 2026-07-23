@@ -58,12 +58,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@nightly
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: packages/lang-rust/templates/rust-throughput
+          workspaces: packages/lang-rust/templates/rust-starter
 
       - name: Check IntelliSense manifests are up to date
         run: npm run check:intellisense --workspaces --if-present
         env:
           # Build rustdoc into the template's own target dir so rust-cache
           # (keyed on that workspace) can persist the artifacts across runs.
-          CARGO_TARGET_DIR: ${{ github.workspace }}/packages/lang-rust/templates/rust-throughput/target
+          CARGO_TARGET_DIR: ${{ github.workspace }}/packages/lang-rust/templates/rust-starter/target
 
