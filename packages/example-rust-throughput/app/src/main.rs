@@ -10,6 +10,9 @@
 // creates from PROD_CONNS concurrent tasks while a JobWorker drains them.
 // A live per-second line streams creates/s and completes/s.
 //
+// Run in the Nano IDE:  press ▶ Run in the project toolbar.
+// Run from a terminal:  cargo run --release
+//
 // Env: CAMUNDA_REST_ADDRESS (default http://localhost:8080), PID, JOB_TYPE,
 //      PROD_CONNS, WORKER_CONCURRENCY, DURATION_SECS.
 use std::path::PathBuf;

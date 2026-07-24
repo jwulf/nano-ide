@@ -13,7 +13,8 @@
 // The worker stays open after the demo instance completes, so you can create
 // more instances from the console (or re-run) and watch them flow. Ctrl-C stops.
 //
-// Run:  npm start          (node --experimental-strip-types main.ts; needs Node >= 22.6)
+// Run in the Nano IDE:  press ▶ Run in the project toolbar.
+// Run from a terminal:  npm start   (node --experimental-strip-types main.ts; needs Node >= 22.6)
 // Type: npm run typecheck  (tsc --noEmit)
 // Env:  CAMUNDA_REST_ADDRESS   (default http://localhost:8080; the Nano console
 //                               also exports NANOBPMN_BASE_URL, honoured below)

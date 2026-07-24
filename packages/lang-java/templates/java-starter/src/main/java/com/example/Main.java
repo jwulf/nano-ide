@@ -5,7 +5,8 @@
 // worker for the `hello` job type that completes each job by echoing its
 // variables.
 //
-// Run: mvn -q -DskipTests compile exec:java
+// Run in the Nano IDE:  press ▶ Run in the project toolbar.
+// Run from a terminal:  mvn -q -DskipTests compile exec:java
 // Env: CAMUNDA_REST_ADDRESS (default http://localhost:8080).
 //
 // Zero-code path to Falcon: this file does not change when the Falcon-aware

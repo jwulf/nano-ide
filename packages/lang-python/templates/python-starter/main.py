@@ -11,7 +11,8 @@ A minimal end-to-end loop on the official camunda-orchestration-sdk:
 The worker stays open after the demo instance completes, so you can create
 more instances from the console (or re-run) and watch them flow. Ctrl-C to stop.
 
-Run:  uv run main.py
+Run in the Nano IDE:  press ▶ Run in the project toolbar.
+Run from a terminal:  uv run main.py
 Env:  CAMUNDA_REST_ADDRESS   (default http://localhost:8080)
       CAMUNDA_AUTH_STRATEGY  (default NONE — a local Nano / C8 dev gateway runs
                               without auth; set OAUTH or BASIC for a secured

@@ -7,6 +7,11 @@ Requires JDK 17+ and Apache Maven (`mvn`); install the `java` lang pack.
 **The point:** one Java code path, three transports. Change the Maven profile,
 change the gateway, keep the code identical.
 
+**In the Nano IDE** — open this project and press **▶ Run** in the toolbar,
+choosing the transport from the run-config selector (Camunda 8 · REST,
+Camunda 8 · gRPC, or Nano · Falcon). The `mvn` commands below are the terminal
+equivalents for running outside the IDE:
+
 | # | Broker    | Transport | Command                                                  |
 |---|-----------|-----------|----------------------------------------------------------|
 | 1 | Camunda 8 | REST      | `mvn -Pstock -q exec:java`                               |

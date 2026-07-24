@@ -6,6 +6,10 @@
  * createInstance calls from PROD_CONNS producers while a JobWorker drains
  * them. Same code, four combos:
  *
+ * In the Nano IDE: press ▶ Run in the project toolbar and pick the transport
+ * from the run-config selector. The `mvn` commands below are the terminal
+ * equivalents for running outside the IDE:
+ *
  *   1. Camunda 8 + REST      -> `mvn -Pstock exec:java` (default transport = REST)
  *   2. Camunda 8 + gRPC      -> `mvn -Pstock exec:java -Dexec.args=grpc`
  *   3. Nano       + REST     -> `mvn -Pfalcon exec:java -Dexec.args=rest`  (or set CAMUNDA_FORCE_REST=true)
