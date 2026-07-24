@@ -10,7 +10,7 @@ the JobWorker to a streaming push subscription — transparently, via
 ## Run
 
 **In the Nano IDE** — open this project and press **▶ Run** in the toolbar. The
-C# lang-pack toolchain restores the SDK and builds automatically, and the target
+C# lang-pack toolchain restores dependencies and builds automatically, and the target
 framework tracks your installed .NET SDK.
 
 **From a terminal** (outside the IDE):
@@ -19,7 +19,7 @@ framework tracks your installed .NET SDK.
 dotnet run -c Release
 ```
 
-`dotnet run` restores the SDK from NuGet and builds on first run. The project
+`dotnet run` restores NuGet dependencies and builds on first run. The project
 targets whichever .NET SDK you have installed (e.g. .NET 10) — derived from the
 running SDK — so no specific framework version needs to be preinstalled.
 
