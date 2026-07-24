@@ -10,7 +10,8 @@
 // creates from PROD_CONNS concurrent tasks while a JobWorker drains them. A live
 // per-second line streams creates/s and completes/s.
 //
-// Run:  dotnet run -c Release
+// Run in the Nano IDE:  press ▶ Run in the project toolbar.
+// Run from a terminal:  dotnet run -c Release
 // Env:  CAMUNDA_REST_ADDRESS (default http://localhost:8080),
 //       CAMUNDA_AUTH_STRATEGY (default NONE),
 //       PID (default throughput-demo), JOB_TYPE (default demo-job),

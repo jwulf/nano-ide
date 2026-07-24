@@ -8,6 +8,11 @@ JobWorker to a streaming push subscription — transparently, via `GET /v2/topol
 
 ## Run
 
+**In the Nano IDE** — open this project and press **▶ Run** in the toolbar. The
+Python lang-pack toolchain provisions the interpreter and installs the SDK.
+
+**From a terminal** (outside the IDE):
+
 ```bash
 uv run main.py
 ```

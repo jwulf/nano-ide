@@ -3,8 +3,11 @@
 C# / .NET language pack for the [Nano RAD IDE](https://github.com/jwulf/nano-ide).
 
 - **Grammar**: `.cs` → Monaco `csharp`, `.csproj` → `xml`.
-- **Toolchain**: `dotnet` — `dotnet run -c Release` restores NuGet dependencies and
-  runs in one step; `dotnet build -c Release` is the compile step.
+- **Toolchain**: `dotnet` — in the Nano IDE, press **▶ Run** (which runs
+  `dotnet run -c Release`, restoring NuGet dependencies and running in one step);
+  `dotnet build -c Release` is the compile step. Projects target whichever .NET
+  SDK is installed (the framework major is derived from the running SDK), so a
+  developer on .NET 10 builds `net10.0` without pinning an older framework.
 - **Template** `csharp-starter`: a complete, runnable Camunda 8 app — connects,
   prints the gateway topology, deploys `resources/processes/starter.bpmn`, creates
   one process instance, and runs a job worker for the `hello` service task using the
