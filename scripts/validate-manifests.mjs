@@ -4,7 +4,7 @@
 import { readdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
-const KINDS = new Set(["lang", "app", "example", "theme"]);
+const KINDS = new Set(["lang", "app", "example", "theme", "trigger"]);
 // Console design-token vocabulary (nanobpmn console/src/theme/tokens.css);
 // mirror of THEME_TOKEN_KEYS in packages/ext-types.
 const THEME_TOKEN_KEYS = new Set([
@@ -58,6 +58,36 @@ for (const dir of readdirSync(pkgRoot)) {
       }
     }
   }
+  if (m.kind === "trigger") {
+    if (!Array.isArray(m.triggerSources) || m.triggerSources.length === 0) {
+      fail("trigger pack needs triggerSources[]");
+    }
+    for (const s of Array.isArray(m.triggerSources) ? m.triggerSources : []) {
+      if (!s.kind || typeof s.kind !== "string") fail(`trigger source needs a kind: ${JSON.stringify(s)}`);
+      if (s.transport !== undefined && s.transport !== "webhook") {
+        fail(`trigger source ${s.kind}: transport must be "webhook" (only v1 transport)`);
+      }
+      // A driver, when set, must be a pack-relative file that exists on disk.
+      if (s.driver !== undefined) {
+        if (typeof s.driver !== "string" || !s.driver.trim() || s.driver.startsWith("/") || s.driver.includes("..")) {
+          fail(`trigger source ${s.kind}: driver must be a pack-relative path`);
+        } else if (!existsSync(join(base, s.driver))) {
+          fail(`trigger source ${s.kind}: driver file missing: ${s.driver}`);
+        }
+      }
+      if (s.configFields !== undefined && !Array.isArray(s.configFields)) {
+        fail(`trigger source ${s.kind}: configFields must be an array`);
+      }
+      for (const f of Array.isArray(s.configFields) ? s.configFields : []) {
+        if (typeof f?.key !== "string" || !f.key.trim() || typeof f?.label !== "string" || !f.label.trim()) {
+          fail(`trigger source ${s.kind}: configField needs non-empty key+label: ${JSON.stringify(f)}`);
+        }
+      }
+    }
+  }
 }
-if (errors) { console.error(`\n${errors} error(s)`); process.exit(1); }
+if (errors > 0) {
+  console.error(`\n${errors} manifest validation error${errors === 1 ? "" : "s"}`);
+  process.exit(1);
+}
 console.log("\nall manifests valid");

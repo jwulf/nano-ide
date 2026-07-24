@@ -1,7 +1,7 @@
 // nano-ide.ext.json manifest contract (ADR 0007). Mirrors the host parser in
 // nanobpmn server/src/console/extensions.rs — keep in sync.
 
-export type ExtKind = "lang" | "app" | "example" | "theme";
+export type ExtKind = "lang" | "app" | "example" | "theme" | "trigger";
 
 export interface FileType {
   /** File extension including the dot, e.g. ".rs". */
@@ -193,6 +193,56 @@ export interface SignatureParam {
   documentation?: string;
 }
 
+/**
+ * One config field a pack surfaces in the console (read-only in the IDE config
+ * panel; for a trigger source, the fields a trigger of this `kind` renders).
+ */
+export interface ConfigField {
+  /** Stable key within the pack (the manifest trigger's `config[key]`). */
+  key: string;
+  /** Human-facing label. */
+  label: string;
+  /** What the field controls. */
+  description?: string;
+  /** Environment variable this field reads its current value from, if any. */
+  env?: string;
+  /** Documented default when unset. */
+  default?: string;
+}
+
+/**
+ * How a trigger source pack's events reach the runtime (ADR 0025 §6). Only
+ * `webhook` — the universal ingress the driver POSTs to — is honoured in v1;
+ * the field is forward-declared so a pack states its contract explicitly.
+ */
+export type SourceTransport = "webhook";
+
+/**
+ * One trigger source **kind** a `kind: "trigger"` pack contributes (ADR 0025
+ * §6). Registering a `kind` lets a manifest trigger use it and the
+ * console/validation recognise it. The pack's out-of-process `driver` (a
+ * Node/Deno process, ADR 0038/0036) emits events over the trigger ingress; the
+ * runtime owns the inbox/dispatch/retry — the pack only produces events.
+ */
+export interface TriggerSourceSpec {
+  /** The `type` string a manifest trigger uses (e.g. "mqtt", "imap"). */
+  kind: string;
+  /** Human label for the console source picker. */
+  displayName?: string;
+  /** How the runtime receives this source's events. Defaults to "webhook". */
+  transport?: SourceTransport;
+  /** Config fields the console renders for a trigger of this kind. */
+  configFields?: ConfigField[];
+  /**
+   * Pack-relative path to the out-of-process driver entrypoint (a Node/Deno
+   * `.ts`/`.js`/`.mjs` file). When present, the runtime auto-launches and
+   * supervises the driver while an App with a trigger of this `kind` runs
+   * (ADR 0025 phase 4): one child process per such trigger, restarted with
+   * backoff on crash, killed when the App stops. Absent = declaration-only.
+   */
+  driver?: string;
+}
+
 export interface ExtManifest {
   id: string;
   kind: ExtKind;
@@ -223,6 +273,10 @@ export interface ExtManifest {
   intellisense?: LangIntellisense[];
   /** Built-in packs set this; published packs omit it. */
   builtin?: boolean;
+  /** trigger packs: the trigger source kinds this pack contributes (ADR 0025
+   * §6). Each entry registers a `type` a manifest trigger can use; the pack's
+   * out-of-process driver emits events over the trigger ingress. */
+  triggerSources?: TriggerSourceSpec[];
 }
 
 export const MANIFEST_FILE = "nano-ide.ext.json";

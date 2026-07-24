@@ -1,0 +1,32 @@
+{
+  "id": "nano-ide-trigger-mqtt",
+  "kind": "trigger",
+  "displayName": "MQTT",
+  "triggerSources": [
+    {
+      "kind": "mqtt",
+      "displayName": "MQTT (subscribe)",
+      "transport": "webhook",
+      "driver": "driver.ts",
+      "configFields": [
+        {
+          "key": "url",
+          "label": "Broker URL",
+          "description": "MQTT broker URL, e.g. mqtt://localhost:1883, mqtts://host:8883, or ws://host:9001.",
+          "default": "mqtt://localhost:1883"
+        },
+        {
+          "key": "topics",
+          "label": "Topics",
+          "description": "Topic filter(s) to subscribe to. Comma-separate several; MQTT wildcards + (single level) and # (multi level) are allowed, e.g. home/+/temperature, sensors/#."
+        },
+        {
+          "key": "qos",
+          "label": "QoS",
+          "description": "Subscription quality of service: 0 (at most once), 1 (at least once), or 2 (exactly once). Defaults to 1.",
+          "default": "1"
+        }
+      ]
+    }
+  ]
+}
