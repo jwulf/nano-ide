@@ -62,7 +62,7 @@ for (const dir of readdirSync(pkgRoot)) {
     if (!Array.isArray(m.triggerSources) || m.triggerSources.length === 0) {
       fail("trigger pack needs triggerSources[]");
     }
-    for (const s of m.triggerSources ?? []) {
+    for (const s of Array.isArray(m.triggerSources) ? m.triggerSources : []) {
       if (!s.kind || typeof s.kind !== "string") fail(`trigger source needs a kind: ${JSON.stringify(s)}`);
       if (s.transport !== undefined && s.transport !== "webhook") {
         fail(`trigger source ${s.kind}: transport must be "webhook" (only v1 transport)`);
@@ -75,10 +75,19 @@ for (const dir of readdirSync(pkgRoot)) {
           fail(`trigger source ${s.kind}: driver file missing: ${s.driver}`);
         }
       }
-      for (const f of s.configFields ?? []) {
-        if (!f.key || !f.label) fail(`trigger source ${s.kind}: configField needs key+label: ${JSON.stringify(f)}`);
+      if (s.configFields !== undefined && !Array.isArray(s.configFields)) {
+        fail(`trigger source ${s.kind}: configFields must be an array`);
+      }
+      for (const f of Array.isArray(s.configFields) ? s.configFields : []) {
+        if (typeof f?.key !== "string" || !f.key.trim() || typeof f?.label !== "string" || !f.label.trim()) {
+          fail(`trigger source ${s.kind}: configField needs non-empty key+label: ${JSON.stringify(f)}`);
+        }
       }
     }
   }
+}
+if (errors > 0) {
+  console.error(`\n${errors} manifest validation error${errors === 1 ? "" : "s"}`);
+  process.exit(1);
 }
 console.log("\nall manifests valid");

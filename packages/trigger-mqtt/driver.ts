@@ -95,9 +95,11 @@ function parseTopics(v: string | string[] | undefined): string[] {
 const runId = `${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}`;
 let seq = 0;
 
-async function emit(topic: string, payloadRaw: Buffer): Promise<void> {
+const utf8 = new TextDecoder("utf-8");
+
+async function emit(topic: string, payloadRaw: Uint8Array): Promise<void> {
   const idem = `${runId}-${(seq++).toString(36)}`;
-  const text = payloadRaw.toString("utf8");
+  const text = utf8.decode(payloadRaw);
   let payload: unknown = text;
   // Convenience: surface JSON payloads as objects so the App's FEEL can read
   // `body.payload.field` directly; non-JSON stays a string.
@@ -137,15 +139,37 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+const RESERVED_CONN_KEYS = new Set(["url", "username", "password", "clientId"]);
 const options: IClientOptions = {
   reconnectPeriod: 2000,
   connectTimeout: 30000,
 };
+// Pass any extra connection keys straight through to the mqtt client options
+// (e.g. `rejectUnauthorized`, `ca`, `keepalive`), excluding the ones we map
+// explicitly and `url` (used to dial, not an option).
+for (const [k, v] of Object.entries(connection)) {
+  if (!RESERVED_CONN_KEYS.has(k) && v !== undefined) (options as Record<string, unknown>)[k] = v;
+}
 if (connection.username) options.username = connection.username;
 if (connection.password) options.password = connection.password;
 if (connection.clientId) options.clientId = connection.clientId;
 
-log(`connecting to ${brokerUrl}; topics=[${topics.join(", ")}] qos=${qos}`);
+// Redact any userinfo (user:pass@) so credentials embedded in the URL never
+// reach the trigger log.
+function redact(u: string): string {
+  try {
+    const parsed = new URL(u);
+    if (parsed.username || parsed.password) {
+      parsed.username = parsed.username ? "***" : "";
+      parsed.password = parsed.password ? "***" : "";
+    }
+    return parsed.toString();
+  } catch {
+    return u.replace(/\/\/[^@/]*@/, "//***@");
+  }
+}
+
+log(`connecting to ${redact(brokerUrl)}; topics=[${topics.join(", ")}] qos=${qos}`);
 const client = mqtt.connect(brokerUrl, options);
 
 client.on("connect", () => {
@@ -161,14 +185,15 @@ client.on("connect", () => {
 });
 
 client.on("message", (topic, payload) => {
-  void emit(topic, payload as Buffer);
+  void emit(topic, payload);
 });
 
 client.on("reconnect", () => log("reconnecting…"));
 client.on("error", (err) => log(`client error: ${err.message}`));
 client.on("close", () => log("connection closed"));
 
-// Terminate cleanly when the supervisor sends SIGTERM (kill on App stop).
+// Terminate cleanly when the supervisor sends SIGTERM/SIGINT (kill on App stop),
+// under both Node (`process.on`) and Deno (`Deno.addSignalListener`).
 const shutdown = () => {
   log("shutting down");
   client.end(true, {}, () => {
@@ -176,8 +201,14 @@ const shutdown = () => {
     (g.Deno ?? g.process)?.exit(0);
   });
 };
-const proc = (globalThis as { process?: { on(ev: string, cb: () => void): void } }).process;
-if (proc) {
-  proc.on("SIGTERM", shutdown);
-  proc.on("SIGINT", shutdown);
+const g = globalThis as {
+  process?: { on(ev: string, cb: () => void): void };
+  Deno?: { addSignalListener(sig: string, cb: () => void): void };
+};
+if (g.Deno?.addSignalListener) {
+  g.Deno.addSignalListener("SIGTERM", shutdown);
+  g.Deno.addSignalListener("SIGINT", shutdown);
+} else if (g.process) {
+  g.process.on("SIGTERM", shutdown);
+  g.process.on("SIGINT", shutdown);
 }
