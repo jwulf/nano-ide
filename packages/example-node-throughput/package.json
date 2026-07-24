@@ -1,0 +1,28 @@
+{
+  "name": "@nanobpm/nano-ide-example-node-throughput",
+  "version": "1.0.0",
+  "description": "Distributable example app for the Nano RAD IDE: a Node/TypeScript throughput demo (async producer flood + JobWorker on @nanobpm/nano-sdk) that runs one code path against Camunda 8 (REST) or Nano (Falcon).",
+  "license": "Apache-2.0",
+  "keywords": [
+    "nano-ide-ext",
+    "nano-ide-example",
+    "nanobpm",
+    "camunda",
+    "node",
+    "typescript",
+    "falcon",
+    "throughput"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jwulf/nano-ide.git",
+    "directory": "packages/example-node-throughput"
+  },
+  "files": [
+    "nano-ide.ext.json",
+    "app"
+  ]
+}
