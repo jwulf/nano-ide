@@ -7,8 +7,9 @@
 //   * createJobWorker        -> streaming push (subscribe) subscription.
 // Against stock Camunda 8 the same code runs on plain REST.
 //
-// Deploys resources/processes/throughput.bpmn, then floods non-awaited creates
-// from PROD_CONNS concurrent producers while a JobWorker drains them. A live
+// Deploys resources/processes/throughput.bpmn, then floods creates from
+// PROD_CONNS concurrent producer loops (each loop awaits its own create, so up
+// to PROD_CONNS are in flight at once) while a JobWorker drains them. A live
 // per-second line streams creates/s and completes/s, then a summary prints after
 // DURATION_SECS.
 //
@@ -84,14 +85,27 @@ async function main(): Promise<void> {
   });
 
   let stopped = false;
+  let loggedCreateError = false;
 
   async function producer(): Promise<void> {
     while (!stopped) {
       try {
         await camunda.createProcessInstance({ processDefinitionId: PID });
         counters.created += 1;
-      } catch {
+      } catch (err) {
         counters.failed += 1;
+        // Surface an actionable signal on the first failure instead of silently
+        // swallowing it (e.g. an unreachable/misconfigured gateway).
+        if (!loggedCreateError) {
+          loggedCreateError = true;
+          console.error(
+            `create failed (is ${REST} reachable / configured?): ` +
+              `${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+        // Back off before retrying so a persistent failure (e.g. gateway down)
+        // does not become a tight loop that pegs the CPU.
+        await new Promise((resolve) => setTimeout(resolve, 250));
       }
     }
   }

@@ -28,7 +28,8 @@ npm start
 1. Deploys `resources/processes/throughput.bpmn` (process `throughput-demo`, a
    single service task with job type `demo-job`).
 2. Starts a `JobWorker` that completes each `demo-job`.
-3. Floods non-awaited creates from `PROD_CONNS` concurrent producers.
+3. Floods creates from `PROD_CONNS` concurrent producer loops (each loop awaits
+   its own create, so up to `PROD_CONNS` are in flight at once).
 4. Streams one line per second with creates/s and completes/s, then prints a
    summary after `DURATION_SECS`.
 
