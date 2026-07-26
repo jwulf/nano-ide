@@ -79,8 +79,11 @@ async function main(): Promise<void> {
     maxParallelJobs: WORKER_CONCURRENCY,
     workerName: "node-throughput-worker",
     jobHandler: async (job) => {
+      // Count the completion only after job.complete() resolves, so the
+      // completes/s metric reflects real completions rather than attempts.
+      const result = await job.complete({});
       counters.done += 1;
-      return job.complete({});
+      return result;
     },
   });
 
