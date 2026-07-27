@@ -23,6 +23,7 @@
 //       PROD_CONNS (default 64), WORKER_CONCURRENCY (default 100),
 //       DURATION_SECS (default 15).
 
+import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   createCamundaClient,
@@ -61,7 +62,7 @@ async function main(): Promise<void> {
     },
   });
 
-  console.log(`deploying ${BPMN.split("/").pop()} -> ${REST}`);
+  console.log(`deploying ${basename(BPMN)} -> ${REST}`);
   const deployment = await camunda.deployResourcesFromFiles([BPMN]);
   console.log(
     `deployed (key ${deployment.deploymentKey}) process '${PID}' ` +
