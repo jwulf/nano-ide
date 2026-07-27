@@ -20,6 +20,13 @@ jobs:
           node-version: 22
           cache: npm
           registry-url: https://registry.npmjs.org
+      # actions/setup-node writes a legacy `always-auth` key into the npmrc it
+      # generates for registry auth. npm >= 11 (installed below) rejects it as
+      # an unknown config and prints a warning on every invocation; this project
+      # does not allow warnings. Strip it — registry auth still works via the
+      # `//registry.npmjs.org/:_authToken` line that setup-node also writes.
+      - name: Strip legacy always-auth from generated npmrc
+        run: sed -i '/^always-auth=/d' "$NPM_CONFIG_USERCONFIG"
       # Trusted Publisher (OIDC) support needs npm >= 11.5.1; node 22 LTS ships
       # with npm 10.x which still requires a long-lived NPM_TOKEN.
       - run: npm install --global npm@latest
