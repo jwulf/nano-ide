@@ -1,0 +1,8 @@
+{
+  "id": "node-throughput",
+  "kind": "example",
+  "displayName": "Node throughput demo (C8 REST ↔ Nano Falcon)",
+  "requires": ["node"],
+  "appDir": "app",
+  "summary": "Async producer flood + JobWorker on @nanobpm/nano-sdk (a drop-in for @camunda8/orchestration-cluster-api). One code path runs against Camunda 8 (REST) or Nano (Falcon) — the SDK upgrades transparently. Streams live creates/s and completes/s."
+}
