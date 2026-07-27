@@ -67,7 +67,7 @@ tarball into the workspace, reads the manifest, and wires the pack in — no
 ```jsonc
 {
   "id": "my-pack",                  // stable pack id, must be unique
-  "kind": "lang" | "app" | "example",
+  "kind": "lang" | "app" | "example" | "theme" | "trigger",
   "displayName": "Human name",
 
   // lang packs
