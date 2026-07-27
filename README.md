@@ -19,7 +19,7 @@ parses each pack's `nano-ide.ext.json` manifest (mirror of `server/src/console/e
 | `@nanobpm/nano-ide-app-embedded-nano` | app | Embedded engine — self-contained binary, no gateway (ADR 0005) |
 | `@nanobpm/nano-ide-app-embedded-jvm` | app | Embedded Nano (JVM): inner Bernd engine serving an outer BPMN task (ADR 0005) |
 | `@nanobpm/nano-ide-app-embedded-graalvm-native` | app | Embedded Nano as a ~30 MB GraalVM native-image binary (ADR 0005) |
-| `@nanobpm/nano-ide-example-rust-throughput` | example | Ready-to-run Rust command-stream A/B demo |
+| `@nanobpm/nano-ide-example-rust-throughput` | example | Native Rust pipelined command-stream throughput demo |
 | `@nanobpm/nano-ide-example-node-throughput` | example | Node throughput demo (C8 REST ↔ Nano Falcon) |
 | `@nanobpm/nano-ide-example-python-throughput` | example | Python throughput demo on the Camunda 8 REST SDK |
 | `@nanobpm/nano-ide-example-csharp-throughput` | example | C# throughput demo on the Camunda 8 REST SDK |
