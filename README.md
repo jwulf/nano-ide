@@ -11,21 +11,30 @@ parses each pack's `nano-ide.ext.json` manifest (mirror of `server/src/console/e
 | --- | --- | --- |
 | `@nanobpm/nano-ide-ext-types` | — | TypeScript types for `nano-ide.ext.json` |
 | `@nanobpm/nano-ide-lang-rust` | lang | Rust file types + cargo toolchain + throughput template |
+| `@nanobpm/nano-ide-lang-node` | lang | TypeScript/Node file types + node toolchain + official JS SDK starter |
 | `@nanobpm/nano-ide-lang-python` | lang | Python file types + uv toolchain + Camunda SDK starter template |
 | `@nanobpm/nano-ide-lang-csharp` | lang | C# file types + dotnet toolchain + Camunda SDK starter template |
+| `@nanobpm/nano-ide-lang-java` | lang | Java file types + Maven toolchain + Camunda client + job worker starter |
 | `@nanobpm/nano-ide-app-deno-gui` | app | Deno served-UI binary template |
-| `@nanobpm/nano-ide-example-rust-throughput` | example | Ready-to-run Rust command-stream A/B demo |
+| `@nanobpm/nano-ide-app-embedded-nano` | app | Embedded engine — self-contained binary, no gateway (ADR 0005) |
+| `@nanobpm/nano-ide-app-embedded-jvm` | app | Embedded Nano (JVM): inner Bernd engine serving an outer BPMN task (ADR 0005) |
+| `@nanobpm/nano-ide-app-embedded-graalvm-native` | app | Embedded Nano as a ~30 MB GraalVM native-image binary (ADR 0005) |
+| `@nanobpm/nano-ide-example-rust-throughput` | example | Native Rust pipelined command-stream throughput demo |
+| `@nanobpm/nano-ide-example-node-throughput` | example | Node throughput demo (C8 REST ↔ Nano Falcon) |
 | `@nanobpm/nano-ide-example-python-throughput` | example | Python throughput demo on the Camunda 8 REST SDK |
 | `@nanobpm/nano-ide-example-csharp-throughput` | example | C# throughput demo on the Camunda 8 REST SDK |
+| `@nanobpm/nano-ide-example-java-throughput` | example | Java throughput demo (C8 REST/gRPC ↔ Nano Falcon) |
 | `@nanobpm/nano-ide-theme-nord` | theme | Nord Dark + Nord Light console themes |
 | `@nanobpm/nano-ide-theme-solarized` | theme | Solarized Dark + Light console themes |
 | `@nanobpm/nano-ide-theme-synthwave` | theme | Synthwave '84 neon console theme |
+| `@nanobpm/nano-ide-trigger-mqtt` | trigger | MQTT event trigger — start processes from broker messages |
 
 ## Pack kinds
 - **lang** — file types (Monaco lazy-loads the grammar), toolchain (detect/run/compile/targets), templates.
-- **app** — project template producing a runnable/compilable binary (e.g. Deno GUI).
+- **app** — project template producing a runnable/compilable binary (e.g. Deno GUI, or an embedded-engine app).
 - **example** — a complete app shipped under `appDir`, copied into a new project; `requires[]` lists needed lang packs.
 - **theme** — console colour themes as pure data: `themes[]` maps the console's design tokens (`app`, `panel`, `accent`, …) to CSS colours over a light or dark base. No code, no toolchain, no trust prompt.
+- **trigger** — an event source (e.g. an MQTT broker) that starts processes from external messages.
 
 ## Dev
 ```
@@ -58,7 +67,7 @@ tarball into the workspace, reads the manifest, and wires the pack in — no
 ```jsonc
 {
   "id": "my-pack",                  // stable pack id, must be unique
-  "kind": "lang" | "app" | "example",
+  "kind": "lang" | "app" | "example" | "theme" | "trigger",
   "displayName": "Human name",
 
   // lang packs
