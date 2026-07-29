@@ -8,10 +8,12 @@ generic worker against a running Nano gateway.
 ## Run
 
 ```sh
-deno task start          # or: npm install && npm start
+deno task start
 ```
 
 Point at a non-default gateway with `NANOBPMN_BASE_URL`.
+
+`deno.json` is the single source of truth for the `@nanobpm/workflow` version.
 
 ## Author
 
