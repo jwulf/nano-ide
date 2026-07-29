@@ -5,7 +5,10 @@ import { defineWorkflow } from "@nanobpm/workflow";
 // `ctx.run(...)` step and make it idempotent — a crash between a side effect and
 // its journal commit redelivers the step (at-least-once).
 export const prReview = defineWorkflow("pr-review", async (ctx) => {
-  const prId = ctx.input.prId as string;
+  const prId = ctx.input.prId;
+  if (typeof prId !== "string" || prId.length === 0) {
+    throw new Error("pr-review requires a non-empty string `prId` input");
+  }
 
   const diff = await ctx.run("fetchDiff", async () => {
     // Idempotent: reading a diff is a pure read.
