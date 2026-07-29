@@ -1,0 +1,16 @@
+{
+  "name": "workflow-app",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "main.ts",
+  "scripts": {
+    "start": "deno task start"
+  },
+  "dependencies": {
+    "@nanobpm/workflow": "^0.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22"
+  }
+}
