@@ -1,0 +1,13 @@
+{
+  "id": "workflow",
+  "kind": "app",
+  "displayName": "Code-first workflow",
+  "fileTypes": [],
+  "templates": [
+    {
+      "id": "workflow-starter",
+      "label": "Durable workflow — code-first (@nanobpm/workflow, model derived from code)"
+    }
+  ],
+  "toolchain": {}
+}
