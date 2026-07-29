@@ -13,8 +13,15 @@ import { defineFlow } from "@nanobpm/workflow";
 // between the side effect and the job completion redelivers the step.
 export const prReviewFlow = defineFlow("pr-review-flow", (w) => {
   w.run("fetchDiff", (job) => {
+    // Validate the correlation key up front: `prId` drives both the diff and the
+    // `humanApproval` signal correlation below, so a missing/empty value would
+    // let the instance park at the signal with no usable correlation key.
+    const prId = job.variables.prId;
+    if (typeof prId !== "string" || prId.length === 0) {
+      throw new Error("pr-review-flow requires a non-empty string `prId` input");
+    }
     // Idempotent: reading a diff is a pure read.
-    return { files: 3, additions: 42, summary: `diff for ${job.variables.prId}` };
+    return { files: 3, additions: 42, summary: `diff for ${prId}` };
   });
 
   w.run("autoReview", (job) => {
