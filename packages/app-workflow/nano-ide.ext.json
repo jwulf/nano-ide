@@ -6,7 +6,11 @@
   "templates": [
     {
       "id": "workflow-starter",
-      "label": "Durable workflow — code-first (@nanobpm/workflow, model derived from code)"
+      "label": "Durable workflow — code-first, imperative (@nanobpm/workflow, model derived from code)"
+    },
+    {
+      "id": "workflow-flow-starter",
+      "label": "Durable workflow — code-first, declarative + human-in-the-loop signal (@nanobpm/workflow)"
     }
   ],
   "toolchain": {}
