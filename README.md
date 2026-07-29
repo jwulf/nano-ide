@@ -16,7 +16,7 @@ parses each pack's `nano-ide.ext.json` manifest (mirror of `server/src/console/e
 | `@nanobpm/nano-ide-lang-csharp` | lang | C# file types + dotnet toolchain + Camunda SDK starter template |
 | `@nanobpm/nano-ide-lang-java` | lang | Java file types + Maven toolchain + Camunda client + job worker starter |
 | `@nanobpm/nano-ide-app-deno-gui` | app | Deno served-UI binary template |
-| `@nanobpm/nano-ide-app-workflow` | app | Code-first durable workflow starter (@nanobpm/workflow; model derived from code) |
+| `@nanobpm/nano-ide-app-workflow` | app | Code-first durable workflow starters (@nanobpm/workflow): imperative replay + declarative human-in-the-loop signal; model derived from code |
 | `@nanobpm/nano-ide-app-embedded-nano` | app | Embedded engine — self-contained binary, no gateway (ADR 0005) |
 | `@nanobpm/nano-ide-app-embedded-jvm` | app | Embedded Nano (JVM): inner Bernd engine serving an outer BPMN task (ADR 0005) |
 | `@nanobpm/nano-ide-app-embedded-graalvm-native` | app | Embedded Nano as a ~30 MB GraalVM native-image binary (ADR 0005) |
