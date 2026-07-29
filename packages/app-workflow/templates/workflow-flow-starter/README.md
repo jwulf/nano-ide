@@ -37,7 +37,7 @@ non-default gateway with `NANOBPMN_BASE_URL`.
 
 ## What gets derived
 
-`WorkflowClient.deploy(flow)` deploys the BPMN that `@nanobpm/workflow` emits from
+`client.deploy(flow)` deploys the BPMN that `@nanobpm/workflow` emits from
 your code (a `serviceTask` per `run`, an `intermediateCatchEvent` +
 `<bpmn:message>` + `zeebe:subscription correlationKey` per `signal`); the `Worker`
 routes the derived job types (`{id}:step`) back to your step bodies. Inspect the
