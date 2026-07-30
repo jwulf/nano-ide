@@ -4,7 +4,11 @@
   "displayName": "Deno GUI app",
   "fileTypes": [],
   "templates": [
-    { "id": "gui-starter", "label": "GUI app — served UI binary (Deno.serve)" }
+    {
+      "id": "gui-starter",
+      "label": "GUI app",
+      "description": "Served UI binary (Deno.serve)"
+    }
   ],
   "toolchain": {}
 }

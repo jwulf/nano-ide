@@ -10,7 +10,7 @@
     { "ext": ".mjs", "monacoLang": "javascript" }
   ],
   "templates": [
-    { "id": "node-starter", "label": "Starter — hello + job worker on the official JS SDK (Node)" }
+    { "id": "node-starter", "label": "Starter (Node)", "description": "Hello + job worker on the official JS SDK (Node)" }
   ],
   "toolchain": {
     "detect": ["node", "--version"],

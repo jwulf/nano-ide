@@ -16,7 +16,8 @@
   "templates": [
     {
       "id": "csharp-starter",
-      "label": "Starter (C# / .NET) — deploy a process, create an instance, run a worker"
+      "label": "Starter (C# / .NET)",
+      "description": "Deploy a process, create an instance, run a worker"
     }
   ],
   "toolchain": {

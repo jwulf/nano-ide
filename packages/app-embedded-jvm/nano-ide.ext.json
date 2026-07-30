@@ -14,7 +14,8 @@
   "templates": [
     {
       "id": "embedded-jvm-starter",
-      "label": "KYC microservice — inner Bernd engine serves an outer BPMN task (ADR 0005)"
+      "label": "KYC microservice",
+      "description": "Inner Bernd engine serves an outer BPMN task (ADR 0005)"
     }
   ],
   "toolchain": {

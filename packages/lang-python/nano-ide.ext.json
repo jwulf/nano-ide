@@ -12,7 +12,8 @@
   "templates": [
     {
       "id": "python-starter",
-      "label": "Starter (Python / uv) — deploy a process, create an instance, run a worker"
+      "label": "Starter (Python / uv)",
+      "description": "Deploy a process, create an instance, run a worker"
     }
   ],
   "toolchain": {

@@ -8,7 +8,7 @@
     { "ext": ".xml", "monacoLang": "xml" }
   ],
   "templates": [
-    { "id": "java-starter", "label": "Starter (Java / Maven) — Camunda client hello + job worker" }
+    { "id": "java-starter", "label": "Starter (Java / Maven)", "description": "Camunda client hello + job worker" }
   ],
   "toolchain": {
     "detect": ["mvn", "--version"],
