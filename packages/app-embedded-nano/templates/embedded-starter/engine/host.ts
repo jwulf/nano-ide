@@ -1,8 +1,16 @@
-// EmbeddedHost (ADR 0005, realization (a) "in-process direct"). Wraps μ-nano.wasm
-// (engine-core compiled to wasm) and implements the EmbeddedHost contract the
-// nano-sdk-js embedded transport binds to. engine-core stays clock-free; this host
-// injects Date.now() via tickNow so the engine runs as a real, wall-clock runtime.
-import { TestEngine } from "./unano.js";
+// EmbeddedHost (ADR 0005, realization (a) "in-process direct"). Wraps the
+// engine-core WebAssembly build published as @nanobpm/engine-wasm and implements
+// the EmbeddedHost contract the nano-sdk-js embedded transport binds to.
+// engine-core stays clock-free; this host injects Date.now() via tickNow so the
+// engine runs as a real, wall-clock runtime.
+//
+// The wasm bytes are imported (type: "bytes") rather than fetched so that
+// `deno compile` embeds the engine into the self-contained binary, and initSync
+// boots it with no network/file access at runtime.
+import { initSync, TestEngine } from "@nanobpm/engine-wasm";
+import wasmBytes from "@nanobpm/engine-wasm/nanobpmn_engine_bg.wasm" with { type: "bytes" };
+
+let booted = false;
 
 export interface EmbeddedJob {
   jobKey: string;
@@ -19,9 +27,12 @@ export class EmbeddedHost {
     this.engine = engine;
   }
 
-  /** Boot the wasm engine. The deno-target unano.js instantiates μ-nano.wasm at
-   *  import time (top-level await), so there is nothing else to load. */
+  /** Boot the wasm engine from the embedded bytes (idempotent). */
   static async create(): Promise<EmbeddedHost> {
+    if (!booted) {
+      initSync({ module: wasmBytes });
+      booted = true;
+    }
     return new EmbeddedHost(new TestEngine());
   }
 

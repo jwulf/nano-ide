@@ -19,8 +19,10 @@ deno task compile      # -> ./embedded-app (includes engine wasm + BPMN)
 
 ## How it works
 
-- `engine/unano_bg.wasm` is `engine-core` compiled to wasm; `engine/host.ts` wraps it
-  as an `EmbeddedHost` (deploy / createInstance / activateJobs / complete / tick).
+- The engine is the published **`@nanobpm/engine-wasm`** package (`engine-core`
+  compiled to WebAssembly); `engine/host.ts` `initSync`s it from the wasm bytes
+  (imported with `type: "bytes"` so `deno compile` embeds them) and wraps it as an
+  `EmbeddedHost` (deploy / createInstance / activateJobs / complete / tick).
 - `@nanobpm/nano-sdk` with `CAMUNDA_TRANSPORT=embedded` binds the host directly, so the
   same SDK code that talks to a real cluster drives the in-process engine.
 - The host injects `Date.now()` via `tickNow`, so the clock-free engine-core runs as a
