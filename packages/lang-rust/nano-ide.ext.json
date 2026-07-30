@@ -12,7 +12,8 @@
   "templates": [
     {
       "id": "rust-starter",
-      "label": "Starter (Rust / Cargo) — deploy a process, create an instance, run a worker"
+      "label": "Starter (Rust / Cargo)",
+      "description": "Deploy a process, create an instance, run a worker"
     }
   ],
   "toolchain": {

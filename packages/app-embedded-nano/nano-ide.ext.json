@@ -4,7 +4,11 @@
   "displayName": "Embedded μ-nano app",
   "fileTypes": [],
   "templates": [
-    { "id": "embedded-starter", "label": "Embedded engine — self-contained binary, no gateway (ADR 0005)" }
+    {
+      "id": "embedded-starter",
+      "label": "Embedded engine",
+      "description": "Self-contained binary, no gateway (ADR 0005)"
+    }
   ],
   "toolchain": {}
 }

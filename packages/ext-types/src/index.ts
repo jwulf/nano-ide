@@ -55,7 +55,17 @@ export interface RunConfig {
 
 export interface TemplateSpec {
   id: string;
+  /** Short human-facing title rendered on the New Project template card. */
   label: string;
+  /** One-line description rendered on the template card. Older packs instead
+   * cram "Title — description" into `label`; the console's template menu
+   * splits that on the em-dash as a fallback, but new packs should set this. */
+  description?: string;
+  /** Language pack id this template's project uses, when it differs from what
+   * the pack implies (lang packs → the pack id; app/example packs →
+   * `requires[0]`, else "deno"). Drives the card's language icon AND the
+   * scaffolded project's `lang`. */
+  lang?: string;
 }
 
 /**
