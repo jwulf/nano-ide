@@ -59,7 +59,10 @@ export interface TemplateSpec {
   label: string;
   /** One-line description rendered on the template card. Older packs instead
    * cram "Title — description" into `label`; the console's template menu
-   * splits that on the em-dash as a fallback, but new packs should set this. */
+   * splits that on the em-dash as a fallback, but new packs should set this.
+   * Hosts that don't understand `description` render `label` alone, so if you
+   * must support such a host, keep the combined "Title — description" `label`
+   * (the em-dash split then keeps modern cards correct too). */
   description?: string;
   /** Language pack id this template's project uses, when it differs from what
    * the pack implies (lang packs → the pack id; app/example packs →
