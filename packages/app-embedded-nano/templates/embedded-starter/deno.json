@@ -1,8 +1,7 @@
 {
   "imports": {
     "@nanobpm/nano-sdk": "npm:@nanobpm/nano-sdk@^1",
-    "@nanobpm/engine-wasm": "npm:@nanobpm/engine-wasm@^0.2.0",
-    "@nanobpm/engine-wasm/": "npm:/@nanobpm/engine-wasm@^0.2.0/"
+    "@nanobpm/engine-wasm": "npm:@nanobpm/engine-wasm@^0.2.0"
   },
   "tasks": {
     "start": "deno run --unstable-raw-imports --allow-read --allow-env main.ts",
