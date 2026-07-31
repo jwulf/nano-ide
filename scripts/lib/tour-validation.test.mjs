@@ -1,10 +1,11 @@
 // Unit tests for the pack tour contract (ADR 0049 §7), the rules
 // scripts/validate-manifests.mjs enforces at publish time. Run:
-//   node --test scripts/lib/
+//   node --test "scripts/lib/**/*.test.mjs"
 //
 // These guard the defect classes raised in review of the tours[] PR:
-//   1. optional string fields (copy / verifyPollingJobType / selector) accepted
-//      empty or non-string values via truthiness checks, and
+//   1. required/optional string fields (id / title / body / blurb / route /
+//      copy / verifyPollingJobType / selector) accepted empty or non-string
+//      values via truthiness checks, and
 //   2. optional array fields (profiles / preconditions) crashed the validator
 //      with a "not iterable" TypeError when given a non-array, instead of
 //      reporting a structured error.
@@ -112,7 +113,7 @@ test("a handoff step with a non-string verifyPollingJobType is rejected", () => 
         body: "b",
         kind: "handoff",
         copy: "run it",
-        verifyPollingJobType: "",
+        verifyPollingJobType: 123,
       },
       "tour x",
       fail,
@@ -124,6 +125,45 @@ test("a handoff step with a non-string verifyPollingJobType is rejected", () => 
     errs.some((e) => e.includes("verifyPollingJobType must be a non-empty string")),
     `expected a verifyPollingJobType error, got: ${JSON.stringify(errs)}`,
   );
+});
+
+// A required string field typed by the host must be a non-empty string; a
+// truthiness check would let `id: 123` / `title: true` / `route: 5` through.
+
+test("a step with a non-string id/title/body is rejected", () => {
+  const errs = collect((fail) =>
+    checkTourStep(
+      { id: 123, title: true, body: 0, kind: "note" },
+      "tour x",
+      fail,
+      new Set(),
+      false,
+    ),
+  );
+  assert.ok(errs.some((e) => e.includes("step needs an id")));
+  assert.ok(errs.some((e) => e.includes("needs a title")));
+  assert.ok(errs.some((e) => e.includes("needs a body")));
+});
+
+test("a step with a non-string route is rejected as a bad path", () => {
+  const errs = collect((fail) =>
+    checkTourStep(
+      { id: "s", title: "t", body: "b", kind: "note", route: 123 },
+      "tour x",
+      fail,
+      new Set(),
+      false,
+    ),
+  );
+  assert.ok(errs.some((e) => e.includes("route must be an absolute console path")));
+});
+
+test("a tour with a non-string title/blurb is rejected", () => {
+  const errs = collect((fail) =>
+    checkTour({ ...validTour(), title: 1, blurb: true }, fail, new Set()),
+  );
+  assert.ok(errs.some((e) => e.includes("needs a title")));
+  assert.ok(errs.some((e) => e.includes("needs a blurb")));
 });
 
 // --- Defect class 2: optional arrays must not crash the validator ------------

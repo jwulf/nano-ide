@@ -409,7 +409,8 @@ export interface TourStepSpec {
    * telling the user to press Run on a host where Run cannot work. Without a
    * `repair`, such a step is skipped rather than shown, because showing it would
    * assert exactly what the precondition just ruled out. A repair step does not
-   * nest: a `repair` inside a `repair` is ignored.
+   * nest: a `repair` inside a `repair` is rejected at publish time, and ignored
+   * by the console as a safety net if one ever slips through.
    */
   repair?: TourStepSpec;
   /** Advisory: a step whose absence does not weaken the journey. */

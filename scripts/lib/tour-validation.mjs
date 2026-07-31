@@ -34,14 +34,20 @@ const badString = (v) => typeof v !== "string" || v.trim() === "";
 /** Validate one tour step. `nested` marks a `repair` step: those do not nest. */
 export function checkTourStep(s, at, fail, stepIds, nested) {
   const where = `${at} step ${s?.id ?? "(no id)"}`;
-  if (!s?.id) fail(`${at}: step needs an id`);
+  if (badString(s?.id)) fail(`${at}: step needs an id`);
   else if (stepIds.has(s.id)) fail(`${at}: duplicate step id: ${s.id}`);
   else stepIds.add(s.id);
-  if (!s?.title) fail(`${where}: needs a title`);
-  if (!s?.body) fail(`${where}: needs a body`);
+  if (badString(s?.title)) fail(`${where}: needs a title`);
+  if (badString(s?.body)) fail(`${where}: needs a body`);
   const kind = s?.kind ?? "spotlight";
   if (!TOUR_STEP_KINDS.has(kind)) fail(`${where}: bad kind: ${s.kind}`);
-  if (s?.route !== undefined && !String(s.route).startsWith("/")) {
+  // route is optional, but when present the host types it as an absolute path;
+  // validate it is a non-empty string first rather than String()-coercing (a
+  // non-string route would otherwise fail for the wrong reason, masking the type).
+  if (
+    s?.route !== undefined &&
+    (badString(s.route) || !s.route.startsWith("/"))
+  ) {
     fail(`${where}: route must be an absolute console path`);
   }
   // A spotlight anchors on a selector; a handoff hands the user a command to
@@ -89,12 +95,12 @@ export function checkTourStep(s, at, fail, stepIds, nested) {
 /** Validate one tour. `tourIds` accumulates ids across a manifest for dup detection. */
 export function checkTour(t, fail, tourIds) {
   const at = `tour ${t?.id ?? "(no id)"}`;
-  if (!t?.id) fail("tour needs an id");
+  if (badString(t?.id)) fail("tour needs an id");
   else if (tourIds.has(t.id)) fail(`duplicate tour id: ${t.id}`);
   else tourIds.add(t.id);
-  if (!t?.title) fail(`${at}: needs a title`);
+  if (badString(t?.title)) fail(`${at}: needs a title`);
   // The picker renders blurb on the card, so an empty one ships a blank card.
-  if (!t?.blurb) fail(`${at}: needs a blurb (the journey-picker card line)`);
+  if (badString(t?.blurb)) fail(`${at}: needs a blurb (the journey-picker card line)`);
   // profiles/preconditions are optional string arrays; a non-array (e.g.
   // `profiles: 1`) must be reported as a structured error, never crash the
   // for..of below with a "not iterable" TypeError that aborts the whole run.
