@@ -189,7 +189,12 @@ export class RestEngineClient implements EngineClient {
     };
 
     const runOne = async (raw: Record<string, unknown>): Promise<void> => {
-      const key = String(raw.jobKey ?? raw.key ?? "");
+      const rawKey = raw.jobKey ?? raw.key;
+      if (rawKey == null || rawKey === "") {
+        this.log("warn", `activation ${jobType}: skipping job with no jobKey in engine response`);
+        return;
+      }
+      const key = String(rawKey);
       const job: EngineJob = {
         jobKey: key,
         jobType,

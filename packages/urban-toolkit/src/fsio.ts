@@ -16,7 +16,10 @@ export function createNodeGenIO(): GenIO {
     },
     async listDir(path: string): Promise<string[]> {
       try {
-        return await readdir(path);
+        // The GenIO contract is file names only — exclude subdirectories so
+        // pattern expansion never hands a directory to readText()/JSON.parse.
+        const entries = await readdir(path, { withFileTypes: true });
+        return entries.filter((e) => e.isFile()).map((e) => e.name);
       } catch {
         return [];
       }
