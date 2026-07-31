@@ -32,7 +32,9 @@ export interface GenResult {
 }
 
 function join(root: string, rel: string): string {
-  return `${root.replace(/\/+$/, "")}/${rel.replace(/^\/+/, "")}`;
+  // Trim either separator so callers may pass Windows-style paths; GenIO
+  // implementations accept forward slashes on all platforms.
+  return `${root.replace(/[/\\]+$/, "")}/${rel.replace(/^[/\\]+/, "")}`;
 }
 
 function dirOf(p: string): string {

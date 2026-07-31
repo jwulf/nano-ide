@@ -4,7 +4,7 @@
 // (LLM wiring is a separate concern). Surfaces contribute routes to the shared server.
 
 import type { AppApi, RuntimeContext } from "../context.ts";
-import { html, json, type Route } from "../router.ts";
+import { html, json, normalizeRoutePath, type Route } from "../router.ts";
 
 /** Escape HTML-significant characters before embedding a value in markup. */
 function escapeHtml(s: string): string {
@@ -47,7 +47,7 @@ export function mountSurfaces(ctx: RuntimeContext, app: AppApi): SurfacesHandle 
 
   const inbox = surfaces.taskInbox;
   if (inbox?.enabled) {
-    const base = (inbox.path ?? "/tasks").replace(/\/+$/, "") || "/tasks";
+    const base = normalizeRoutePath(inbox.path, "/tasks");
     enabled.push(`taskInbox@${base}`);
     routes.push({
       method: "GET",
@@ -85,7 +85,7 @@ export function mountSurfaces(ctx: RuntimeContext, app: AppApi): SurfacesHandle 
 
   const chat = surfaces.chat;
   if (chat?.enabled) {
-    const base = (chat.path ?? "/chat").replace(/\/+$/, "") || "/chat";
+    const base = normalizeRoutePath(chat.path, "/chat");
     enabled.push(`chat@${base}`);
     routes.push({
       method: "GET",

@@ -26,6 +26,19 @@ export function text(body: string, status = 200): HttpResponse {
   return { status, headers: { "content-type": "text/plain; charset=utf-8" }, body };
 }
 
+/**
+ * Normalize a manifest-supplied route path: ensure a leading "/", drop trailing
+ * slashes. Incoming request paths always start with "/", so a manifest path
+ * lacking one (e.g. "hooks/x") would otherwise never match. Falls back to
+ * `fallback` when the value is missing or collapses to empty ("/").
+ */
+export function normalizeRoutePath(value: string | undefined, fallback: string): string {
+  const raw = (value ?? fallback).trim();
+  const withLead = raw.startsWith("/") ? raw : `/${raw}`;
+  const noTrail = withLead.replace(/\/+$/, "");
+  return noTrail || fallback;
+}
+
 function matches(route: Route, req: HttpRequest): boolean {
   if (route.method !== "*" && route.method.toUpperCase() !== req.method.toUpperCase()) return false;
   return route.prefix ? req.path.startsWith(route.path) : req.path === route.path;

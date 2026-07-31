@@ -5,7 +5,7 @@
 
 import type { AppApi, RuntimeContext } from "../context.ts";
 import type { HttpRequest } from "../host.ts";
-import { json, type Route } from "../router.ts";
+import { json, normalizeRoutePath, type Route } from "../router.ts";
 import type { TriggerDecl } from "../manifest.ts";
 
 export interface TriggersHandle {
@@ -75,7 +75,7 @@ export function mountTriggers(ctx: RuntimeContext, app: AppApi): TriggersHandle 
       ctx.host.log("warn", `trigger "${trig.id}": type "${trig.type}" not implemented, skipped`);
       continue;
     }
-    const path = trig.path ?? `/hooks/${trig.id}`;
+    const path = normalizeRoutePath(trig.path, `/hooks/${trig.id}`);
     mounted.push(`${trig.id}@${path}`);
 
     routes.push({
