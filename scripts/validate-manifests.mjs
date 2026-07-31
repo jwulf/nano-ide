@@ -126,6 +126,9 @@ for (const dir of readdirSync(pkgRoot)) {
       if (typeof w?.type === "string" && w.type.trim() && !componentTypes.has(w.type)) {
         fail(`worker "${w.type}" has no component template with a matching zeebe:taskDefinition:type`);
       }
+      if (w?.configFields !== undefined && !Array.isArray(w.configFields)) {
+        fail(`worker ${w?.type}: configFields must be an array`);
+      }
       for (const f of Array.isArray(w?.configFields) ? w.configFields : []) {
         if (typeof f?.key !== "string" || !f.key.trim() || typeof f?.label !== "string" || !f.label.trim()) {
           fail(`worker ${w.type}: configField needs non-empty key+label: ${JSON.stringify(f)}`);

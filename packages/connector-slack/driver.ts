@@ -131,13 +131,23 @@ interface Envelope {
   type: string;
   envelope_id?: string;
   payload?: {
-    event?: { type?: string; event_ts?: string };
+    event?: { type?: string; event_ts?: string; channel_type?: string };
     event_id?: string;
     command?: string;
     [k: string]: unknown;
   };
   command?: string;
 }
+
+// Slack subscribes to messages per scope (message.channels/.groups/.im/.mpim);
+// the event itself only carries a `channel_type` (channel/group/im/mpim), so map
+// it back to the subscription-style key makers put in the `events` filter.
+const MESSAGE_SCOPE: Record<string, string> = {
+  channel: "channels",
+  group: "groups",
+  im: "im",
+  mpim: "mpim",
+};
 
 function handleEnvelope(ws: WebSocket, env_: Envelope): void {
   // Socket Mode requires acking every enveloped message by echoing its id.
@@ -155,7 +165,13 @@ function handleEnvelope(ws: WebSocket, env_: Envelope): void {
     case "events_api": {
       const ev = env_.payload?.event;
       const kind = ev?.type ?? "events_api";
-      if (!forwarded(kind, undefined)) return;
+      // A `message` event matches a scoped subscription key (message.channels,
+      // message.im, …) derived from its channel_type, so those filters work.
+      const subtype =
+        kind === "message" && ev?.channel_type
+          ? `message.${MESSAGE_SCOPE[ev.channel_type] ?? ev.channel_type}`
+          : undefined;
+      if (!forwarded(kind, subtype)) return;
       const idem = env_.payload?.event_id || env_.envelope_id || `${Date.now()}`;
       void emit(idem, { source: "events_api", type: kind, event: ev, raw: env_.payload });
       return;
