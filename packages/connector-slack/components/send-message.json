@@ -1,0 +1,45 @@
+{
+  "$schema": "https://unpkg.com/@camunda/zeebe-element-templates-json-schema@0.44.0/resources/schema.json",
+  "id": "io.nanobpm.connector.slack.send-message",
+  "name": "Send Slack Message",
+  "description": "Post a message to a Slack channel (Slack connector — outbound).",
+  "appliesTo": ["bpmn:Task"],
+  "elementType": { "value": "bpmn:ServiceTask" },
+  "properties": [
+    {
+      "type": "Hidden",
+      "value": "slack:send-message",
+      "binding": { "type": "zeebe:taskDefinition:type" }
+    },
+    {
+      "label": "Channel",
+      "description": "Channel id (e.g. C0123ABC) or name (e.g. #general).",
+      "type": "String",
+      "feel": "optional",
+      "binding": { "type": "zeebe:input", "name": "channel" },
+      "constraints": { "notEmpty": true }
+    },
+    {
+      "label": "Message",
+      "description": "Message text. Slack mrkdwn is supported.",
+      "type": "Text",
+      "feel": "optional",
+      "binding": { "type": "zeebe:input", "name": "text" },
+      "constraints": { "notEmpty": true }
+    },
+    {
+      "label": "Thread (optional)",
+      "description": "A message ts to reply in-thread, e.g. = slackMessage.ts. Leave empty to post to the channel.",
+      "type": "String",
+      "feel": "optional",
+      "binding": { "type": "zeebe:input", "name": "threadTs" }
+    },
+    {
+      "label": "Result variable",
+      "description": "Process variable to hold the sent message ({ ts, channel }).",
+      "type": "String",
+      "value": "slackMessage",
+      "binding": { "type": "zeebe:output", "source": "= { ts: ts, channel: channel }" }
+    }
+  ]
+}
