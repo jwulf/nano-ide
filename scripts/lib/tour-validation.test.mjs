@@ -140,7 +140,7 @@ test("a step with a non-string id/title/body is rejected", () => {
       false,
     ),
   );
-  assert.ok(errs.some((e) => e.includes("step needs an id")));
+  assert.ok(errs.some((e) => e.includes("needs an id")));
   assert.ok(errs.some((e) => e.includes("needs a title")));
   assert.ok(errs.some((e) => e.includes("needs a body")));
 });

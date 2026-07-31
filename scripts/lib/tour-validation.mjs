@@ -38,7 +38,7 @@ const badString = (v) => typeof v !== "string" || v.trim() === "";
 /** Validate one tour step. `nested` marks a `repair` step: those do not nest. */
 export function checkTourStep(s, at, fail, stepIds, nested) {
   const where = `${at} step ${s?.id ?? "(no id)"}`;
-  if (badString(s?.id)) fail(`${at}: step needs an id`);
+  if (badString(s?.id)) fail(`${where}: needs an id`);
   else if (stepIds.has(s.id)) fail(`${at}: duplicate step id: ${s.id}`);
   else stepIds.add(s.id);
   if (badString(s?.title)) fail(`${where}: needs a title`);
