@@ -95,6 +95,38 @@ export async function createUrbanApp(opts: CreateUrbanAppOptions): Promise<Urban
 
   const port = resolvePort(opts.port, host.env("PORT"));
 
+  // Release every mounted resource and reset internal state so a subsequent
+  // start() begins clean. Used by stop() and by start()'s failure path.
+  const teardown = async () => {
+    if (server) {
+      try {
+        await server.stop();
+      } catch (e) {
+        host.log("warn", "error stopping http server", { error: String(e) });
+      }
+    }
+    for (const m of mounted) {
+      try {
+        await m.stop();
+      } catch (e) {
+        host.log("warn", "error stopping module", { error: String(e) });
+      }
+    }
+    if (data) data.closeAll();
+    try {
+      await engine.close();
+    } catch (e) {
+      host.log("warn", "error closing engine", { error: String(e) });
+    }
+    mounted.length = 0;
+    for (const k of Object.keys(describe)) delete describe[k];
+    server = undefined;
+    httpPort = undefined;
+    data = undefined;
+    security = undefined;
+    started = false;
+  };
+
   const app: UrbanApp = {
     manifest,
     root,
@@ -111,71 +143,65 @@ export async function createUrbanApp(opts: CreateUrbanAppOptions): Promise<Urban
     async start() {
       if (started) throw new Error("app already started");
       started = true;
+      try {
+        if (flags.security) security = mountSecurity(ctx);
+        if (flags.deploy) describe.deploy = await deployModels(ctx);
 
-      if (flags.security) security = mountSecurity(ctx);
-      if (flags.deploy) describe.deploy = await deployModels(ctx);
+        data = flags.data ? await provisionData(ctx) : new DataLayer(new Map(), undefined, {});
+        const api: AppApi = {
+          manifest,
+          data,
+          engine,
+          env: (n) => host.env(n),
+          log: (l, m, f) => host.log(l, m, f),
+        };
 
-      data = flags.data ? await provisionData(ctx) : new DataLayer(new Map(), undefined, {});
-      const api: AppApi = {
-        manifest,
-        data,
-        engine,
-        env: (n) => host.env(n),
-        log: (l, m, f) => host.log(l, m, f),
-      };
+        if (flags.workers) {
+          const w = await mountWorkers(ctx, api);
+          mounted.push(w);
+          describe.workers = w.describe?.();
+        }
 
-      if (flags.workers) {
-        const w = await mountWorkers(ctx, api);
-        mounted.push(w);
-        describe.workers = w.describe?.();
+        const routes: Route[] = [];
+        if (flags.surfaces) {
+          const s = mountSurfaces(ctx, api);
+          routes.push(...s.routes);
+          describe.surfaces = s.describe();
+        }
+        if (flags.triggers) {
+          const t = mountTriggers(ctx, api);
+          routes.push(...t.routes);
+          describe.triggers = t.describe();
+        }
+        if (security) describe.security = security.describe();
+        if (data) describe.data = data.describe();
+
+        if (routes.length > 0) {
+          // A tiny liveness route.
+          routes.push({
+            method: "GET",
+            path: "/healthz",
+            handler: () => ({
+              status: 200,
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ ok: true, app: manifest.id }),
+            }),
+          });
+          server = await host.serveHttp(port, makeRouter(routes));
+          httpPort = server.port;
+          host.log("info", "urban app serving surfaces/triggers", { port: httpPort, routes: routes.length });
+        }
+        host.log("info", `urban app "${manifest.id}" started`, {});
+      } catch (err) {
+        // A failed start must not leave the app half-mounted (leaked workers,
+        // a bound port) or wedged in the "already started" state.
+        await teardown();
+        throw err;
       }
-
-      const routes: Route[] = [];
-      if (flags.surfaces) {
-        const s = mountSurfaces(ctx, api);
-        routes.push(...s.routes);
-        describe.surfaces = s.describe();
-      }
-      if (flags.triggers) {
-        const t = mountTriggers(ctx, api);
-        routes.push(...t.routes);
-        describe.triggers = t.describe();
-      }
-      if (security) describe.security = security.describe();
-      if (data) describe.data = data.describe();
-
-      if (routes.length > 0) {
-        // A tiny liveness route.
-        routes.push({
-          method: "GET",
-          path: "/healthz",
-          handler: () => ({
-            status: 200,
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ ok: true, app: manifest.id }),
-          }),
-        });
-        server = await host.serveHttp(port, makeRouter(routes));
-        httpPort = server.port;
-        host.log("info", "urban app serving surfaces/triggers", { port: httpPort, routes: routes.length });
-      }
-      host.log("info", `urban app "${manifest.id}" started`, {});
     },
 
     async stop() {
-      if (server) await server.stop();
-      for (const m of mounted) await m.stop();
-      if (data) data.closeAll();
-      await engine.close();
-      // Reset internal state so a subsequent start() begins clean (no stale
-      // module handles re-stopped, no stale inspect() data).
-      mounted.length = 0;
-      for (const k of Object.keys(describe)) delete describe[k];
-      server = undefined;
-      httpPort = undefined;
-      data = undefined;
-      security = undefined;
-      started = false;
+      await teardown();
     },
 
     inspect() {

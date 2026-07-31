@@ -23,6 +23,17 @@ test("createTableSql emits id PK, NOT NULL by default, nullable when optional", 
   assert.match(sql, /when TEXT(?! NOT NULL)/);
 });
 
+test("createTableSql rejects a reserved 'id' field and non-identifier names", () => {
+  assert.throws(
+    () => createTableSql("t", { table: "ts", fields: { id: { type: "string" } } }),
+    /field "id" is reserved/,
+  );
+  assert.throws(
+    () => createTableSql("t", { table: "bad-name", fields: { x: { type: "string" } } }),
+    /invalid table name/,
+  );
+});
+
 test("deriveMigrations groups by datasource and is deterministic", () => {
   const manifest = {
     data: { default: "app" },

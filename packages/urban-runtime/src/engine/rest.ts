@@ -124,11 +124,18 @@ export class RestEngineClient implements EngineClient {
     const r = await this.okJson<{ items?: Record<string, unknown>[] }>("/user-tasks/search", {
       filter: filter ?? {},
     });
-    return (r.items ?? []).map((it) => ({
-      userTaskKey: String(it.userTaskKey ?? it.key ?? ""),
-      elementId: it.elementId as string | undefined,
-      variables: it.variables as Record<string, unknown> | undefined,
-    }));
+    return (r.items ?? []).flatMap((it) => {
+      const userTaskKey = it.userTaskKey ?? it.key;
+      if (userTaskKey == null || userTaskKey === "") {
+        this.log("warn", "skipping user task with no key in engine response");
+        return [];
+      }
+      return [{
+        userTaskKey: String(userTaskKey),
+        elementId: it.elementId as string | undefined,
+        variables: it.variables as Record<string, unknown> | undefined,
+      }];
+    });
   }
 
   async completeUserTask(userTaskKey: string, variables?: Record<string, unknown>): Promise<void> {

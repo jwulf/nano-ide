@@ -182,6 +182,36 @@ test("stop() resets state so the app can be cleanly restarted", async () => {
   }
 });
 
+test("a failed start() tears down and resets state (no 'already started' wedge)", async () => {
+  const dir = await makeFixture();
+  const host = createNodeHost({ cwd: dir, log: () => {} });
+  let failNextDeploy = true;
+  const engine = new FakeEngine();
+  const origDeploy = engine.deployResources.bind(engine);
+  engine.deployResources = async (r: { name: string }[]) => {
+    if (failNextDeploy) {
+      failNextDeploy = false;
+      throw new Error("boom during deploy");
+    }
+    return origDeploy(r);
+  };
+  const app = await createUrbanApp({ host, engine, root: ".", port: 0 });
+
+  try {
+    await assert.rejects(() => app.start(), /boom during deploy/);
+    // state reset: not wedged, no leaked port/describe
+    const s = app.inspect() as Record<string, unknown>;
+    assert.equal(s.httpPort, undefined);
+    assert.equal(s.workers, undefined);
+    // a subsequent start() succeeds rather than throwing "app already started"
+    await app.start();
+    assert.ok(app.httpPort! > 0);
+  } finally {
+    await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("task-inbox /api/complete returns 400 on a malformed JSON body", async () => {
   const dir = await makeFixture();
   const host = createNodeHost({ cwd: dir, log: () => {} });

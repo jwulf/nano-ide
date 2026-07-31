@@ -15,7 +15,7 @@ export async function greet(job: EngineJob, app: AppApi): Promise<Record<string,
   const message = `Hello, ${who}!`;
 
   const repo = app.data.repo("greeting");
-  await repo.insert({ who, message, createdAt: new Date().toISOString() });
+  repo.insert({ who, message, createdAt: new Date().toISOString() });
 
   app.log("info", "greeted", { who });
   return { message };

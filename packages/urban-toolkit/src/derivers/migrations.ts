@@ -59,6 +59,9 @@ export function createTableSql(typeName: string, def: ToolkitType): string {
   const fields = def.fields ?? {};
   for (const [name, f] of Object.entries(fields)) {
     assertSqlIdent("field name", name);
+    if (name === "id") {
+      throw new Error(`type "${typeName}": field "id" is reserved (the table's implicit primary key)`);
+    }
     const notNull = f.optional ? "" : " NOT NULL";
     cols.push(`  ${name} ${sqlType(f.type)}${notNull}`);
   }
