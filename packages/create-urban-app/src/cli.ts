@@ -26,7 +26,13 @@ function parse(argv: string[]): Parsed {
     if (a === "-h" || a === "--help") out.help = true;
     else if (a === "--dir") out.dir = need(++i, a);
     else if (a === "--id") out.id = need(++i, a);
-    else if (a === "--preset") out.preset = need(++i, a) as "full" | "headless";
+    else if (a === "--preset") {
+      const v = need(++i, a);
+      if (v !== "full" && v !== "headless") {
+        throw new Error(`flag --preset must be "full" or "headless" (got "${v}")`);
+      }
+      out.preset = v;
+    }
     else if (a.startsWith("--")) throw new Error(`unknown flag: ${a}`);
     else rest.push(a);
   }

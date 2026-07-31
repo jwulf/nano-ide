@@ -52,3 +52,11 @@ test("headless preset drops surfaces, triggers and forms (workers only)", async 
   assert.ok(!res.files.some((f) => f.startsWith("forms/")), "no form files written");
   assert.ok(!(await exists(join(dir, "forms"))), "no forms dir");
 });
+
+test("names with quotes/backslashes/control chars stay valid JSON in the manifest", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-scaffold-"));
+  const tricky = 'Ac "me"\\Co\tInc';
+  await scaffold({ name: tricky, dir, preset: "full" });
+  const manifest = JSON.parse(await readFile(join(dir, "nano.app.json"), "utf8"));
+  assert.equal(manifest.name, tricky);
+});

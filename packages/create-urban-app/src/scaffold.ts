@@ -62,7 +62,9 @@ export async function scaffold(opts: ScaffoldOptions): Promise<ScaffoldResult> {
   const id = opts.id ?? slugify(opts.name);
   const preset = opts.preset ?? "full";
   const headless = preset === "headless";
-  const vars = { APP_ID: id, APP_NAME: opts.name.replace(/"/g, '\\"') };
+  // JSON-escape the name so it stays valid inside the quoted JSON placeholders
+  // (e.g. nano.app.json "name") for arbitrary input (quotes, backslashes, control chars).
+  const vars = { APP_ID: id, APP_NAME: JSON.stringify(opts.name).slice(1, -1) };
   const root = templateRoot();
   const files = await listFiles(root);
   const written: string[] = [];
