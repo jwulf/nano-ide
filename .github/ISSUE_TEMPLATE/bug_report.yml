@@ -1,0 +1,74 @@
+name: 🐞 Bug report
+description: Something in Nano or a nano-ide component is broken or behaving incorrectly.
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Nano! Please fill in as much as you can so we can triage quickly.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part is affected? Pick the closest match.
+      options:
+        - "Nano — engine / server (Rust)"
+        - "Nano — console (RAD IDE UI)"
+        - "Nano — @nanobpm/workflow SDK (code-first)"
+        - "Nano — docs / whitepaper"
+        - "IDE pack — lang-rust"
+        - "IDE pack — lang-node"
+        - "IDE pack — lang-python"
+        - "IDE pack — lang-csharp"
+        - "IDE pack — lang-java"
+        - "IDE pack — app-deno-gui"
+        - "IDE pack — app-workflow"
+        - "IDE pack — app-embedded-nano"
+        - "IDE pack — app-embedded-jvm"
+        - "IDE pack — app-embedded-graalvm-native"
+        - "IDE pack — trigger-mqtt"
+        - "IDE pack — theme-nord"
+        - "IDE pack — theme-solarized"
+        - "IDE pack — theme-synthwave"
+        - "IDE pack — ext-types"
+        - "Other / not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce it? Include a minimal example if possible.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Gateway version (shown in the console sidebar), OS, and pack/SDK versions if relevant.
+      placeholder: |
+        - Gateway: v...
+        - OS: macOS 15 / Ubuntu 24.04 / Windows 11
+        - Pack/SDK version: ...
+    validations:
+      required: false
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or screenshots
+      description: Paste any console output, error messages, or screenshots. Code is automatically formatted.
+      render: shell
+    validations:
+      required: false

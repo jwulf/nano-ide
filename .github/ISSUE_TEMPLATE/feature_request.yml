@@ -1,0 +1,59 @@
+name: 💡 Feature request / idea
+description: Suggest a new capability or an improvement for Nano or a nano-ide component.
+title: "[Idea]: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have an idea for how Nano could be more useful? We'd love to hear it.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which part would this affect? Pick the closest match.
+      options:
+        - "Nano — engine / server (Rust)"
+        - "Nano — console (RAD IDE UI)"
+        - "Nano — @nanobpm/workflow SDK (code-first)"
+        - "Nano — docs / whitepaper"
+        - "IDE pack — lang-rust"
+        - "IDE pack — lang-node"
+        - "IDE pack — lang-python"
+        - "IDE pack — lang-csharp"
+        - "IDE pack — lang-java"
+        - "IDE pack — app-deno-gui"
+        - "IDE pack — app-workflow"
+        - "IDE pack — app-embedded-nano"
+        - "IDE pack — app-embedded-jvm"
+        - "IDE pack — app-embedded-graalvm-native"
+        - "IDE pack — trigger-mqtt"
+        - "IDE pack — theme-nord"
+        - "IDE pack — theme-solarized"
+        - "IDE pack — theme-synthwave"
+        - "IDE pack — ext-types"
+        - "New pack / component"
+        - "Other / not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the use case or pain point. What are you trying to build or automate?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like to see? Rough sketches and API ideas are welcome.
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds you're using today, or other approaches you've thought about.
+    validations:
+      required: false

@@ -1,0 +1,39 @@
+name: 🗣️ General feedback
+description: Share your experience, a use case, or anything that doesn't fit a bug or feature request.
+title: "[Feedback]: "
+labels: ["feedback", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Nano is a research prototype, free for evaluation use. Your feedback shapes where it goes —
+        tell us what you're building, what worked, and what got in your way.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Area
+      description: Which part is your feedback mostly about?
+      options:
+        - "Overall experience / getting started"
+        - "Nano — engine / server (Rust)"
+        - "Nano — console (RAD IDE UI)"
+        - "Nano — @nanobpm/workflow SDK (code-first)"
+        - "Nano — docs / whitepaper"
+        - "IDE packs (lang / app / trigger / theme)"
+        - "Other / not sure"
+    validations:
+      required: true
+  - type: textarea
+    id: use-case
+    attributes:
+      label: What are you using Nano for?
+      description: Describe your use case — task automation, home automation, a business app, exploring, etc.
+    validations:
+      required: false
+  - type: textarea
+    id: feedback
+    attributes:
+      label: Your feedback
+      description: What worked well? What was confusing or missing? What would make Nano more useful to you?
+    validations:
+      required: true
