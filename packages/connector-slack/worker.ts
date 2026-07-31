@@ -31,6 +31,14 @@ function env(name: string): string | undefined {
   return g.process?.env?.[name];
 }
 
+/** Read a positive-integer env var, falling back when unset or malformed. */
+function intEnv(name: string, fallback: number): number {
+  const raw = env(name);
+  if (raw === undefined) return fallback;
+  const n = Number.parseInt(raw, 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
+}
+
 const SLACK_POST_MESSAGE = "https://slack.com/api/chat.postMessage";
 
 const botToken = env("SLACK_BOT_TOKEN");
@@ -38,6 +46,9 @@ if (!botToken) {
   console.error("[slack:send-message] SLACK_BOT_TOKEN is not set; refusing to start");
   const g = globalThis as { Deno?: { exit(c: number): never }; process?: { exit(c: number): never } };
   (g.Deno ?? g.process)?.exit(1);
+  // exit() may be unavailable or stubbed (e.g. under a test runner); throw so the
+  // worker can never fall through and start without credentials.
+  throw new Error("[slack:send-message] SLACK_BOT_TOKEN is not set");
 }
 
 interface SlackPostResult {
@@ -118,6 +129,6 @@ async function handle(job: WorkerJob): Promise<Record<string, unknown>> {
 
 defineWorker({
   type: "slack:send-message",
-  maxParallelJobs: Number(env("SLACK_MAX_PARALLEL_JOBS") ?? "10"),
+  maxParallelJobs: intEnv("SLACK_MAX_PARALLEL_JOBS", 10),
   handle,
 });

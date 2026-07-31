@@ -123,7 +123,7 @@ for (const dir of readdirSync(pkgRoot)) {
       } else if (!existsSync(join(base, w.entry))) {
         fail(`worker ${w.type}: entry file missing: ${w.entry}`);
       }
-      if (componentTypes.size > 0 && typeof w?.type === "string" && !componentTypes.has(w.type)) {
+      if (typeof w?.type === "string" && w.type.trim() && !componentTypes.has(w.type)) {
         fail(`worker "${w.type}" has no component template with a matching zeebe:taskDefinition:type`);
       }
       for (const f of Array.isArray(w?.configFields) ? w.configFields : []) {

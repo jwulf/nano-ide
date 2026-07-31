@@ -46,13 +46,17 @@ function taskDefType(tmpl: any) {
 test("each component template's taskDefinition:type has a backing worker (the seam)", () => {
   const workerTypes = new Set((manifest.workers ?? []).map((w: any) => w.type));
   for (const rel of manifest.components ?? []) {
-    const tmpl = readJson(rel);
-    const type = taskDefType(tmpl);
-    assert.ok(type, `${rel}: no zeebe:taskDefinition:type binding`);
-    assert.ok(
-      workerTypes.has(type),
-      `${rel}: taskDefinition:type "${type}" has no backing workers[] entry (declares: ${[...workerTypes].join(", ")})`,
-    );
+    // A component file may hold a single element template or an array of them
+    // (mirrors the manifest contract + validator) — normalise to iterate.
+    const parsed = readJson(rel);
+    for (const tmpl of Array.isArray(parsed) ? parsed : [parsed]) {
+      const type = taskDefType(tmpl);
+      assert.ok(type, `${rel}: no zeebe:taskDefinition:type binding`);
+      assert.ok(
+        workerTypes.has(type),
+        `${rel}: taskDefinition:type "${type}" has no backing workers[] entry (declares: ${[...workerTypes].join(", ")})`,
+      );
+    }
   }
 });
 

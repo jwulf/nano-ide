@@ -257,9 +257,11 @@ export interface TriggerSourceSpec {
 }
 
 /**
- * One worker a `kind: "connector"` (or, transitionally, `kind: "trigger"`) pack
- * contributes — the **outbound/compute** edge of the I/O surface (ADR 0050,
- * amending ADR 0033 §4). Where {@link TriggerSourceSpec} is the *inbound* edge
+ * One worker a connector pack contributes — the **outbound/compute** edge of the
+ * I/O surface (ADR 0050, amending ADR 0033 §4). "Connector" is the *planned* pack
+ * kind for two-edge I/O packs; it is not yet a member of {@link ExtKind}, so today
+ * these packs ship as `kind: "trigger"` and carry `workers[]` alongside their
+ * `triggerSources[]`. Where {@link TriggerSourceSpec} is the *inbound* edge
  * (external event → engine), a worker is the *outbound* edge (engine job →
  * external effect, e.g. "post a Slack message").
  *
