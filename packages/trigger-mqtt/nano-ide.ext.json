@@ -28,5 +28,58 @@
         }
       ]
     }
+  ],
+  "tours": [
+    {
+      "id": "mqtt-message-starts-a-process",
+      "title": "Start a process from a broker message",
+      "blurb": "Wire an MQTT topic to a process start — the “when this happens…” half of an automation.",
+      "profiles": [
+        "studio"
+      ],
+      "preconditions": [
+        "hasProject"
+      ],
+      "steps": [
+        {
+          "id": "what-this-adds",
+          "kind": "note",
+          "title": "An MQTT message can start a process",
+          "body": "Installing this pack adds a trigger source kind, `mqtt`, that any App can declare in its `nano.app.json`. You name a broker and a topic filter; the runtime owns the durable inbox, dispatch, retry and lifecycle, and auto-launches this pack's driver (ADR 0025). Each message can start a process or correlate into a running one."
+        },
+        {
+          "id": "run-the-app",
+          "title": "Run the app so the driver starts",
+          "body": "The trigger driver is a supervised out-of-process child of your running app — nothing subscribes until the app is running.",
+          "selector": "[data-tour=\"run\"]",
+          "side": "bottom",
+          "align": "start",
+          "precondition": "hasJsRuntime",
+          "repair": {
+            "id": "need-a-runtime",
+            "kind": "note",
+            "title": "Install a JavaScript runtime first",
+            "body": "Running an app needs Node ≥ 22.6 (the npm launcher ships one) or Deno. Until then you can still author the trigger — only starting it is unavailable."
+          }
+        },
+        {
+          "id": "publish-a-test-message",
+          "kind": "handoff",
+          "title": "Publish a test message",
+          "body": "Any MQTT client will do — this step is outside the console because the broker is. Adjust the topic to match the filter you declared.",
+          "copy": "mosquitto_pub -h localhost -t home/porch/motion -m '{\"value\":1}'",
+          "copyLabel": "Copy command"
+        },
+        {
+          "id": "see-the-instance",
+          "title": "See what the message started",
+          "body": "The message that arrived is now a process instance, and its payload is the instance's variables — an event your process can reason about.",
+          "route": "/explorer",
+          "selector": "[data-tour=\"nav-explorer\"]",
+          "side": "right",
+          "align": "start"
+        }
+      ]
+    }
   ]
 }

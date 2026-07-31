@@ -15,7 +15,8 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
-    "test": "npm run test --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present && npm run test:scripts",
+    "test:scripts": "node --test \"scripts/lib/**/*.test.mjs\"",
     "validate": "node scripts/validate-manifests.mjs",
     "check:intellisense": "npm run check:intellisense --workspaces --if-present",
     "gen:intellisense": "npm run gen:intellisense --workspaces --if-present"

@@ -37,6 +37,10 @@ parses each pack's `nano-ide.ext.json` manifest (mirror of `server/src/console/e
 - **theme** — console colour themes as pure data: `themes[]` maps the console's design tokens (`app`, `panel`, `accent`, …) to CSS colours over a light or dark base. No code, no toolchain, no trust prompt.
 - **trigger** — an event source (e.g. an MQTT broker) that starts processes from external messages.
 
+Any kind may additionally contribute **`tours[]`** — guided journeys offered in the
+console's journey picker (ADR 0049 §7), so a pack that adds a capability can teach
+it. See [Contributing a guided journey](#contributing-a-guided-journey).
+
 ## Dev
 ```
 npm ci
@@ -149,6 +153,59 @@ packages/example-my-demo/
 ```
 
 Example: [`packages/example-rust-throughput`](packages/example-rust-throughput).
+
+### Contributing a guided journey
+
+Any pack may add **`tours[]`**: short, outcome-shaped onboarding paths the console
+offers in its journey picker (ADR 0049 §7). This is how onboarding scales with the
+marketplace instead of living in a hardcoded list in the console — a pack that adds
+a capability can teach it. A pack journey is only offered when its pack is
+installed, which falls out of it being a pack journey.
+
+```jsonc
+"tours": [{
+  "id": "mqtt-message-starts-a-process",
+  "title": "Start a process from a broker message",
+  "blurb": "Wire an MQTT topic to a process start.",   // the picker card line
+  "profiles": ["studio"],                              // omit ⇒ studio only
+  "preconditions": ["hasProject"],                     // not offered unless met
+  "steps": [
+    { "id": "intro", "kind": "note", "title": "…", "body": "…" },
+    { "id": "run", "title": "…", "body": "…",          // kind defaults to spotlight
+      "selector": "[data-tour=\"run\"]", "side": "bottom",
+      "precondition": "hasJsRuntime",
+      "repair": { "id": "need-runtime", "kind": "note", "title": "…", "body": "…" } },
+    { "id": "publish", "kind": "handoff", "title": "…", "body": "…",
+      "copy": "mosquitto_pub -h localhost -t home/porch/motion -m '{\"value\":1}'" }
+  ]
+}]
+```
+
+The rules, all enforced by `npm run validate`:
+
+- **Five steps or fewer.** A journey needing a detour is split, not padded.
+- **A pack ships data, never code.** `precondition` / `successWhen` name a gate
+  from a closed set — `hasJsRuntime`, `hasProject`, `hasCluster`, `hasTraces` —
+  which the console resolves against its own precondition library. There is
+  deliberately no expression language: it would be a second, weaker copy of that
+  library.
+- **`repair` is required when the gate can demand one** (`hasJsRuntime`,
+  `hasCluster`). Without it the step is silently dropped, which is the honest
+  degradation but costs the user the hint they needed — e.g. "install a runtime"
+  instead of a step telling them to press Run on a host where Run cannot work.
+- **`handoff` steps require a trusted pack.** A handoff's `copy` is a command the
+  user is invited to paste into a shell, so the host strips handoff steps from
+  untrusted packs before they reach the browser, and drops a journey left with no
+  steps. Nothing is ever executed by the console — it renders `copy` as inert text
+  — but that is not a reason for an untrusted pack to put arbitrary text where a
+  user expects a trustworthy command. Spotlight and note steps need no trust.
+- **`selector` targets a `data-tour` anchor** the console renders. An anchor that
+  does not exist yet simply skips the step, so a tour can be written ahead of a
+  console anchor landing.
+- **Omit `successWhen`** for an orientation-only journey: the console then records
+  completion without claiming an outcome.
+
+Example: [`packages/trigger-mqtt`](packages/trigger-mqtt).
 
 ### Publishing
 

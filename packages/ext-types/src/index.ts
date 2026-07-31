@@ -349,6 +349,121 @@ export interface ExtManifest {
    * canonical contract packs author against.
    */
   workers?: WorkerSpec[];
+  /**
+   * Guided journeys this pack contributes (ADR 0049 §7) — short, outcome-shaped
+   * onboarding paths offered in the console's journey picker.
+   *
+   * This is how onboarding scales with the pack ecosystem rather than living in a
+   * hardcoded list in the console: a pack that adds a capability can teach it.
+   * A pack journey is only ever offered when its pack is installed, which falls
+   * out of it being a pack journey.
+   */
+  tours?: TourSpec[];
+}
+
+/**
+ * A named gate from the console's shared precondition library
+ * (`lib/tour/preconditions.ts`).
+ *
+ * A pack ships **data, never code**, so it cannot supply the predicate functions
+ * the console's own journeys use — it names one of these and the console resolves
+ * it. Deliberately a closed set: an open expression language here would be a
+ * second, weaker copy of the precondition library, and would drift from it.
+ *
+ * - `hasJsRuntime` — Node or Deno is present, so Run can actually start something.
+ * - `hasProject` — at least one project exists.
+ * - `hasCluster` — more than one node, so the cluster views show something real.
+ * - `hasTraces` — traces have been captured.
+ */
+export type TourGate =
+  | "hasJsRuntime"
+  | "hasProject"
+  | "hasCluster"
+  | "hasTraces";
+
+/**
+ * Which affordance a step renders as.
+ *
+ * - `spotlight` (the default) — highlights the `data-tour` anchor in `selector`.
+ * - `note` — anchorless, centered framing with nothing to point at.
+ * - `handoff` — a copyable terminal command or URL, for a step whose work happens
+ *   outside the console.
+ */
+export type TourStepKind = "spotlight" | "note" | "handoff";
+
+/** One step of a pack-contributed journey. */
+export interface TourStepSpec {
+  /** Stable across edits — this is the analytics key. */
+  id: string;
+  /** Defaults to `spotlight`, so the common case needs no boilerplate. */
+  kind?: TourStepKind;
+  title: string;
+  body: string;
+  /** Absolute console path to navigate to before showing the step. */
+  route?: string;
+  /** Gate for this step. `hasJsRuntime`/`hasCluster` can demand a `repair`. */
+  precondition?: TourGate;
+  /**
+   * Shown **instead** when `precondition` is not satisfied but the target is
+   * still present — e.g. "here is how to install a runtime" rather than a step
+   * telling the user to press Run on a host where Run cannot work. Without a
+   * `repair`, such a step is skipped rather than shown, because showing it would
+   * assert exactly what the precondition just ruled out. A repair step does not
+   * nest: a `repair` inside a `repair` is rejected at publish time, and ignored
+   * by the console as a safety net if one ever slips through.
+   */
+  repair?: TourStepSpec;
+  /** Advisory: a step whose absence does not weaken the journey. */
+  optional?: boolean;
+  /** `spotlight`: the `data-tour` anchor to highlight, e.g. `[data-tour="run"]`. */
+  selector?: string;
+  side?: "top" | "right" | "bottom" | "left";
+  align?: "start" | "center" | "end";
+  /**
+   * `handoff`: the command or URL offered for copying.
+   *
+   * **Requires a trusted pack.** A handoff's `copy` is a command the user is
+   * invited to paste into a shell, so the host strips handoff steps from
+   * untrusted packs before they ever reach the browser (and drops a journey left
+   * with no steps). Nothing is ever executed by the console — it renders this as
+   * inert text — but that is not a reason for an untrusted pack to put arbitrary
+   * text where a user expects a trustworthy command. Spotlight and note steps
+   * need no trust.
+   */
+  copy?: string;
+  /** `handoff`: button label. Defaults to "Copy". */
+  copyLabel?: string;
+  /**
+   * `handoff`: auto-advance once an external worker is seen polling this job
+   * type. The only verification a pack can declare, because it is the only one
+   * expressible without code. Absent means the user self-reports ("I've done
+   * it") — honest, since the console cannot watch a terminal.
+   */
+  verifyPollingJobType?: string;
+}
+
+/** A guided journey a pack contributes. Keep it to five steps or fewer. */
+export interface TourSpec {
+  /** Stable, unique across installed packs. */
+  id: string;
+  title: string;
+  /** One line for the journey-picker card. */
+  blurb: string;
+  /**
+   * Console profiles this journey is offered in. Empty (or omitted) means
+   * `studio` only — the conservative default, since most pack capabilities are
+   * authoring surfaces the lean operator build does not ship.
+   */
+  profiles?: ("studio" | "observe")[];
+  /** Journey-level gates: not offered at all unless every one is satisfied. */
+  preconditions?: TourGate[];
+  steps: TourStepSpec[];
+  /**
+   * What must actually have happened for the journey to have worked. Omit for an
+   * orientation-only journey: the console then records completion without
+   * claiming an outcome, exactly as its own overview journey does.
+   */
+  successWhen?: TourGate;
 }
 
 export const MANIFEST_FILE = "nano-ide.ext.json";

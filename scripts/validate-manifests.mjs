@@ -3,6 +3,7 @@
 // server/src/console/extensions.rs. Run: node scripts/validate-manifests.mjs
 import { readdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { checkTours } from "./lib/tour-validation.mjs";
 
 const KINDS = new Set(["lang", "app", "example", "theme", "trigger"]);
 // Console design-token vocabulary (nanobpmn console/src/theme/tokens.css);
@@ -85,6 +86,14 @@ for (const dir of readdirSync(pkgRoot)) {
       }
     }
   }
+
+  // Guided journeys (ADR 0049 §7) — a deliberate mirror of the rules the console
+  // adapter applies at runtime, in the same spirit as THEME_TOKEN_KEYS above. The
+  // console must stay defensive because packs are third-party, but a pack author
+  // should learn about a malformed tour at publish time, not from a step silently
+  // vanishing in someone else's browser. Rules live in ./lib/tour-validation.mjs
+  // so this script and its unit tests share one source of truth.
+  checkTours(m.tours, fail);
 
   // Component element-templates (ADR 0033 §4) — mirror the host's
   // `ExtManifest.components: Vec<String>` in extensions.rs. Each is a
