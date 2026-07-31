@@ -58,6 +58,15 @@ export async function mountWorkers(ctx: RuntimeContext, app: AppApi): Promise<Wo
   for (const decl of decls as WorkerDecl[]) {
     const jobType = workerJobType(decl);
     if (!jobType) continue;
+    if (!decl.handler) {
+      // llm-backed workers (schema `oneOf` handler|llm) are validated but not yet
+      // executed by the runtime. Skip with a clear warning rather than crashing.
+      ctx.host.log("warn", "skipping worker: llm-backed workers are not yet implemented", {
+        jobType,
+        llm: decl.llm,
+      });
+      continue;
+    }
     const mod = await loadModule(decl.handler);
     const handler = resolveHandler(mod, jobType);
     if (!handler) {

@@ -33,10 +33,11 @@ console, with a **drift gate**.
 ## Use
 
 ```ts
-import { runGen } from "@nanobpm/urban-toolkit";
+import { runGen, createNodeGenIO } from "@nanobpm/urban-toolkit";
 
-await runGen({ root: "." });               // write nano-generated/
-await runGen({ root: ".", check: true });  // drift gate — throws on mismatch
+const io = createNodeGenIO();
+await runGen({ root: ".", io });               // write nano-generated/
+await runGen({ root: ".", io, check: true });  // drift gate — throws on mismatch
 ```
 
 Or call a deriver directly (pure, no IO) and inspect the artifacts.

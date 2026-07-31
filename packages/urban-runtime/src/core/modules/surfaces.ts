@@ -20,9 +20,13 @@ li{margin:.4rem 0}code{background:#f4f4f4;padding:.1rem .3rem;border-radius:3px}
 <script>
 fetch('${basePath}/api/tasks').then(r=>r.json()).then(ts=>{
   const ul=document.getElementById('tasks');
-  ul.innerHTML = ts.length ? '' : '<li>No open tasks.</li>';
+  ul.replaceChildren();
+  if(!ts.length){const li=document.createElement('li');li.textContent='No open tasks.';ul.appendChild(li);return;}
   for(const t of ts){const li=document.createElement('li');
-    li.innerHTML='<code>'+(t.elementId||t.userTaskKey)+'</code> — key '+t.userTaskKey;
+    const code=document.createElement('code');
+    code.textContent=t.elementId||t.userTaskKey;
+    li.appendChild(code);
+    li.appendChild(document.createTextNode(' — key '+t.userTaskKey));
     ul.appendChild(li);}
 });
 </script>`;

@@ -24,7 +24,7 @@
     "node": ">=22.6"
   },
   "bin": {
-    "create-urban-app": "./src/cli.ts"
+    "create-urban-app": "./src/bin.mjs"
   },
   "main": "./src/scaffold.ts",
   "types": "./src/scaffold.ts",

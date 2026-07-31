@@ -49,6 +49,9 @@ export class TypeRepo {
   insert(row: Record<string, unknown>): { changes: number; lastInsertRowid: number | bigint } {
     this.assertFields(row);
     const keys = Object.keys(row);
+    if (keys.length === 0) {
+      return this.db.run(`INSERT INTO ${this.table()} DEFAULT VALUES`, []);
+    }
     const cols = keys.join(", ");
     const placeholders = keys.map(() => "?").join(", ");
     const sql = `INSERT INTO ${this.table()} (${cols}) VALUES (${placeholders})`;

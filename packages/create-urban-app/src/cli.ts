@@ -15,12 +15,17 @@ interface Parsed {
 function parse(argv: string[]): Parsed {
   const out: Parsed = {};
   const rest: string[] = [];
+  const need = (i: number, flag: string): string => {
+    const v = argv[i];
+    if (v === undefined || v.startsWith("-")) throw new Error(`flag ${flag} requires a value`);
+    return v;
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "-h" || a === "--help") out.help = true;
-    else if (a === "--dir") out.dir = argv[++i];
-    else if (a === "--id") out.id = argv[++i];
-    else if (a === "--preset") out.preset = argv[++i] as "full" | "headless";
+    else if (a === "--dir") out.dir = need(++i, a);
+    else if (a === "--id") out.id = need(++i, a);
+    else if (a === "--preset") out.preset = need(++i, a) as "full" | "headless";
     else if (a.startsWith("--")) throw new Error(`unknown flag: ${a}`);
     else rest.push(a);
   }

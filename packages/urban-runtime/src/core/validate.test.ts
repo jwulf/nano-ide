@@ -35,16 +35,25 @@ test("bad schemaVersion and bad slug id are reported", () => {
   assert.ok(issues.some((i) => i.path === "id"));
 });
 
-test("binding rules: worker needs handler, type with fields needs table, source needs driver+url", () => {
+test("binding rules: worker needs handler-or-llm, source needs driver+url", () => {
   const issues = collectManifestIssues({
     ...valid,
     workers: [{ taskType: "a" }],
     types: { t: { fields: { x: { type: "string" } } } },
     data: { default: "app", sources: { app: { driver: "sqlite" } } },
   });
-  assert.ok(issues.some((i) => i.path === "workers[0].handler"));
-  assert.ok(issues.some((i) => i.path === "types.t.table"));
+  assert.ok(issues.some((i) => i.path === "workers[0]" && /handler.*llm/.test(i.message)));
+  // A type with `fields` and no `table` is a valid transient type — no issue.
+  assert.ok(!issues.some((i) => i.path.startsWith("types.t")));
   assert.ok(issues.some((i) => i.path === "data.sources.app.url"));
+});
+
+test("an llm-backed worker (no handler) is accepted", () => {
+  const issues = collectManifestIssues({
+    ...valid,
+    workers: [{ taskType: "summarize", llm: "gpt" }],
+  });
+  assert.ok(!issues.some((i) => i.path.startsWith("workers[0]")));
 });
 
 test("data.default must reference an existing source", () => {

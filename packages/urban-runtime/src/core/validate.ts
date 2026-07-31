@@ -75,8 +75,14 @@ export function collectManifestIssues(m: unknown): ValidationIssue[] {
       if (!workerJobType(w)) {
         issues.push({ path: `workers[${i}]`, message: "missing taskType/type" });
       }
-      if (!w || typeof w.handler !== "string" || w.handler.length === 0) {
-        issues.push({ path: `workers[${i}].handler`, message: "missing handler module path" });
+      // The schema allows a worker backed by either a `handler` file or an `llm`
+      // binding (oneOf). Require exactly one — don't force `handler`.
+      const hasHandler = typeof w?.handler === "string" && w.handler.length > 0;
+      const hasLlm = typeof w?.llm === "string" && w.llm.length > 0;
+      if (!hasHandler && !hasLlm) {
+        issues.push({ path: `workers[${i}]`, message: "worker requires a `handler` or `llm`" });
+      } else if (hasHandler && hasLlm) {
+        issues.push({ path: `workers[${i}]`, message: "worker declares both `handler` and `llm` (mutually exclusive)" });
       }
     });
   }
@@ -97,8 +103,10 @@ export function collectManifestIssues(m: unknown): ValidationIssue[] {
 
   if (man.types) {
     for (const [name, t] of Object.entries(man.types)) {
-      if (t?.fields && !t.table) {
-        issues.push({ path: `types.${name}.table`, message: "a type with fields must declare a table" });
+      // `table` is optional in the schema: a type may declare `fields` without a
+      // `table` (a transient / non-persisted domain type). Don't require it.
+      if (t && typeof t !== "object") {
+        issues.push({ path: `types.${name}`, message: "must be an object" });
       }
     }
   }

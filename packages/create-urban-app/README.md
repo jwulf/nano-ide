@@ -8,7 +8,7 @@
 ## Use
 
 ```bash
-npm create @nanobpm/urban-app my-app
+npm create urban-app my-app
 # or via the CLI:
 urban new my-app
 ```

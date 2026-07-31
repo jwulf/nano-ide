@@ -32,15 +32,23 @@ interface Flags {
 
 function parse(argv: string[]): Flags {
   const f: Flags = { root: ".", manifest: "nano.app.json", check: false, help: false, version: false, _: [] };
+  const need = (i: number, flag: string): string => {
+    const v = argv[i];
+    if (v === undefined || v.startsWith("-")) throw new Error(`flag ${flag} requires a value`);
+    return v;
+  };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "-h" || a === "--help") f.help = true;
     else if (a === "-v" || a === "--version") f.version = true;
     else if (a === "--check") f.check = true;
-    else if (a === "--root") f.root = argv[++i];
-    else if (a === "--manifest") f.manifest = argv[++i];
-    else if (a === "--port") f.port = Number(argv[++i]);
-    else if (a.startsWith("-")) throw new Error(`unknown flag: ${a}`);
+    else if (a === "--root") f.root = need(++i, a);
+    else if (a === "--manifest") f.manifest = need(++i, a);
+    else if (a === "--port") {
+      const n = Number(need(++i, a));
+      if (!Number.isFinite(n)) throw new Error(`flag --port requires a number`);
+      f.port = n;
+    } else if (a.startsWith("-")) throw new Error(`unknown flag: ${a}`);
     else f._.push(a);
   }
   return f;

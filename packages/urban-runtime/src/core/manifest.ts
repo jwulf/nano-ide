@@ -26,8 +26,10 @@ export interface WorkerDecl {
   /** Job/task type the worker subscribes to. Schema allows `taskType` or `type`. */
   taskType?: string;
   type?: string;
-  /** Path to the handler module, relative to the app root. */
-  handler: string;
+  /** Path to the handler module, relative to the app root. Mutually exclusive with `llm`. */
+  handler?: string;
+  /** Name of an `llm[]` binding used as the worker (LLM-as-worker). Mutually exclusive with `handler`. */
+  llm?: string;
 }
 
 export interface TriggerDecl {
