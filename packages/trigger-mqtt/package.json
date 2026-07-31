@@ -1,6 +1,6 @@
 {
   "name": "@nanobpm/nano-ide-trigger-mqtt",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MQTT trigger source pack for the Nano/Urban RAD console: subscribe to broker topics and drive process instances from messages (ADR 0025).",
   "license": "Apache-2.0",
   "type": "module",
