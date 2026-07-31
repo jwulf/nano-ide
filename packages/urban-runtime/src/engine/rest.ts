@@ -25,6 +25,15 @@ function normBase(u: string): string {
   return /\/v\d+$/.test(t) ? t : `${t}/v2`;
 }
 
+/** Coerce an engine response's process-instance key to a non-empty string, or
+ * throw — a missing key means a malformed/partial response, not a real instance. */
+export function requireProcessInstanceKey(key: string | number | null | undefined): string {
+  if (key == null || key === "") {
+    throw new Error("engine response missing processInstanceKey/key");
+  }
+  return String(key);
+}
+
 export class RestEngineClient implements EngineClient {
   private readonly base: string;
   private readonly token?: string;
@@ -92,7 +101,7 @@ export class RestEngineClient implements EngineClient {
         awaitCompletion: input.awaitCompletion ?? false,
       },
     );
-    return { processInstanceKey: String(r.processInstanceKey ?? r.key ?? ""), variables: r.variables };
+    return { processInstanceKey: requireProcessInstanceKey(r.processInstanceKey ?? r.key), variables: r.variables };
   }
 
   async publishMessage(input: {

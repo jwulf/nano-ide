@@ -10,7 +10,7 @@
 // imported lazily — so the runtime keeps a dependency-free core and REST-only default.
 
 import type { EngineClient, JobHandler, WorkerSubscription } from "../core/host.ts";
-import { RestEngineClient } from "./rest.ts";
+import { RestEngineClient, requireProcessInstanceKey } from "./rest.ts";
 
 /** The subset of the `@nanobpm/nano-sdk` client the adapter uses. */
 export interface NanoSdkClient {
@@ -99,7 +99,7 @@ export async function createNanoSdkEngineClient(
       const key =
         (body.processInstanceKey as string | number | undefined) ?? (body.key as string | number | undefined);
       return {
-        processInstanceKey: key != null ? String(key) : "",
+        processInstanceKey: requireProcessInstanceKey(key),
         variables: (body.variables as Record<string, unknown> | undefined) ?? undefined,
       };
     },

@@ -106,3 +106,19 @@ test("close tears down both the SDK client and the fallback", async () => {
   assert.equal(sdkClosed, 1);
   assert.ok(fallback.calls.includes("close"));
 });
+
+test("createInstance throws when the SDK response omits the instance key", async () => {
+  const fallback = recordingFallback();
+  const engine = await createNanoSdkEngineClient({
+    restAddress: "http://x/v2",
+    fallback,
+    createClient: () => ({
+      createProcessInstance: async () => ({ variables: { ok: true } }) as unknown as { processInstanceKey: number },
+    }),
+  });
+  assert.ok(engine);
+  await assert.rejects(
+    () => engine!.createInstance({ processDefinitionId: "p" }),
+    /missing processInstanceKey/,
+  );
+});
