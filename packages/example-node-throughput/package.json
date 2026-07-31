@@ -1,6 +1,6 @@
 {
   "name": "@nanobpm/nano-ide-example-node-throughput",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Distributable example app for the Nano RAD IDE: a Node/TypeScript throughput demo (async producer flood + JobWorker on @nanobpm/nano-sdk) that runs one code path against Camunda 8 (REST) or Nano (Falcon).",
   "license": "Apache-2.0",
   "keywords": [
@@ -23,6 +23,7 @@
   },
   "files": [
     "nano-ide.ext.json",
-    "app"
+    "app",
+    "README.md"
   ]
 }
