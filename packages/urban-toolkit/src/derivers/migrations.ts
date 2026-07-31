@@ -42,12 +42,23 @@ export function sqlType(t: string | undefined): string {
   }
 }
 
+/** A safe unquoted SQL identifier. We interpolate table/column names directly, so
+ * reject anything that isn't a plain identifier to prevent invalid SQL / injection. */
+const SQL_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+export function assertSqlIdent(kind: string, name: string): string {
+  if (!SQL_IDENT.test(name)) {
+    throw new Error(`invalid ${kind} "${name}": must match ${SQL_IDENT.source}`);
+  }
+  return name;
+}
+
 /** Build the CREATE TABLE statement for one type. */
 export function createTableSql(typeName: string, def: ToolkitType): string {
-  const table = def.table ?? typeName;
+  const table = assertSqlIdent("table name", def.table ?? typeName);
   const cols: string[] = ["  id INTEGER PRIMARY KEY AUTOINCREMENT"];
   const fields = def.fields ?? {};
   for (const [name, f] of Object.entries(fields)) {
+    assertSqlIdent("field name", name);
     const notNull = f.optional ? "" : " NOT NULL";
     cols.push(`  ${name} ${sqlType(f.type)}${notNull}`);
   }

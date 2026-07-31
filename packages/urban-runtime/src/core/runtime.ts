@@ -15,6 +15,18 @@ import { mountSurfaces } from "./modules/surfaces.ts";
 import { mountTriggers } from "./modules/triggers.ts";
 import { mountSecurity, type SecurityPolicy } from "./modules/security.ts";
 
+/** Resolve the HTTP port: explicit option, else $PORT, else 8090. Throws a clear
+ * error when $PORT is set but not a valid integer in 0..65535. */
+export function resolvePort(explicit: number | undefined, envPort: string | undefined): number {
+  if (explicit !== undefined) return explicit;
+  if (envPort === undefined || envPort === "") return 8090;
+  const n = Number(envPort);
+  if (!Number.isInteger(n) || n < 0 || n > 65535) {
+    throw new Error(`invalid PORT "${envPort}": expected an integer in 0..65535`);
+  }
+  return n;
+}
+
 export interface MountFlags {
   deploy?: boolean;
   data?: boolean;
@@ -81,7 +93,7 @@ export async function createUrbanApp(opts: CreateUrbanAppOptions): Promise<Urban
   let started = false;
   let httpPort: number | undefined;
 
-  const port = opts.port ?? Number(host.env("PORT") ?? "8090");
+  const port = resolvePort(opts.port, host.env("PORT"));
 
   const app: UrbanApp = {
     manifest,

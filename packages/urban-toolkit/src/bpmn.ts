@@ -43,9 +43,19 @@ export function flowToBpmn(flow: CodeFlow): string {
   const name = flow.name ?? flow.id;
   const gap = 64;
 
-  // Node ids in visual order.
+  // Node ids in visual order. Guard the reserved boundary ids and duplicates so
+  // the generated BPMN never contains colliding element ids.
   const startId = "Start";
   const endId = "End";
+  const seen = new Set<string>();
+  for (const s of flow.steps) {
+    if (!s.id) throw new Error(`flow "${flow.id}" has a step with no id`);
+    if (s.id === startId || s.id === endId) {
+      throw new Error(`flow "${flow.id}" step id "${s.id}" collides with a reserved boundary id`);
+    }
+    if (seen.has(s.id)) throw new Error(`flow "${flow.id}" has a duplicate step id "${s.id}"`);
+    seen.add(s.id);
+  }
   const nodeIds = [startId, ...flow.steps.map((s) => s.id), endId];
 
   // Layout on a single row; centre line y = 118.

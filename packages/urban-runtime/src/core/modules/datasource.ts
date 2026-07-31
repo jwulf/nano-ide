@@ -12,6 +12,16 @@ function sqlitePathFromUrl(url: string): string {
   return url.replace(/^(file|sqlite):(\/\/)?/, "");
 }
 
+/** A safe unquoted SQL identifier. Table/column names are interpolated directly into SQL,
+ * so reject anything that isn't a plain identifier to prevent invalid SQL / injection. */
+const SQL_IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
+function assertSqlIdent(kind: string, name: string): string {
+  if (!SQL_IDENT.test(name)) {
+    throw new Error(`invalid ${kind} "${name}": must match ${SQL_IDENT.source}`);
+  }
+  return name;
+}
+
 function parentDir(path: string): string {
   const i = path.lastIndexOf("/");
   return i > 0 ? path.slice(0, i) : "";
@@ -31,7 +41,7 @@ export class TypeRepo {
 
   private table(): string {
     if (!this.def.table) throw new Error(`type "${this.typeName}" has no table`);
-    return this.def.table;
+    return assertSqlIdent("table name", this.def.table);
   }
 
   private assertFields(row: Record<string, unknown>): void {
@@ -43,6 +53,7 @@ export class TypeRepo {
           `field "${key}" is not declared on type "${this.typeName}" (guards schema drift)`,
         );
       }
+      assertSqlIdent("field name", key);
     }
   }
 
@@ -166,8 +177,12 @@ async function provisionSqlite(
   const abs = dbPath.startsWith("/") ? dbPath : `${ctx.root.replace(/\/+$/, "")}/${dbPath}`;
   const dir = parentDir(abs);
   if (dir && !(await ctx.host.exists(dir))) {
-    // openSqlite is expected to create the file; the directory must exist first.
-    ctx.host.log("warn", `datasource: directory for "${name}" does not exist`, { dir });
+    // The host API doesn't expose mkdir and openSqlite won't create parent dirs,
+    // so fail fast with a clear, actionable message instead of a low-level
+    // "cannot open" error.
+    throw new Error(
+      `datasource "${name}": directory "${dir}" does not exist — create it before running (the SQLite file cannot be opened otherwise)`,
+    );
   }
   const db = ctx.host.openSqlite(abs);
   db.exec("PRAGMA journal_mode=WAL");

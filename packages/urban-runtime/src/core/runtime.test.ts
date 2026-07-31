@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createNodeHost } from "../adapters/node.ts";
-import { createUrbanApp } from "./runtime.ts";
+import { createUrbanApp, resolvePort } from "./runtime.ts";
 import type {
   EngineClient,
   EngineJob,
@@ -199,4 +199,13 @@ test("task-inbox /api/complete returns 400 on a malformed JSON body", async () =
     await app.stop();
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test("resolvePort prefers explicit, then $PORT, then 8090; rejects bad $PORT", () => {
+  assert.equal(resolvePort(3000, "9999"), 3000);
+  assert.equal(resolvePort(undefined, "9999"), 9999);
+  assert.equal(resolvePort(undefined, undefined), 8090);
+  assert.equal(resolvePort(undefined, ""), 8090);
+  assert.throws(() => resolvePort(undefined, "abc"), /invalid PORT/);
+  assert.throws(() => resolvePort(undefined, "70000"), /invalid PORT/);
 });

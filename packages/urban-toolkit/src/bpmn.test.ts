@@ -36,6 +36,24 @@ test("flowToBpmn rejects a flow with no steps", () => {
   assert.throws(() => flowToBpmn({ id: "empty", steps: [] }), /no steps/);
 });
 
+test("flowToBpmn rejects a step id that collides with a reserved boundary id", () => {
+  assert.throws(
+    () => flowToBpmn({ id: "p", steps: [{ id: "Start", taskType: "t" }] }),
+    /reserved boundary id/,
+  );
+  assert.throws(
+    () => flowToBpmn({ id: "p", steps: [{ id: "End", taskType: "t" }] }),
+    /reserved boundary id/,
+  );
+});
+
+test("flowToBpmn rejects duplicate step ids", () => {
+  assert.throws(
+    () => flowToBpmn({ id: "p", steps: [{ id: "S", taskType: "t" }, { id: "S", taskType: "u" }] }),
+    /duplicate step id/,
+  );
+});
+
 test("deriveModelFromFlow writes under the generated processes dir", () => {
   const arts = deriveModelFromFlow(flow);
   assert.equal(arts.length, 1);
