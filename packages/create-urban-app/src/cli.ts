@@ -64,17 +64,25 @@ export async function main(argv: string[]): Promise<number> {
 }
 
 const meta = import.meta as unknown as { main?: boolean; url: string };
-const argv0 = (globalThis as { process?: { argv?: string[] } }).process?.argv?.[1];
+const g = globalThis as {
+  process?: { argv?: string[]; exit?: (c: number) => void };
+  Deno?: { args?: string[] };
+};
+const argv0 = g.process?.argv?.[1];
 const nodeMain = argv0 ? meta.url === new URL(`file://${argv0}`).href : false;
 const isEntry = meta.main === true || nodeMain;
 
 if (isEntry) {
-  const argv = (globalThis as { process?: { argv?: string[] } }).process?.argv?.slice(2) ?? [];
+  // Node passes args via process.argv (slice off exec+script); Deno (run directly)
+  // exposes them on Deno.args. Prefer whichever actually carries args.
+  const fromNode = g.process?.argv?.slice(2);
+  const fromDeno = g.Deno?.args;
+  const argv = (fromNode && fromNode.length ? fromNode : fromDeno) ?? fromNode ?? [];
   main(argv).then(
-    (code) => (globalThis as { process?: { exit?: (c: number) => void } }).process?.exit?.(code),
+    (code) => g.process?.exit?.(code),
     (err) => {
-      console.error(String(err?.message ?? err));
-      (globalThis as { process?: { exit?: (c: number) => void } }).process?.exit?.(1);
+      console.error(String((err as Error)?.message ?? err));
+      g.process?.exit?.(1);
     },
   );
 }

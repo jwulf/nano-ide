@@ -19,12 +19,13 @@ import { runFromEnv } from "@nanobpm/urban-runtime";
 await runFromEnv(); // reads ./nano.app.json + env, starts the app
 ```
 
-Or point it at a manifest and pick a transport explicitly:
+Or load a manifest via the host and pick a transport explicitly:
 
 ```ts
-import { loadManifest, validateManifest, RestEngineClient } from "@nanobpm/urban-runtime";
+import { selectHost, loadManifest, validateManifest, RestEngineClient } from "@nanobpm/urban-runtime";
 
-const manifest = validateManifest(await loadManifest("./nano.app.json"));
+const host = selectHost();
+const manifest = validateManifest(await loadManifest(host, "./nano.app.json"));
 const engine = new RestEngineClient({ baseUrl: process.env.CAMUNDA_REST_ADDRESS! });
 ```
 

@@ -63,10 +63,12 @@ export function mountSurfaces(ctx: RuntimeContext, app: AppApi): SurfacesHandle 
       path: `${base}/api/complete`,
       source: "surface:taskInbox",
       handler: async (req) => {
-        const body = JSON.parse((await req.text()) || "{}") as {
-          userTaskKey?: string;
-          variables?: Record<string, unknown>;
-        };
+        let body: { userTaskKey?: string; variables?: Record<string, unknown> };
+        try {
+          body = JSON.parse((await req.text()) || "{}");
+        } catch {
+          return json({ error: "invalid JSON body" }, 400);
+        }
         if (!body.userTaskKey) return json({ error: "userTaskKey required" }, 400);
         await app.engine.completeUserTask(body.userTaskKey, body.variables);
         return json({ ok: true });
