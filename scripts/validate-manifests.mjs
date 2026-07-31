@@ -3,6 +3,7 @@
 // server/src/console/extensions.rs. Run: node scripts/validate-manifests.mjs
 import { readdirSync, existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { checkTours } from "./lib/tour-validation.mjs";
 
 const KINDS = new Set(["lang", "app", "example", "theme", "trigger"]);
 // Console design-token vocabulary (nanobpmn console/src/theme/tokens.css);
@@ -13,56 +14,8 @@ const THEME_TOKEN_KEYS = new Set([
   "onAccent", "ok", "warn", "danger", "info",
 ]);
 const pkgRoot = new URL("../packages/", import.meta.url).pathname;
-// Guided-journey vocabulary (ADR 0049); mirror of TourGate / TourStepKind in
-// packages/ext-types and TourGate / TourStepKind in the host's extensions.rs.
-const TOUR_GATES = new Set(["hasJsRuntime", "hasProject", "hasCluster", "hasTraces"]);
-const TOUR_STEP_KINDS = new Set(["spotlight", "note", "handoff"]);
-const TOUR_PROFILES = new Set(["studio", "observe"]);
-// Gates that can resolve to "repair" rather than just skipping a step. A step
-// gated on one of these without a `repair` is silently dropped by the console —
-// which is the honest degradation, but it costs the user the very hint they
-// needed, so make the author supply one.
-const TOUR_REPAIRABLE_GATES = new Set(["hasJsRuntime", "hasCluster"]);
 let errors = 0;
 const fail = (m) => { console.error("  ✗ " + m); errors++; };
-
-/** Validate one tour step. `nested` marks a `repair` step: those do not nest. */
-function checkTourStep(s, at, fail, stepIds, nested) {
-  const where = `${at} step ${s?.id ?? "(no id)"}`;
-  if (!s?.id) fail(`${at}: step needs an id`);
-  else if (stepIds.has(s.id)) fail(`${at}: duplicate step id: ${s.id}`);
-  else stepIds.add(s.id);
-  if (!s?.title) fail(`${where}: needs a title`);
-  if (!s?.body) fail(`${where}: needs a body`);
-  const kind = s?.kind ?? "spotlight";
-  if (!TOUR_STEP_KINDS.has(kind)) fail(`${where}: bad kind: ${s.kind}`);
-  if (s?.route !== undefined && !String(s.route).startsWith("/")) {
-    fail(`${where}: route must be an absolute console path`);
-  }
-  if (kind === "spotlight" && !s?.selector) {
-    fail(`${where}: a spotlight step needs a selector`);
-  }
-  if (kind === "handoff" && !s?.copy) {
-    fail(`${where}: a handoff step needs something to copy`);
-  }
-  if (kind !== "handoff" && (s?.copy || s?.verifyPollingJobType)) {
-    fail(`${where}: copy/verifyPollingJobType only apply to a handoff step`);
-  }
-  if (kind !== "spotlight" && s?.selector) {
-    fail(`${where}: selector only applies to a spotlight step`);
-  }
-  if (s?.precondition !== undefined) {
-    if (!TOUR_GATES.has(s.precondition)) {
-      fail(`${where}: unknown precondition gate: ${s.precondition}`);
-    } else if (TOUR_REPAIRABLE_GATES.has(s.precondition) && !s.repair) {
-      fail(`${where}: gated on ${s.precondition}, which can demand a repair step, but none is authored`);
-    }
-  }
-  if (s?.repair !== undefined) {
-    if (nested) fail(`${where}: a repair step cannot itself have a repair`);
-    else checkTourStep(s.repair, at, fail, stepIds, true);
-  }
-}
 
 for (const dir of readdirSync(pkgRoot)) {
   const base = join(pkgRoot, dir);
@@ -138,40 +91,9 @@ for (const dir of readdirSync(pkgRoot)) {
   // adapter applies at runtime, in the same spirit as THEME_TOKEN_KEYS above. The
   // console must stay defensive because packs are third-party, but a pack author
   // should learn about a malformed tour at publish time, not from a step silently
-  // vanishing in someone else's browser.
-  if (m.tours !== undefined) {
-    if (!Array.isArray(m.tours)) fail("tours must be an array");
-    const tourIds = new Set();
-    for (const t of Array.isArray(m.tours) ? m.tours : []) {
-      const at = `tour ${t?.id ?? "(no id)"}`;
-      if (!t?.id) fail("tour needs an id");
-      else if (tourIds.has(t.id)) fail(`duplicate tour id: ${t.id}`);
-      else tourIds.add(t.id);
-      if (!t?.title) fail(`${at}: needs a title`);
-      // The picker renders blurb on the card, so an empty one ships a blank card.
-      if (!t?.blurb) fail(`${at}: needs a blurb (the journey-picker card line)`);
-      for (const p of t?.profiles ?? []) {
-        if (!TOUR_PROFILES.has(p)) fail(`${at}: bad profile: ${p}`);
-      }
-      for (const g of t?.preconditions ?? []) {
-        if (!TOUR_GATES.has(g)) fail(`${at}: unknown precondition gate: ${g}`);
-      }
-      if (t?.successWhen !== undefined && !TOUR_GATES.has(t.successWhen)) {
-        fail(`${at}: unknown successWhen gate: ${t.successWhen}`);
-      }
-      if (!Array.isArray(t?.steps) || t.steps.length === 0) {
-        fail(`${at}: needs a non-empty steps array`);
-        continue;
-      }
-      // ADR 0049 caps a journey at five steps: one needing a detour is split, not
-      // padded.
-      if (t.steps.length > 5) fail(`${at}: ${t.steps.length} steps — the cap is 5`);
-      const stepIds = new Set();
-      for (const s of t.steps) {
-        checkTourStep(s, at, fail, stepIds, false);
-      }
-    }
-  }
+  // vanishing in someone else's browser. Rules live in ./lib/tour-validation.mjs
+  // so this script and its unit tests share one source of truth.
+  checkTours(m.tours, fail);
 
   // Component element-templates (ADR 0033 §4) — mirror the host's
   // `ExtManifest.components: Vec<String>` in extensions.rs. Each is a
