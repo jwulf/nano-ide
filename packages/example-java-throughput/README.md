@@ -3,22 +3,25 @@
 A distributable **Java + Maven throughput demo** for the [Nano RAD IDE](https://github.com/Magikcraft/nano-bpm).
 
 A producer plus a `JobWorker` that maxes out create / complete throughput. The
-**same code** runs against **Camunda 8 (REST or gRPC)** or **Nano (Falcon)** —
-you pick the transport by swapping **one Maven dependency** (profile).
+**same code** runs against **Camunda 8** or **Nano** over four transport combos.
+A Maven **profile** picks the client shim (`-Pstock` vs `-Pfalcon`) and a **run
+argument** picks the wire, so one code path covers all four:
 
 ## What it shows
 
-- One worker, three transports, selected at run time via **run configurations**:
-  - **Camunda 8 · REST** (`-Pstock`, default)
-  - **Camunda 8 · gRPC** (`-Pstock`)
-  - **Nano · Falcon** (`-Pfalcon`)
+- One worker, **four transport combos**, selected via **run configurations**
+  (profile + run arg):
+  - **Camunda 8 · REST** — `-Pstock` (default)
+  - **Camunda 8 · gRPC** — `-Pstock`, arg `grpc`
+  - **Nano · REST** — `-Pfalcon`, arg `rest`
+  - **Nano · Falcon** — `-Pfalcon` (default)
 - Where the **command-stream / Falcon** transport pulls ahead of REST and gRPC.
 
 ## What it contributes
 
 - **Example template (`java-throughput`):** the full runnable Maven app under
   `app/`, installed as a project from the console.
-- **Toolchain (Maven):** `mvn package` / `mvn compile exec:java`, with the three
+- **Toolchain (Maven):** `mvn package` / `mvn compile exec:java`, with the four
   run configurations above.
 
 ## Requirements
