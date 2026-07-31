@@ -1,6 +1,6 @@
 {
   "name": "@nanobpm/nano-ide-app-embedded-graalvm-native",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "GraalVM Native Image variant of the embedded Nano JVM template: same Bernd-in-JVM code, compiled to a single standalone binary (~30 MB, no JDK required at runtime).",
   "license": "Apache-2.0",
   "keywords": [
@@ -22,6 +22,7 @@
   },
   "files": [
     "nano-ide.ext.json",
-    "templates"
+    "templates",
+    "README.md"
   ]
 }

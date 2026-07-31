@@ -1,6 +1,6 @@
 {
   "name": "@nanobpm/nano-ide-app-workflow",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "Code-first durable workflow app pack for the Nano RAD IDE: @nanobpm/workflow starters (imperative replay + declarative human-in-the-loop signal) whose executable BPMN model is derived from ordinary async code (ADR 0044/0045).",
   "license": "Apache-2.0",
   "keywords": ["nano-ide-ext", "nano-ide-app", "nanobpm"],
@@ -10,5 +10,5 @@
     "url": "https://github.com/jwulf/nano-ide.git",
     "directory": "packages/app-workflow"
   },
-  "files": ["nano-ide.ext.json", "templates"]
+  "files": ["nano-ide.ext.json", "templates", "README.md"]
 }

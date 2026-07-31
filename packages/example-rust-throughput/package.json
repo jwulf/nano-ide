@@ -1,6 +1,6 @@
 {
   "name": "@nanobpm/nano-ide-example-rust-throughput",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Distributable example app for the Nano RAD IDE: a native Rust pipelined command-stream throughput demo.",
   "license": "Apache-2.0",
   "keywords": [
@@ -19,6 +19,7 @@
   },
   "files": [
     "nano-ide.ext.json",
-    "app"
+    "app",
+    "README.md"
   ]
 }
