@@ -153,6 +153,14 @@ export async function createUrbanApp(opts: CreateUrbanAppOptions): Promise<Urban
       for (const m of mounted) await m.stop();
       if (data) data.closeAll();
       await engine.close();
+      // Reset internal state so a subsequent start() begins clean (no stale
+      // module handles re-stopped, no stale inspect() data).
+      mounted.length = 0;
+      for (const k of Object.keys(describe)) delete describe[k];
+      server = undefined;
+      httpPort = undefined;
+      data = undefined;
+      security = undefined;
       started = false;
     },
 

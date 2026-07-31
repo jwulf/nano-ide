@@ -36,9 +36,14 @@ console, with a **drift gate**.
 import { runGen, createNodeGenIO } from "@nanobpm/urban-toolkit";
 
 const io = createNodeGenIO();
-await runGen({ root: ".", io });               // write nano-generated/
-await runGen({ root: ".", io, check: true });  // drift gate — throws on mismatch
+await runGen({ root: ".", io });                          // write nano-generated/
+const { drift } = await runGen({ root: ".", io, check: true }); // drift gate
+if (drift.length) throw new Error(`stale: ${drift.join(", ")}`);
 ```
+
+`runGen({ check: true })` does not write; it returns the list of paths that
+differ from disk in `GenResult.drift` (empty ⇒ up to date). The `urban gen
+--check` command wraps this and exits non-zero on drift.
 
 Or call a deriver directly (pure, no IO) and inspect the artifacts.
 

@@ -35,7 +35,7 @@ Then:
 cd my-app
 urban gen && urban run    # Node
 # or
-deno task run             # Deno
+deno task start           # Deno (tasks: check, start, dev, deploy)
 ```
 
 ## What it is not

@@ -60,6 +60,8 @@ function finalName(name: string): string {
 
 export async function scaffold(opts: ScaffoldOptions): Promise<ScaffoldResult> {
   const id = opts.id ?? slugify(opts.name);
+  const preset = opts.preset ?? "full";
+  const headless = preset === "headless";
   const vars = { APP_ID: id, APP_NAME: opts.name.replace(/"/g, '\\"') };
   const root = templateRoot();
   const files = await listFiles(root);
@@ -70,13 +72,30 @@ export async function scaffold(opts: ScaffoldOptions): Promise<ScaffoldResult> {
     const rel = relative(root, src);
     const parts = rel.split(/[/\\]/).map(finalName);
     const destRel = parts.join("/");
+    // headless = workers only: no human surfaces, so skip the form assets.
+    if (headless && destRel.startsWith("forms/")) continue;
     const dest = join(opts.dir, destRel);
     await mkdir(dirname(dest), { recursive: true });
     const raw = await readFile(src, "utf8");
-    await writeFile(dest, substitute(raw, vars));
+    let content = substitute(raw, vars);
+    if (headless && destRel === "nano.app.json") content = toHeadlessManifest(content);
+    await writeFile(dest, content);
     written.push(destRel);
   }
   return { dir: opts.dir, id, files: written.sort() };
+}
+
+/** headless preset: drop the human-facing surfaces, triggers and form models. */
+function toHeadlessManifest(json: string): string {
+  const m = JSON.parse(json) as {
+    surfaces?: unknown;
+    triggers?: unknown;
+    models?: { forms?: unknown };
+  };
+  delete m.surfaces;
+  delete m.triggers;
+  if (m.models) delete m.models.forms;
+  return JSON.stringify(m, null, 2) + "\n";
 }
 
 // Re-export for callers that want the template path (e.g. tests).

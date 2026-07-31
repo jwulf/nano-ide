@@ -152,3 +152,51 @@ test("runtime materializes the manifest end-to-end against a fake engine", async
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("stop() resets state so the app can be cleanly restarted", async () => {
+  const dir = await makeFixture();
+  const host = createNodeHost({ cwd: dir, log: () => {} });
+  const engine = new FakeEngine();
+  const app = await createUrbanApp({ host, engine, root: ".", port: 0 });
+
+  try {
+    await app.start();
+    const firstPort = app.httpPort!;
+    assert.ok(firstPort > 0);
+    await app.stop();
+
+    // after stop, inspect() no longer carries stale describe data / port
+    const stopped = app.inspect() as Record<string, unknown>;
+    assert.equal(stopped.httpPort, undefined);
+    assert.equal(stopped.workers, undefined);
+
+    // and a fresh start works (would throw "already started" if state leaked)
+    await app.start();
+    assert.ok(app.httpPort! > 0);
+    // deploy ran again on the clean start, not doubled from the first run
+    assert.equal(engine.deployed, 6);
+  } finally {
+    await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("task-inbox /api/complete returns 400 on a malformed JSON body", async () => {
+  const dir = await makeFixture();
+  const host = createNodeHost({ cwd: dir, log: () => {} });
+  const engine = new FakeEngine();
+  const app = await createUrbanApp({ host, engine, root: ".", port: 0 });
+  await app.start();
+  try {
+    const res = await fetch(`http://localhost:${app.httpPort!}/tasks/api/complete`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{not json",
+    });
+    assert.equal(res.status, 400);
+    assert.equal(engine.completedTasks.length, 0);
+  } finally {
+    await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
