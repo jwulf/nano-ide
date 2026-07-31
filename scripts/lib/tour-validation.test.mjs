@@ -166,6 +166,81 @@ test("a tour with a non-string title/blurb is rejected", () => {
   assert.ok(errs.some((e) => e.includes("needs a blurb")));
 });
 
+// --- Full handoff/positioning surface: copyLabel, side, align, optional ------
+
+test("a handoff step with a non-string copyLabel is rejected", () => {
+  const errs = collect((fail) =>
+    checkTourStep(
+      {
+        id: "s",
+        title: "t",
+        body: "b",
+        kind: "handoff",
+        copy: "run it",
+        copyLabel: 123,
+      },
+      "tour x",
+      fail,
+      new Set(),
+      false,
+    ),
+  );
+  assert.ok(errs.some((e) => e.includes("copyLabel must be a non-empty string")));
+});
+
+test("copyLabel on a non-handoff step trips the 'only on handoff' rule", () => {
+  const errs = collect((fail) =>
+    checkTourStep(
+      { id: "s", title: "t", body: "b", kind: "note", copyLabel: "Go" },
+      "tour x",
+      fail,
+      new Set(),
+      false,
+    ),
+  );
+  assert.ok(errs.some((e) => e.includes("only apply to a handoff step")));
+});
+
+test("an out-of-vocabulary side/align is rejected", () => {
+  const errs = collect((fail) =>
+    checkTourStep(
+      { id: "s", title: "t", body: "b", kind: "note", side: "middle", align: "justify" },
+      "tour x",
+      fail,
+      new Set(),
+      false,
+    ),
+  );
+  assert.ok(errs.some((e) => e.includes("bad side: middle")));
+  assert.ok(errs.some((e) => e.includes("bad align: justify")));
+});
+
+test("valid side/align and a boolean optional pass", () => {
+  const errs = collect((fail) =>
+    checkTourStep(
+      { id: "s", title: "t", body: "b", kind: "note", side: "top", align: "center", optional: true },
+      "tour x",
+      fail,
+      new Set(),
+      false,
+    ),
+  );
+  assert.deepEqual(errs, []);
+});
+
+test("a non-boolean optional is rejected", () => {
+  const errs = collect((fail) =>
+    checkTourStep(
+      { id: "s", title: "t", body: "b", kind: "note", optional: "yes" },
+      "tour x",
+      fail,
+      new Set(),
+      false,
+    ),
+  );
+  assert.ok(errs.some((e) => e.includes("optional must be a boolean")));
+});
+
 // --- Defect class 2: optional arrays must not crash the validator ------------
 
 test("profiles as a non-array reports a structured error instead of throwing", () => {

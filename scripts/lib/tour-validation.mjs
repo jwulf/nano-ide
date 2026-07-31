@@ -17,6 +17,10 @@ export const TOUR_GATES = new Set([
 ]);
 export const TOUR_STEP_KINDS = new Set(["spotlight", "note", "handoff"]);
 export const TOUR_PROFILES = new Set(["studio", "observe"]);
+// Popover positioning vocabularies; mirror of the `side`/`align` unions in
+// packages/ext-types TourStepSpec and the host's extensions.rs.
+export const TOUR_STEP_SIDES = new Set(["top", "right", "bottom", "left"]);
+export const TOUR_STEP_ALIGNS = new Set(["start", "center", "end"]);
 // Gates that can resolve to "repair" rather than just skipping a step. A step
 // gated on one of these without a `repair` is silently dropped by the console —
 // which is the honest degradation, but it costs the user the very hint they
@@ -61,9 +65,13 @@ export function checkTourStep(s, at, fail, stepIds, nested) {
   }
   if (
     kind !== "handoff" &&
-    (!isMissing(s?.copy) || !isMissing(s?.verifyPollingJobType))
+    (!isMissing(s?.copy) ||
+      !isMissing(s?.copyLabel) ||
+      !isMissing(s?.verifyPollingJobType))
   ) {
-    fail(`${where}: copy/verifyPollingJobType only apply to a handoff step`);
+    fail(
+      `${where}: copy/copyLabel/verifyPollingJobType only apply to a handoff step`,
+    );
   }
   if (kind !== "spotlight" && !isMissing(s?.selector)) {
     fail(`${where}: selector only applies to a spotlight step`);
@@ -76,6 +84,23 @@ export function checkTourStep(s, at, fail, stepIds, nested) {
     badString(s?.verifyPollingJobType)
   ) {
     fail(`${where}: verifyPollingJobType must be a non-empty string`);
+  }
+  // copyLabel is the handoff button's label; optional, but a non-empty string
+  // when present (an empty label renders a blank button).
+  if (kind === "handoff" && !isMissing(s?.copyLabel) && badString(s?.copyLabel)) {
+    fail(`${where}: copyLabel must be a non-empty string`);
+  }
+  // Popover positioning and the advisory `optional` flag: validate the host's
+  // vocabulary/type when present so a typo (e.g. side: "middle") fails here
+  // rather than being silently dropped or rejected by the host's serde later.
+  if (!isMissing(s?.side) && !TOUR_STEP_SIDES.has(s.side)) {
+    fail(`${where}: bad side: ${s.side}`);
+  }
+  if (!isMissing(s?.align) && !TOUR_STEP_ALIGNS.has(s.align)) {
+    fail(`${where}: bad align: ${s.align}`);
+  }
+  if (!isMissing(s?.optional) && typeof s.optional !== "boolean") {
+    fail(`${where}: optional must be a boolean`);
   }
   if (s?.precondition !== undefined) {
     if (!TOUR_GATES.has(s.precondition)) {
