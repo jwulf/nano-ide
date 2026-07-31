@@ -40,7 +40,10 @@ export async function runFromEnv(opts: RunOptions = {}): Promise<UrbanApp> {
   const app = await createUrbanApp({
     host,
     engine,
-    root: opts.root ?? ".",
+    // The host is anchored at opts.root (cwd), so its APIs are already
+    // root-relative; passing opts.root here as well would double-prefix every
+    // path (e.g. "<root>/<root>/nano.app.json"). Keep root "." for the app.
+    root: ".",
     manifest: opts.manifest,
     manifestPath: opts.manifestPath,
     port: opts.port,
@@ -54,14 +57,21 @@ export async function runFromEnv(opts: RunOptions = {}): Promise<UrbanApp> {
 
 function installSignalHandlers(stop: () => Promise<void>): void {
   let stopping = false;
-  const onSignal = async () => {
+  const onSignal = () => {
     if (stopping) return;
     stopping = true;
-    try {
-      await stop();
-    } finally {
-      // Let the process exit naturally once resources are released.
-    }
+    // Neither Deno.addSignalListener nor process.on awaits the callback, so a
+    // rejection from stop() would surface as an unhandled rejection during
+    // shutdown. Register a non-async listener and swallow/log any rejection.
+    Promise.resolve()
+      .then(stop)
+      .catch((err) => {
+        try {
+          console.error("error during shutdown:", err);
+        } catch {
+          /* ignore logging failures during teardown */
+        }
+      });
   };
   const g = globalThis as {
     Deno?: { addSignalListener(sig: string, cb: () => void): void };

@@ -46,8 +46,11 @@ function parse(argv: string[]): Flags {
     else if (a === "--root") f.root = need(++i, a);
     else if (a === "--manifest") f.manifest = need(++i, a);
     else if (a === "--port") {
-      const n = Number(need(++i, a));
-      if (!Number.isFinite(n)) throw new Error(`flag --port requires a number`);
+      const raw = need(++i, a);
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < 0 || n > 65535) {
+        throw new Error(`flag --port requires an integer in 0..65535 (got "${raw}")`);
+      }
       f.port = n;
     } else if (a.startsWith("-")) throw new Error(`unknown flag: ${a}`);
     else f._.push(a);
@@ -75,13 +78,11 @@ Global flags:
 Engine address: $CAMUNDA_REST_ADDRESS (default http://localhost:8080/v2).
 `;
 
-function manifestPath(f: Flags): string {
-  return `${f.root.replace(/\/+$/, "")}/${f.manifest}`;
-}
-
 async function cmdCheck(f: Flags): Promise<number> {
+  // The host is anchored at f.root, so manifest paths are already root-relative —
+  // pass the bare manifest filename (prefixing root again would double it).
   const host = selectHost({ cwd: f.root });
-  const manifest = await loadManifest(host, manifestPath(f));
+  const manifest = await loadManifest(host, f.manifest);
   const issues = collectManifestIssues(manifest);
   if (issues.length === 0) {
     console.log(`✔ ${manifest.name ?? manifest.id} — manifest is valid`);

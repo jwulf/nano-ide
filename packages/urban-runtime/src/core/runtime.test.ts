@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createNodeHost } from "../adapters/node.ts";
 import { createUrbanApp, resolvePort } from "./runtime.ts";
+import { runFromEnv } from "../run.ts";
 import type {
   EngineClient,
   EngineJob,
@@ -208,4 +209,20 @@ test("resolvePort prefers explicit, then $PORT, then 8090; rejects bad $PORT", (
   assert.equal(resolvePort(undefined, ""), 8090);
   assert.throws(() => resolvePort(undefined, "abc"), /invalid PORT/);
   assert.throws(() => resolvePort(undefined, "70000"), /invalid PORT/);
+});
+
+test("runFromEnv anchors the host at a non-'.' root without double-prefixing paths", async () => {
+  const dir = await makeFixture();
+  const engine = new FakeEngine();
+  // No host passed → runFromEnv selects a host anchored at `dir`. The regression
+  // guarded here: it must NOT also prefix `dir` inside createUrbanApp (which
+  // would look for "<dir>/<dir>/nano.app.json" and fail).
+  const app = await runFromEnv({ root: dir, engine, port: 0, handleSignals: false });
+  try {
+    assert.equal(app.manifest.id, "fixture-app");
+    assert.equal(engine.deployed, 3, "models deployed from the correct root");
+  } finally {
+    await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
 });
