@@ -85,6 +85,54 @@ for (const dir of readdirSync(pkgRoot)) {
       }
     }
   }
+
+  // Component element-templates (ADR 0033 §4) — mirror the host's
+  // `ExtManifest.components: Vec<String>` in extensions.rs. Each is a
+  // pack-relative element-template JSON file that must exist and parse.
+  const componentTypes = new Set();
+  if (m.components !== undefined) {
+    if (!Array.isArray(m.components)) fail("components must be an array of pack-relative paths");
+    for (const rel of Array.isArray(m.components) ? m.components : []) {
+      if (typeof rel !== "string" || !rel.trim() || rel.startsWith("/") || rel.includes("..")) {
+        fail(`component must be a pack-relative path: ${JSON.stringify(rel)}`);
+        continue;
+      }
+      const cp = join(base, rel);
+      if (!existsSync(cp)) { fail(`component template missing: ${rel}`); continue; }
+      let tmpls;
+      try { tmpls = JSON.parse(readFileSync(cp, "utf8")); }
+      catch (e) { fail(`component ${rel}: invalid JSON: ${e.message}`); continue; }
+      for (const t of Array.isArray(tmpls) ? tmpls : [tmpls]) {
+        if (!t?.id || !t?.name) fail(`component ${rel}: element template needs id+name`);
+        const td = (t?.properties ?? []).find((p) => p?.binding?.type === "zeebe:taskDefinition:type");
+        if (td?.value) componentTypes.add(td.value);
+      }
+    }
+  }
+
+  // Workers (ADR 0050, amending ADR 0033 §4) — the outbound edge. Each declares
+  // a job `type` and a pack-relative `entry`; the `type` must back a component
+  // template's `zeebe:taskDefinition:type` (the design→runtime seam), so a
+  // dragged task always resolves to a running worker (no drift surface).
+  if (m.workers !== undefined) {
+    if (!Array.isArray(m.workers)) fail("workers must be an array");
+    for (const w of Array.isArray(m.workers) ? m.workers : []) {
+      if (typeof w?.type !== "string" || !w.type.trim()) fail(`worker needs a type: ${JSON.stringify(w)}`);
+      if (typeof w?.entry !== "string" || !w.entry.trim() || w.entry.startsWith("/") || w.entry.includes("..")) {
+        fail(`worker ${w?.type}: entry must be a pack-relative path`);
+      } else if (!existsSync(join(base, w.entry))) {
+        fail(`worker ${w.type}: entry file missing: ${w.entry}`);
+      }
+      if (componentTypes.size > 0 && typeof w?.type === "string" && !componentTypes.has(w.type)) {
+        fail(`worker "${w.type}" has no component template with a matching zeebe:taskDefinition:type`);
+      }
+      for (const f of Array.isArray(w?.configFields) ? w.configFields : []) {
+        if (typeof f?.key !== "string" || !f.key.trim() || typeof f?.label !== "string" || !f.label.trim()) {
+          fail(`worker ${w.type}: configField needs non-empty key+label: ${JSON.stringify(f)}`);
+        }
+      }
+    }
+  }
 }
 if (errors > 0) {
   console.error(`\n${errors} manifest validation error${errors === 1 ? "" : "s"}`);

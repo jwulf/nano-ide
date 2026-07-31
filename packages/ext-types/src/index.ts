@@ -256,6 +256,46 @@ export interface TriggerSourceSpec {
   driver?: string;
 }
 
+/**
+ * One worker a `kind: "connector"` (or, transitionally, `kind: "trigger"`) pack
+ * contributes — the **outbound/compute** edge of the I/O surface (ADR 0050,
+ * amending ADR 0033 §4). Where {@link TriggerSourceSpec} is the *inbound* edge
+ * (external event → engine), a worker is the *outbound* edge (engine job →
+ * external effect, e.g. "post a Slack message").
+ *
+ * The `type` is the design→runtime **seam**: it must equal the
+ * `zeebe:taskDefinition:type` of the element template (a {@link ExtManifest.components}
+ * entry) that this worker backs, so a task dragged from the palette resolves to
+ * a running worker (ADR 0033 §1). The worker is **long-lived**: it subscribes by
+ * `type` (Zeebe-style, via `@nanobpm/worker`'s `defineWorker`), is started when
+ * the connector is enabled and the App runs, and is supervised — restarted with
+ * backoff on crash, killed on stop — reusing the trigger-driver supervisor
+ * (ADR 0025 §4 / 0036 / 0038). At-least-once outbound delivery is inherited from
+ * the engine's durable job queue (the job *is* the outbox), so no new durable
+ * subsystem is needed — the symmetric dual of the inbound inbox (ADR 0025 §2).
+ */
+export interface WorkerSpec {
+  /** The BPMN job type this worker serves. MUST equal the backing element
+   * template's `zeebe:taskDefinition:type` (the design→runtime seam). */
+  type: string;
+  /** Pack-relative entrypoint (a Node/Deno `.ts`/`.js`/`.mjs`) that calls
+   * `@nanobpm/worker`'s `defineWorker`. Runs on Node >=22.6
+   * (`--experimental-strip-types`) or Deno, like a trigger driver. */
+  entry: string;
+  /** Human label for the console. */
+  displayName?: string;
+  /** Max concurrent jobs (maps to `defineWorker`'s `maxParallelJobs`). */
+  maxParallelJobs?: number;
+  /**
+   * Config fields surfaced **per-connector** in the project config surface when
+   * the connector is enabled — e.g. the shared connection/API token. Defaults
+   * are env-pointers (`env`), never inline secrets, so the committed manifest
+   * carries no credentials (ADR 0027 §5). Distinct from the element template's
+   * per-instance `zeebe:input` fields (channel, message text).
+   */
+  configFields?: ConfigField[];
+}
+
 export interface ExtManifest {
   id: string;
   kind: ExtKind;
@@ -290,6 +330,23 @@ export interface ExtManifest {
    * §6). Each entry registers a `type` a manifest trigger can use; the pack's
    * out-of-process driver emits events over the trigger ingress. */
   triggerSources?: TriggerSourceSpec[];
+  /**
+   * Pack-relative paths to Camunda **element-template** JSON files (each a
+   * single template or an array of them) — the design-time **components** this
+   * pack contributes to the modeler palette (ADR 0033 §4). The host resolves +
+   * parses them (`extensions::pack_component_templates`, path-escape-guarded)
+   * and layers them into the palette / template chooser. Mirrors the host's
+   * `ExtManifest.components: Vec<String>`.
+   */
+  components?: string[];
+  /**
+   * connector packs: the **workers** this pack contributes — the outbound edge
+   * bound to its `components` element templates by matching job `type` (ADR
+   * 0050, amending ADR 0033 §4). Host consumption (launch + supervision +
+   * project-enablement gating) is the ADR 0050 host increment; the field is the
+   * canonical contract packs author against.
+   */
+  workers?: WorkerSpec[];
 }
 
 export const MANIFEST_FILE = "nano-ide.ext.json";
