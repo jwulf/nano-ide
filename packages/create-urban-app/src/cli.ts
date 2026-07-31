@@ -67,7 +67,7 @@ export async function main(argv: string[]): Promise<number> {
 const meta = import.meta as unknown as { main?: boolean; url: string };
 const g = globalThis as {
   process?: { argv?: string[]; exit?: (c: number) => void };
-  Deno?: { args?: string[] };
+  Deno?: { args?: string[]; exit?: (c: number) => void };
 };
 const argv0 = g.process?.argv?.[1];
 const nodeMain = argv0 ? meta.url === pathToFileURL(argv0).href : false;
@@ -79,11 +79,15 @@ if (isEntry) {
   const fromNode = g.process?.argv?.slice(2);
   const fromDeno = g.Deno?.args;
   const argv = (fromNode && fromNode.length ? fromNode : fromDeno) ?? fromNode ?? [];
+  const exit = (code: number) => {
+    if (g.process?.exit) g.process.exit(code);
+    else if (g.Deno?.exit) g.Deno.exit(code);
+  };
   main(argv).then(
-    (code) => g.process?.exit?.(code),
+    (code) => exit(code),
     (err) => {
       console.error(String((err as Error)?.message ?? err));
-      g.process?.exit?.(1);
+      exit(1);
     },
   );
 }

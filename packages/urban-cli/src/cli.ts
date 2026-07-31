@@ -188,7 +188,7 @@ export async function main(argv: string[]): Promise<number> {
 
 const g = globalThis as {
   process?: { argv: string[]; exit(code: number): void };
-  Deno?: { args?: string[] };
+  Deno?: { args?: string[]; exit?: (code: number) => void };
 };
 const meta = import.meta as unknown as { main?: boolean; url: string };
 const argv1 = g.process?.argv?.[1];
@@ -199,13 +199,17 @@ if (meta.main === true || nodeMain) {
   const fromNode = g.process?.argv?.slice(2);
   const fromDeno = g.Deno?.args;
   const argv = (fromNode && fromNode.length ? fromNode : fromDeno) ?? fromNode ?? [];
+  const exit = (code: number) => {
+    if (g.process?.exit) g.process.exit(code);
+    else if (g.Deno?.exit) g.Deno.exit(code);
+  };
   main(argv).then(
     (code) => {
-      if (code >= 0) g.process?.exit(code);
+      if (code >= 0) exit(code);
     },
     (err) => {
       console.error(String((err as Error)?.message ?? err));
-      g.process?.exit(1);
+      exit(1);
     },
   );
 }
