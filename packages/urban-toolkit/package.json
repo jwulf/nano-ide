@@ -1,0 +1,45 @@
+{
+  "name": "@nanobpm/urban-toolkit",
+  "version": "0.1.0",
+  "description": "The Urban derivation toolkit: pure, deterministic derivers (types→migrations, models→worker-io, code→model) shared by the IDE and the `urban gen` CLI. Model is authoritative; artifacts are generated + drift-checkable (ADR 0053).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "keywords": [
+    "nanobpm",
+    "urban",
+    "urban-toolkit",
+    "codegen",
+    "derivation",
+    "bpmn",
+    "nano-app"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jwulf/nano-ide.git",
+    "directory": "packages/urban-toolkit"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
+    "test:deno": "deno test -A --no-check src/"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3"
+  }
+}

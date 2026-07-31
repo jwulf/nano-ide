@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                  xmlns:bpmndi="http://www.omg.org/spec/BPMN/20100524/DI"
+                  xmlns:dc="http://www.omg.org/spec/DD/20100524/DC"
+                  xmlns:di="http://www.omg.org/spec/DD/20100524/DI"
+                  xmlns:zeebe="http://camunda.org/schema/zeebe/1.0"
+                  id="Definitions_greet" targetNamespace="http://bpmn.io/schema/bpmn">
+  <bpmn:message id="Message_greet" name="__APP_ID__.greet-requested" />
+  <bpmn:process id="greet" name="Greet" isExecutable="true">
+    <bpmn:startEvent id="StartGreet" name="Greet requested">
+      <bpmn:outgoing>Flow_start_task</bpmn:outgoing>
+      <bpmn:messageEventDefinition id="MsgDef_greet" messageRef="Message_greet" />
+    </bpmn:startEvent>
+    <bpmn:serviceTask id="Greet" name="Greet">
+      <bpmn:extensionElements>
+        <zeebe:taskDefinition type="__APP_ID__.greet" />
+      </bpmn:extensionElements>
+      <bpmn:incoming>Flow_start_task</bpmn:incoming>
+      <bpmn:outgoing>Flow_task_end</bpmn:outgoing>
+    </bpmn:serviceTask>
+    <bpmn:endEvent id="EndGreet" name="Done">
+      <bpmn:incoming>Flow_task_end</bpmn:incoming>
+    </bpmn:endEvent>
+    <bpmn:sequenceFlow id="Flow_start_task" sourceRef="StartGreet" targetRef="Greet" />
+    <bpmn:sequenceFlow id="Flow_task_end" sourceRef="Greet" targetRef="EndGreet" />
+  </bpmn:process>
+  <bpmndi:BPMNDiagram id="BPMNDiagram_greet">
+    <bpmndi:BPMNPlane id="BPMNPlane_greet" bpmnElement="greet">
+      <bpmndi:BPMNShape id="StartGreet_di" bpmnElement="StartGreet">
+        <dc:Bounds x="160" y="100" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="140" y="143" width="78" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="Greet_di" bpmnElement="Greet">
+        <dc:Bounds x="260" y="78" width="100" height="80" />
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNShape id="EndGreet_di" bpmnElement="EndGreet">
+        <dc:Bounds x="432" y="100" width="36" height="36" />
+        <bpmndi:BPMNLabel>
+          <dc:Bounds x="440" y="143" width="24" height="14" />
+        </bpmndi:BPMNLabel>
+      </bpmndi:BPMNShape>
+      <bpmndi:BPMNEdge id="Flow_start_task_di" bpmnElement="Flow_start_task">
+        <di:waypoint x="196" y="118" />
+        <di:waypoint x="260" y="118" />
+      </bpmndi:BPMNEdge>
+      <bpmndi:BPMNEdge id="Flow_task_end_di" bpmnElement="Flow_task_end">
+        <di:waypoint x="360" y="118" />
+        <di:waypoint x="432" y="118" />
+      </bpmndi:BPMNEdge>
+    </bpmndi:BPMNPlane>
+  </bpmndi:BPMNDiagram>
+</bpmn:definitions>

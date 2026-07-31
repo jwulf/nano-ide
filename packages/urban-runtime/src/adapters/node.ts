@@ -1,0 +1,119 @@
+// Node adapter — implements HostContext against `node:*`. This is one of only two files
+// (with deno.ts) allowed to touch a concrete runtime.
+
+import { readFile, readdir, stat } from "node:fs/promises";
+import { createServer } from "node:http";
+import { isAbsolute, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { DatabaseSync } from "node:sqlite";
+import type {
+  HostContext,
+  HttpHandler,
+  HttpRequest,
+  HttpServer,
+  SqliteDb,
+} from "../core/host.ts";
+
+export interface NodeHostOptions {
+  /** Base directory relative paths resolve against. Default process.cwd(). */
+  cwd?: string;
+  log?: HostContext["log"];
+}
+
+export function createNodeHost(opts: NodeHostOptions = {}): HostContext {
+  const cwd = opts.cwd ?? process.cwd();
+  const abs = (p: string) => (isAbsolute(p) ? p : resolve(cwd, p));
+  const log: HostContext["log"] =
+    opts.log ??
+    ((level, msg, fields) => {
+      const line = fields ? `${msg} ${JSON.stringify(fields)}` : msg;
+      (level === "error" ? console.error : level === "warn" ? console.warn : console.log)(
+        `[urban] ${line}`,
+      );
+    });
+
+  return {
+    runtime: "node",
+    env: (name) => process.env[name],
+    readTextFile: (p) => readFile(abs(p), "utf8"),
+    async listDir(dir) {
+      try {
+        const entries = await readdir(abs(dir), { withFileTypes: true });
+        return entries.filter((e) => e.isFile()).map((e) => e.name);
+      } catch {
+        return [];
+      }
+    },
+    async exists(p) {
+      try {
+        await stat(abs(p));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    openSqlite(path) {
+      const db = new DatabaseSync(abs(path));
+      return wrapNodeSqlite(db);
+    },
+    importModule: (p) => import(pathToFileURL(abs(p)).href) as Promise<Record<string, unknown>>,
+    async serveHttp(port, handler) {
+      return await startNodeServer(port, handler);
+    },
+    now: () => Date.now(),
+    log,
+  };
+}
+
+function wrapNodeSqlite(db: DatabaseSync): SqliteDb {
+  return {
+    exec: (sql) => db.exec(sql),
+    run: (sql, params = []) => {
+      const stmt = db.prepare(sql);
+      const r = stmt.run(...(params as never[]));
+      return { changes: Number(r.changes), lastInsertRowid: r.lastInsertRowid };
+    },
+    all: <T>(sql: string, params: unknown[] = []) => {
+      const stmt = db.prepare(sql);
+      return stmt.all(...(params as never[])) as T[];
+    },
+    close: () => db.close(),
+  };
+}
+
+async function startNodeServer(port: number, handler: HttpHandler): Promise<HttpServer> {
+  const server = createServer(async (nreq, nres) => {
+    const chunks: Buffer[] = [];
+    for await (const c of nreq) chunks.push(c as Buffer);
+    const bodyText = Buffer.concat(chunks).toString("utf8");
+    const url = new URL(nreq.url ?? "/", "http://localhost");
+    const headers = new Headers();
+    for (const [k, v] of Object.entries(nreq.headers)) {
+      if (typeof v === "string") headers.set(k, v);
+      else if (Array.isArray(v)) headers.set(k, v.join(", "));
+    }
+    const req: HttpRequest = {
+      method: nreq.method ?? "GET",
+      path: url.pathname,
+      query: url.searchParams,
+      headers,
+      text: () => Promise.resolve(bodyText),
+    };
+    try {
+      const res = await handler(req);
+      nres.statusCode = res.status ?? 200;
+      for (const [k, v] of Object.entries(res.headers ?? {})) nres.setHeader(k, v);
+      nres.end(res.body ?? "");
+    } catch (err) {
+      nres.statusCode = 500;
+      nres.end(String(err));
+    }
+  });
+  await new Promise<void>((res) => server.listen(port, res));
+  const addr = server.address();
+  const actualPort = typeof addr === "object" && addr ? addr.port : port;
+  return {
+    port: actualPort,
+    stop: () => new Promise<void>((res) => server.close(() => res())),
+  };
+}

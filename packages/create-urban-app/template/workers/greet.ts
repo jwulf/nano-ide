@@ -1,0 +1,22 @@
+// Worker for the `__APP_ID__.greet` service task.
+//
+// A worker module can export its handler in three ways (the runtime resolves in order):
+//   1. a `handlers` map keyed by job type,
+//   2. a named export matching the job type or its last dotted segment (used here: `greet`),
+//   3. a `default` function.
+//
+// The handler receives the job and the app API: `app.data` (typed datasource),
+// `app.engine`, `app.env`, `app.log`. Return a map to complete the job with variables.
+
+import type { AppApi, EngineJob } from "@nanobpm/urban-runtime";
+
+export async function greet(job: EngineJob, app: AppApi): Promise<Record<string, unknown>> {
+  const who = String(job.variables.who ?? "world");
+  const message = `Hello, ${who}!`;
+
+  const repo = app.data.repo("greeting");
+  await repo.insert({ who, message, createdAt: new Date().toISOString() });
+
+  app.log("info", "greeted", { who });
+  return { message };
+}

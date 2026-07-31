@@ -1,0 +1,64 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { collectManifestIssues, validateManifest, ManifestValidationError } from "./validate.ts";
+
+const valid = {
+  schemaVersion: 1,
+  id: "nano-workforce",
+  name: "Nano Workforce",
+  data: { default: "app", sources: { app: { driver: "sqlite", url: "file:./x.db" } } },
+  types: { task: { table: "crew_tasks", fields: { title: { type: "string" } } } },
+  workers: [{ taskType: "a.b", handler: "workers/x.ts" }],
+  triggers: [{ id: "t", type: "webhook", path: "/h" }],
+};
+
+test("a well-formed manifest has no issues", () => {
+  assert.deepEqual(collectManifestIssues(valid), []);
+  assert.equal(validateManifest(valid).id, "nano-workforce");
+});
+
+test("missing required keys are reported (driven by the schema)", () => {
+  const issues = collectManifestIssues({ schemaVersion: 1 });
+  const paths = issues.map((i) => i.path);
+  assert.ok(paths.includes("id"));
+  assert.ok(paths.includes("name"));
+});
+
+test("unknown top-level keys are rejected (additionalProperties:false)", () => {
+  const issues = collectManifestIssues({ ...valid, bogus: 1 });
+  assert.ok(issues.some((i) => i.path === "bogus"));
+});
+
+test("bad schemaVersion and bad slug id are reported", () => {
+  const issues = collectManifestIssues({ ...valid, schemaVersion: 2, id: "Not A Slug" });
+  assert.ok(issues.some((i) => i.path === "schemaVersion"));
+  assert.ok(issues.some((i) => i.path === "id"));
+});
+
+test("binding rules: worker needs handler, type with fields needs table, source needs driver+url", () => {
+  const issues = collectManifestIssues({
+    ...valid,
+    workers: [{ taskType: "a" }],
+    types: { t: { fields: { x: { type: "string" } } } },
+    data: { default: "app", sources: { app: { driver: "sqlite" } } },
+  });
+  assert.ok(issues.some((i) => i.path === "workers[0].handler"));
+  assert.ok(issues.some((i) => i.path === "types.t.table"));
+  assert.ok(issues.some((i) => i.path === "data.sources.app.url"));
+});
+
+test("data.default must reference an existing source", () => {
+  const issues = collectManifestIssues({
+    ...valid,
+    data: { default: "nope", sources: { app: { driver: "sqlite", url: "file:./x" } } },
+  });
+  assert.ok(issues.some((i) => i.path === "data.default"));
+});
+
+test("validateManifest throws ManifestValidationError with issues", () => {
+  assert.throws(() => validateManifest({ schemaVersion: 1 }), (e: unknown) => {
+    assert.ok(e instanceof ManifestValidationError);
+    assert.ok(e.issues.length >= 2);
+    return true;
+  });
+});

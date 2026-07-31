@@ -1,0 +1,471 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nanobpm.io/spec-app/nano-app.schema.json",
+  "title": "AppManifest",
+  "description": "Urban App manifest (nano.app.json) — the declared-data binding of an Urban RAD application (ADR 0027). Owns the envelope + cross-reference rules; each block's detail is owned by its ADR (data=0024, triggers=0025, surfaces=0026, security=0028, workers/llm=0022 §E). This file is the source of truth: TypeScript types are generated from it (scripts/generate-app-manifest.sh) and it doubles as the $schema editors use for nano.app.json autocompletion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "id", "name"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Optional editor hint pointing at this schema for autocompletion."
+    },
+    "schemaVersion": {
+      "const": 1,
+      "description": "Manifest schema version for forward-compat. Currently always 1."
+    },
+    "id": {
+      "$ref": "#/$defs/slug",
+      "description": "Stable App identifier (slug). Required."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Human-readable App name. Required."
+    },
+    "codename": {
+      "type": "string",
+      "description": "Informational codename, surfaced as App.CODENAME (ADR 0015). Optional."
+    },
+    "runtime": { "$ref": "#/$defs/runtime" },
+    "models": { "$ref": "#/$defs/models" },
+    "data": { "$ref": "#/$defs/data" },
+    "types": {
+      "type": "object",
+      "description": "The domain type registry (ADR 0029 §4, ADR 0031). Named record types keyed by a stable id — the *nominal* identity every reference resolves against. A type's fields project onto three shapes: form field (face), process variable (motion) and datasource row (rest); the Process-Relational Mapper (ADR 0031) generates the mapping. Types here are the transient/declared source; a datasource table is the other (ADR 0029 §4).",
+      "additionalProperties": { "$ref": "#/$defs/domainType" }
+    },
+    "triggers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/trigger" },
+      "description": "Event sources bound to engine actions (ADR 0025)."
+    },
+    "bindings": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/binding" },
+      "description": "Declares the domain type in scope for a model's FEEL (ADR 0029 §5): a form's default-value expressions and a decision's input expressions autocomplete + validate against the bound type's fields. The same 'typed reference replaces a free-string id' move as trigger.bodyType, applied to forms and decisions."
+    },
+    "connections": {
+      "type": "object",
+      "description": "Named connections (credentials/endpoint) referenced by triggers/workers by id, so configs carry no inline secrets (ADR 0025 §1).",
+      "additionalProperties": { "$ref": "#/$defs/connection" }
+    },
+    "surfaces": { "$ref": "#/$defs/surfaces" },
+    "workers": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/worker" },
+      "description": "Service-task handlers: referenced files or an llm binding (ADR 0022 §E)."
+    },
+    "llm": {
+      "type": "object",
+      "description": "Named LLM bindings usable as workers or as a chat surface agent (ADR 0022 §E).",
+      "additionalProperties": { "$ref": "#/$defs/llmBinding" }
+    },
+    "security": { "$ref": "#/$defs/security" }
+  },
+  "$defs": {
+    "slug": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "Lowercase kebab-case slug."
+    },
+    "domainType": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fields"],
+      "description": "A named domain record type (ADR 0029 §4, ADR 0031). Its map key is the stable id; matching is nominal (by id), consistent with model reference pickers.",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable label. The map key remains the stable id every reference uses."
+        },
+        "match": {
+          "enum": ["nominal", "structural"],
+          "default": "nominal",
+          "description": "Identity discipline. `nominal` (default): references resolve by this type's id. `structural` is a reserved escape hatch (match by field shape) — declared here but not yet honoured by the validator/mapper."
+        },
+        "table": {
+          "$ref": "#/$defs/slug",
+          "description": "Optional datasource table this type binds to as its rest projection (ADR 0031 rest bank). Absent = transient / non-persisted (ADR 0029 §4.2). Table existence is validated once the datasource schema() runtime (ADR 0024) lands; the shape is checked now."
+        },
+        "fields": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/domainField" },
+          "description": "Field name → field definition. Field names are the keys the form field, the variable path and the datasource column share (ADR 0029 §4)."
+        }
+      }
+    },
+    "domainField": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "description": "A single field of a domain type.",
+      "properties": {
+        "type": {
+          "description": "A primitive type, or the id of another domain type in the registry (nominal reference). Primitive ids take precedence over an identically named type.",
+          "anyOf": [
+            { "enum": ["string", "number", "integer", "boolean", "date", "datetime", "json"] },
+            { "$ref": "#/$defs/slug" }
+          ]
+        },
+        "optional": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the field may be absent."
+        },
+        "list": {
+          "type": "boolean",
+          "default": false,
+          "description": "Whether the field is a list of `type` rather than a single value."
+        }
+      }
+    },
+    "envTemplate": {
+      "type": "string",
+      "pattern": "^\\$\\{[A-Za-z_][A-Za-z0-9_]*(:-[^}]*)?\\}$",
+      "description": "A ${VAR} or ${VAR:-default} boot-time substitution reference (ADR 0027 §5). Resolved at App boot / IDE Run, never persisted. The validator checks the reference shape, not the resolved value."
+    },
+    "feel": {
+      "type": "string",
+      "description": "A FEEL expression (conventionally prefixed with '='), evaluated over the trigger event body."
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The shipping topology of the compiled App (ADR 0005). Distinct from the IDE dev-loop deployTarget, which lives in nanobpm.project.json (ADR 0027 §1).",
+      "properties": {
+        "engine": {
+          "enum": ["embedded", "remote", "cluster"],
+          "default": "embedded",
+          "description": "How the App reaches the engine at runtime."
+        },
+        "node": {
+          "enum": ["single", "cluster"],
+          "default": "single"
+        }
+      }
+    },
+    "models": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Glob references to the models the editors produce (ADR 0027 §2). Each glob must resolve to at least one file (cross-reference rule, ADR 0027 §4).",
+      "properties": {
+        "processes": { "$ref": "#/$defs/globList", "description": "BPMN process globs." },
+        "decisions": { "$ref": "#/$defs/globList", "description": "DMN decision globs." },
+        "forms": { "$ref": "#/$defs/globList", "description": "form-js form globs." }
+      }
+    },
+    "globList": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sources"],
+      "description": "Named datasources — the BDE-alias abstraction (ADR 0024). Consumers bind by name, never by driver, so the same bundle runs on SQLite in the IDE and Postgres in production by flipping env only.",
+      "properties": {
+        "default": {
+          "type": "string",
+          "description": "Name of the datasource used when a consumer names none."
+        },
+        "sources": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "$ref": "#/$defs/dataSource" }
+        }
+      }
+    },
+    "dataSource": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["driver", "url"],
+      "properties": {
+        "driver": {
+          "description": "Driver id. May be an env template so deployment flips SQLite to Postgres without a source change (ADR 0024 §1).",
+          "anyOf": [
+            { "enum": ["sqlite", "postgres"] },
+            { "$ref": "#/$defs/envTemplate" }
+          ]
+        },
+        "url": {
+          "type": "string",
+          "description": "Connection URL, typically an env template (e.g. file:./app.db or ${NANO_APP_DB_URL:-file:./app.db})."
+        },
+        "migrations": {
+          "type": "string",
+          "description": "Path to a migrations directory."
+        }
+      }
+    },
+    "trigger": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "action"],
+      "properties": {
+        "id": { "$ref": "#/$defs/slug" },
+        "type": {
+          "type": "string",
+          "description": "Source kind. Core (in-binary): cron | webhook | file. Pack sources add imap, mqtt, cloud, … (ADR 0025 §1)."
+        },
+        "spec": {
+          "type": "string",
+          "description": "cron: the crontab spec (e.g. '0 6 * * *'). 5 fields, evaluated in UTC (ADR 0025 §2)."
+        },
+        "onMissed": {
+          "type": "string",
+          "enum": ["skip", "once", "all"],
+          "default": "skip",
+          "description": "cron catch-up policy for fires missed while the App was down (ADR 0025 §Open questions): skip them, fire once for the whole span, or enqueue every missed instant (dedup keys keep it idempotent)."
+        },
+        "config": {
+          "type": "object",
+          "description": "Source-kind-specific settings. Core: file may set { pollMs }. Pack sources (nano-ide-trigger-*, ADR 0025 §6) read their declared config fields from here.",
+          "additionalProperties": true
+        },
+        "path": {
+          "type": "string",
+          "description": "webhook: the HTTP path served on the App backend (e.g. /hooks/temp)."
+        },
+        "connection": {
+          "type": "string",
+          "description": "Name of a connections[] entry supplying this source's credentials (e.g. imap mailbox)."
+        },
+        "auth": {
+          "type": "string",
+          "description": "Inbound auth policy for a webhook, e.g. 'hmac:sensors' referencing a connection (ADR 0025)."
+        },
+        "bodyType": {
+          "$ref": "#/$defs/slug",
+          "description": "Optional: id of a `types` registry domain type declaring this source's event body shape. It puts a type in scope for the action's FEEL expressions (variables/correlationKey), so `body.<field>` autocompletes and wrong paths become diagnostics (ADR 0029 §5)."
+        },
+        "action": { "$ref": "#/$defs/triggerAction" }
+      }
+    },
+    "triggerAction": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Maps an event to exactly one engine call (ADR 0025 §1): start a process, or publish a CorrelateMessage.",
+      "oneOf": [
+        { "required": ["start"] },
+        { "required": ["message"] }
+      ],
+      "properties": {
+        "start": {
+          "type": "string",
+          "description": "Process id/name to start; variables seeded by a FEEL expression over the event body."
+        },
+        "variables": {
+          "$ref": "#/$defs/feel",
+          "description": "FEEL over the event body producing the started instance's variables."
+        },
+        "message": {
+          "type": "string",
+          "description": "messageName to publish as a CorrelateMessage (correlates to a message-start subscription to start a new instance, or to a running-instance catch to feed a token — ADR 0025 §5)."
+        },
+        "correlationKey": {
+          "$ref": "#/$defs/feel",
+          "description": "FEEL over the event body producing the correlationKey (message actions)."
+        }
+      }
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "oneOf": [{ "required": ["form"] }, { "required": ["decision"] }, { "required": ["process"] }],
+      "description": "Binds one model — a form, a decision, OR a process — to the domain type in scope for its FEEL (ADR 0029 §5, ADR 0030). Exactly one of form/decision/process.",
+      "properties": {
+        "form": {
+          "type": "string",
+          "description": "form-js form id (schema.id) whose default-value FEEL is scoped to `type`."
+        },
+        "decision": {
+          "type": "string",
+          "description": "DMN decision id whose input-expression FEEL is scoped to `type`."
+        },
+        "process": {
+          "type": "string",
+          "description": "BPMN process id whose FEEL (component/service-task inputs, conditions) is scoped to `type` — the process as the motion of a typed domain object (ADR 0030)."
+        },
+        "type": {
+          "$ref": "#/$defs/slug",
+          "description": "Declared domain type id in scope for the bound model's FEEL."
+        }
+      }
+    },
+    "connection": {
+      "type": "object",
+      "description": "A named connection (credentials/endpoint). Shape is source-specific; secrets should be env templates, never inline literals (ADR 0025 §1).",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Connection kind (e.g. imap, mqtt, hmac)."
+        }
+      }
+    },
+    "surfaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Batteries-included human surfaces generated from the manifest (ADR 0026).",
+      "properties": {
+        "taskInbox": { "$ref": "#/$defs/taskInboxSurface" },
+        "chat": { "$ref": "#/$defs/chatSurface" }
+      }
+    },
+    "taskInboxSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Generic task inbox: lists open user tasks and renders their .form to claim/complete (ADR 0026).",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "path": { "type": "string", "default": "/tasks" }
+      }
+    },
+    "chatSurface": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Conversational surface whose LLM agent drives the action API via its tools (ADR 0026).",
+      "properties": {
+        "enabled": { "type": "boolean", "default": false },
+        "path": { "type": "string", "default": "/chat" },
+        "agent": {
+          "type": "string",
+          "description": "Name of an llm[] binding backing this chat (cross-reference rule, ADR 0027 §4)."
+        }
+      }
+    },
+    "worker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["taskType"],
+      "description": "A service-task worker: either a referenced handler file or an llm binding (ADR 0022 §E).",
+      "oneOf": [
+        { "required": ["handler"] },
+        { "required": ["llm"] }
+      ],
+      "properties": {
+        "taskType": { "type": "string", "minLength": 1 },
+        "handler": {
+          "type": "string",
+          "description": "Path to a handler file (language via ADR 0008 packs)."
+        },
+        "llm": {
+          "type": "string",
+          "description": "Name of an llm[] binding used as the worker (LLM-as-worker)."
+        },
+        "inputType": {
+          "$ref": "#/$defs/slug",
+          "description": "Declared domain type this worker reads from `job.variables` — the incoming process-variable payload (ADR 0033 §3). Binds to the worker via `taskType`; declaring `inputType` types the handler's `job.variables` while authoring (the generated typed `defineWorker` keys off `taskType`), erased at runtime."
+        },
+        "outputType": {
+          "$ref": "#/$defs/slug",
+          "description": "Declared domain type this worker writes as its result (ADR 0033 §3). A component's `zeebe:taskDefinition:type` binds to this worker via `taskType`; declaring `outputType` types the process variables its output mappings write, so downstream FEEL autocompletes on the result's fields."
+        }
+      }
+    },
+    "llmBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "LLM provider selector (e.g. 'env' to resolve from environment)."
+        },
+        "model": {
+          "type": "string",
+          "description": "Model id, typically an env template (e.g. ${NANO_APP_LLM_MODEL})."
+        },
+        "output": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Constrains the model's structured output (e.g. to a DMN decision).",
+          "properties": {
+            "decision": {
+              "type": "string",
+              "description": "DMN decision id constraining the output shape."
+            }
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Action-API tools the agent may call (e.g. start-process, complete-task, query-data)."
+        }
+      }
+    },
+    "security": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "App-user auth/identity/authorization policy (ADR 0028). Default (block absent) is single-user, unsecured. Secrets are env templates resolved at boot, never persisted.",
+      "properties": {
+        "mode": {
+          "description": "Enabled auth tier(s): none (default), local (username/password), oidc (social). A list combines them.",
+          "anyOf": [
+            { "$ref": "#/$defs/securityMode" },
+            { "type": "array", "items": { "$ref": "#/$defs/securityMode" } }
+          ]
+        },
+        "providers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/securityProvider" }
+        },
+        "roles": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Role names; the maker may add domain roles beyond admin/user."
+        },
+        "rules": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Role-based authorization: which roles may reach each action/surface/datasource (ADR 0028).",
+          "properties": {
+            "actions": { "$ref": "#/$defs/roleMap" },
+            "surfaces": { "$ref": "#/$defs/roleMap" },
+            "data": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "object",
+                "additionalProperties": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      }
+    },
+    "securityMode": { "enum": ["none", "local", "oidc"] },
+    "securityProvider": {
+      "type": "object",
+      "required": ["id", "type"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "type": {
+          "enum": ["oidc", "password"],
+          "description": "oidc: social/generic OIDC (Authorization Code + PKCE). password: local username/password."
+        },
+        "preset": {
+          "type": "string",
+          "description": "OIDC preset shorthand (e.g. google, github, auth0)."
+        },
+        "clientId": { "type": "string" },
+        "clientSecret": { "type": "string" },
+        "signup": {
+          "enum": ["open", "invite", "closed"],
+          "description": "password providers: self sign-up policy."
+        }
+      }
+    },
+    "roleMap": {
+      "type": "object",
+      "description": "Maps a pattern (e.g. 'start/*') to the list of roles permitted.",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    }
+  }
+}

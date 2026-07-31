@@ -1,0 +1,46 @@
+{
+  "name": "@nanobpm/urban-runtime",
+  "version": "0.1.0",
+  "description": "The Urban runtime: reads a nano.app.json manifest and materializes the app (deploy models, provision datasources + migrations, start workers, mount surfaces, install triggers, apply security) against a Nano engine. Runtime-agnostic core with Node + Deno adapters (ADR 0052).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "keywords": [
+    "nanobpm",
+    "urban",
+    "urban-runtime",
+    "bpmn",
+    "rad",
+    "nano-app"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jwulf/nano-ide.git",
+    "directory": "packages/urban-runtime"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./node": "./src/adapters/node.ts",
+    "./deno": "./src/adapters/deno.ts"
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
+    "test:deno": "deno test -A --no-check src/"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3"
+  }
+}
