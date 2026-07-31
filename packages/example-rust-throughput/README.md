@@ -2,15 +2,21 @@
 
 A distributable **native Rust throughput demo** for the [Nano RAD IDE](https://github.com/Magikcraft/nano-bpm).
 
-A native, **pipelined command-stream** producer that drives a clean engine to
-show where the **command stream beats REST**. This is the highest-throughput
-example in the set: it talks the Nano command-stream / Falcon transport directly.
+A native, **pipelined** producer plus a `JobWorker`, built on the official
+[`camunda-orchestration-sdk`](https://crates.io/crates/camunda-orchestration-sdk).
+**One code path** runs against **Camunda 8 (REST)** or **Nano** — the SDK
+auto-detects a Nano gateway and upgrades `create_process_instance` to its
+credit-metered **command-stream** producer transparently, while the same code
+runs on plain REST against stock Camunda. A high-concurrency pipelined producer
+is what makes this the highest-throughput example in the set: it shows where the
+**command stream beats REST**.
 
 ## What it shows
 
 - The throughput headroom of a **pipelined producer** on the command stream
   versus request/response REST.
-- A native Rust worker against a Nano gateway.
+- The **same worker code** against stock Camunda 8 and against Nano, with no
+  branch in the app — only the gateway it points at changes.
 
 ## What it contributes
 
