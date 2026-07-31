@@ -120,7 +120,7 @@ export function checkTourStep(s, at, fail, stepIds, nested) {
 /** Validate one tour. `tourIds` accumulates ids across a manifest for dup detection. */
 export function checkTour(t, fail, tourIds) {
   const at = `tour ${t?.id ?? "(no id)"}`;
-  if (badString(t?.id)) fail("tour needs an id");
+  if (badString(t?.id)) fail(`${at}: needs an id`);
   else if (tourIds.has(t.id)) fail(`duplicate tour id: ${t.id}`);
   else tourIds.add(t.id);
   if (badString(t?.title)) fail(`${at}: needs a title`);
