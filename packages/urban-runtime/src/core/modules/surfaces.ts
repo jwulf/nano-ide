@@ -6,6 +6,13 @@
 import type { AppApi, RuntimeContext } from "../context.ts";
 import { html, json, type Route } from "../router.ts";
 
+/** Escape HTML-significant characters before embedding a value in markup. */
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!,
+  );
+}
+
 export interface SurfacesHandle {
   readonly name: string;
   routes: Route[];
@@ -18,7 +25,7 @@ function inboxPage(basePath: string): string {
 li{margin:.4rem 0}code{background:#f4f4f4;padding:.1rem .3rem;border-radius:3px}</style>
 <h1>Task inbox</h1><ul id="tasks"><li>loading…</li></ul>
 <script>
-fetch('${basePath}/api/tasks').then(r=>r.json()).then(ts=>{
+fetch(${JSON.stringify(basePath)}+'/api/tasks').then(r=>r.json()).then(ts=>{
   const ul=document.getElementById('tasks');
   ul.replaceChildren();
   if(!ts.length){const li=document.createElement('li');li.textContent='No open tasks.';ul.appendChild(li);return;}
@@ -87,7 +94,7 @@ export function mountSurfaces(ctx: RuntimeContext, app: AppApi): SurfacesHandle 
       handler: () =>
         html(`<!doctype html><meta charset="utf-8"><title>Chat</title>
 <body style="font:14px system-ui;margin:2rem"><h1>Chat</h1>
-<p>Chat surface mount point (agent: <code>${chat.agent ?? "?"}</code>). LLM wiring pending.</p>`),
+<p>Chat surface mount point (agent: <code>${escapeHtml(chat.agent ?? "?")}</code>). LLM wiring pending.</p>`),
     });
   }
 

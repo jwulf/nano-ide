@@ -3,6 +3,7 @@
 // Scaffolds a runnable Urban app in ./<name> (or --dir).
 
 import { scaffold, slugify } from "./scaffold.ts";
+import { pathToFileURL } from "node:url";
 
 interface Parsed {
   name?: string;
@@ -69,7 +70,7 @@ const g = globalThis as {
   Deno?: { args?: string[] };
 };
 const argv0 = g.process?.argv?.[1];
-const nodeMain = argv0 ? meta.url === new URL(`file://${argv0}`).href : false;
+const nodeMain = argv0 ? meta.url === pathToFileURL(argv0).href : false;
 const isEntry = meta.main === true || nodeMain;
 
 if (isEntry) {

@@ -44,7 +44,9 @@ export interface UrbanApp {
   readonly root: string;
   /** Materialize the app (deploy → data → workers → surfaces/triggers). */
   start(): Promise<void>;
-  /** Tear everything down cleanly (graceful worker unsubscribe, close DB + server). */
+  /** Tear everything down cleanly: unsubscribe workers, close the DB, stop the
+   * HTTP server, and close the engine client (the app owns the engine's
+   * connection lifecycle once started). */
   stop(): Promise<void>;
   /** A structured snapshot of what is mounted. */
   inspect(): Record<string, unknown>;

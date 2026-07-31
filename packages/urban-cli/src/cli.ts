@@ -17,6 +17,7 @@ import {
 } from "@nanobpm/urban-runtime";
 import { scaffold, slugify } from "create-urban-app";
 import { createNodeGenIO, runGen } from "@nanobpm/urban-toolkit";
+import { pathToFileURL } from "node:url";
 
 const VERSION = "0.1.0";
 
@@ -190,7 +191,7 @@ const g = globalThis as {
 };
 const meta = import.meta as unknown as { main?: boolean; url: string };
 const argv1 = g.process?.argv?.[1];
-const nodeMain = argv1 ? meta.url === new URL(`file://${argv1}`).href : false;
+const nodeMain = argv1 ? meta.url === pathToFileURL(argv1).href : false;
 if (meta.main === true || nodeMain) {
   // Node passes args via process.argv (slice off exec+script); Deno (run directly)
   // exposes them on Deno.args. Prefer whichever actually carries args.
