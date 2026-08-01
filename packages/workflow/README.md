@@ -183,7 +183,25 @@ once.
 | `externalJobTypes(flow)` | The job types of a flow's external `task` steps (each overridable per-step via `w.task(name, { jobType })`). |
 | `WorkflowClient` | `deploy`, `start`, `signal`, `getInstance` over REST v2. |
 | `Worker` | Generic job runtime; routes job types → handlers, hosts the replay loop. |
-| `toBpmn(workflow)` | The derived BPMN XML (for inspection / deployment). |
+| `toBpmn(workflow)` | The DI-less semantic BPMN the engine runs (for inspection / deployment). |
+| `toDeployableBpmn(workflow, { layout? })` | The deployable BPMN **with an auto-generated diagram (DI)** so the deployed model is inspectable; what `deploy` sends by default. |
+| `layoutBpmn(xml)` / `declarativeToLayoutedBpmn(flow)` | Add DI to a model with `bpmn-auto-layout`. |
+
+### Inspectable deployments (diagram layout)
+
+`client.deploy(flow)` deploys the model **with an auto-generated diagram
+interchange (DI)** so it opens rendered and inspectable in a modeller/Operate
+rather than as a blank canvas. DI is generated with the optional peer dependency
+[`bpmn-auto-layout`](https://www.npmjs.com/package/bpmn-auto-layout):
+
+```sh
+npm i bpmn-auto-layout
+```
+
+If it is not installed, `deploy` degrades gracefully — it warns once and deploys
+the DI-less model. Pass `deploy(flow, { layout: false })` to skip layout
+deliberately. The semantic model stays authoritative; DI is derived and
+regenerable.
 
 See [ADR 0044](../docs/adr/0044-code-first-durable-orchestration.md) for the design
 rationale and [ADR 0047](../docs/adr/0047-declarative-flow-control-and-typed-envelopes.md)

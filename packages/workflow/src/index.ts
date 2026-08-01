@@ -54,7 +54,7 @@ export type {
   ScalarTs,
   FieldTs,
 } from "./envelope.js";
-export { WorkflowClient, WorkflowError, toBpmn } from "./client.js";
+export { WorkflowClient, WorkflowError, toBpmn, toDeployableBpmn } from "./client.js";
 export type { WorkflowClientOptions, ActivateOptions } from "./client.js";
 export { Worker } from "./worker.js";
 export type { WorkerOptions, ActivityEvent } from "./worker.js";

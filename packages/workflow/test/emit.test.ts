@@ -8,6 +8,7 @@ import {
   defineFlow,
   envelope,
   toBpmn,
+  toDeployableBpmn,
   declarativeToLayoutedBpmn,
   layoutBpmn,
   externalJobTypes,
@@ -87,6 +88,60 @@ test("layoutBpmn: adds DI to a DI-less model and is idempotent on already-laid-o
   // Re-laying-out an already-diagrammed model still yields exactly one diagram.
   const twice = await layoutBpmn(once);
   assert.equal((twice.match(/<bpmndi:BPMNDiagram\b/g) ?? []).length, 1);
+});
+
+test("toDeployableBpmn: lays out (DI) by default, DI-less when layout:false", async () => {
+  const flow = defineFlow("deployable", (w) => {
+    w.run("a", async () => ({}));
+    w.signal("wait", { correlationKey: "id" });
+    w.run("b", async () => ({}));
+  });
+  const laid = await toDeployableBpmn(flow);
+  assert.match(laid, /<bpmndi:BPMNDiagram\b/);
+  // Opting out yields the semantic model the engine runs, with no diagram.
+  const bare = await toDeployableBpmn(flow, { layout: false });
+  assert.doesNotMatch(bare, /bpmndi:BPMNDiagram/);
+});
+
+async function captureDeployXml(
+  flow: DeclarativeFlow,
+  opts?: { layout?: boolean },
+): Promise<string> {
+  let sent = "";
+  const client = new WorkflowClient({
+    baseUrl: "http://gateway.test",
+    fetch: async (_url, init) => {
+      const form = init!.body as unknown as FormData;
+      sent = await (form.get("resources") as Blob).text();
+      return new Response(JSON.stringify({ deploymentKey: "1" }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    },
+  });
+  await client.deploy(flow, opts);
+  return sent;
+}
+
+test("deploy: posts a laid-out model (DI) so the deployed process is inspectable", async () => {
+  const flow = defineFlow("pr-review", (w) => {
+    w.run("fetchDiff", async () => ({}));
+    w.task("merge");
+  });
+  const xml = await captureDeployXml(flow);
+  assert.match(xml, /<bpmndi:BPMNDiagram\b/);
+  assert.match(xml, /<bpmndi:BPMNShape\b/);
+  // The semantic wiring survives the layout round-trip.
+  assert.match(xml, /<zeebe:taskDefinition type="pr-review:fetchDiff" \/>/);
+});
+
+test("deploy({layout:false}): posts the DI-less semantic model", async () => {
+  const flow = defineFlow("pr-review", (w) => {
+    w.run("fetchDiff", async () => ({}));
+  });
+  const xml = await captureDeployXml(flow, { layout: false });
+  assert.doesNotMatch(xml, /bpmndi:BPMNDiagram/);
+  assert.match(xml, /<zeebe:taskDefinition type="pr-review:fetchDiff" \/>/);
 });
 
 test("declarative validation: duplicates, missing correlationKey, empty, bad id", () => {

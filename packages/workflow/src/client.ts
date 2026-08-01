@@ -4,6 +4,7 @@
 
 import { declarativeToBpmn, walkNodes } from "./declarative.js";
 import { imperativeToBpmn } from "./imperative.js";
+import { layoutBpmn } from "./layout.js";
 import type { DeclarativeFlow, DeployResult, Job, JsonObject, StartResult, Workflow } from "./types.js";
 import { assertWorkflowIds, messageName } from "./xml.js";
 
@@ -11,6 +12,47 @@ import { assertWorkflowIds, messageName } from "./xml.js";
 export function toBpmn(wf: Workflow): string {
   assertWorkflowIds(wf);
   return wf.kind === "imperative" ? imperativeToBpmn(wf) : declarativeToBpmn(wf);
+}
+
+let warnedNoLayout = false;
+
+/**
+ * Render a workflow to *deployable* BPMN — the executable model plus diagram
+ * interchange (DI), auto-generated with `bpmn-auto-layout` — so the deployed
+ * process opens rendered and inspectable in a modeller/Operate rather than as a
+ * blank canvas. The semantic model stays authoritative; DI is derived.
+ *
+ * DI generation needs the optional peer dependency `bpmn-auto-layout`. When it is
+ * absent, this degrades gracefully: it warns once and returns the DI-less model
+ * so `deploy` still works everywhere. Pass `{ layout: false }` to skip layout
+ * deliberately. A genuine layout failure (the dep is installed but errors) is
+ * surfaced, not swallowed.
+ */
+export async function toDeployableBpmn(
+  wf: Workflow,
+  opts: { layout?: boolean } = {},
+): Promise<string> {
+  const semantic = toBpmn(wf);
+  if (opts.layout === false) return semantic;
+  try {
+    return await layoutBpmn(semantic);
+  } catch (e) {
+    // Only fall back for the "optional dep not installed" case (layoutBpmn wraps
+    // it with an ERR_MODULE_NOT_FOUND cause). Any other failure is a real layout
+    // problem and must surface rather than silently deploy an uninspectable model.
+    const cause = (e as { cause?: NodeJS.ErrnoException })?.cause;
+    if (cause?.code !== "ERR_MODULE_NOT_FOUND") throw e;
+    if (!warnedNoLayout) {
+      warnedNoLayout = true;
+      console.warn(
+        `[@nanobpm/workflow] Deploying "${wf.id}" without a diagram: the optional ` +
+          '"bpmn-auto-layout" dependency is not installed, so the model will be ' +
+          "uninspectable in a modeller/Operate. Install it for diagram layout: " +
+          "npm i bpmn-auto-layout",
+      );
+    }
+    return semantic;
+  }
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -75,9 +117,15 @@ export class WorkflowClient {
     return res;
   }
 
-  /** Deploy a workflow's derived BPMN model. */
-  async deploy(wf: Workflow): Promise<DeployResult> {
-    const xml = toBpmn(wf);
+  /**
+   * Deploy a workflow's derived BPMN model. The deployed model includes
+   * auto-generated diagram interchange (DI) so it is inspectable in a
+   * modeller/Operate; pass `{ layout: false }` to deploy the DI-less semantic
+   * model. DI needs the optional `bpmn-auto-layout` dependency — see
+   * `toDeployableBpmn` for the graceful-degradation behaviour when it is absent.
+   */
+  async deploy(wf: Workflow, opts: { layout?: boolean } = {}): Promise<DeployResult> {
+    const xml = await toDeployableBpmn(wf, opts);
     const form = new FormData();
     form.append("resources", new Blob([xml], { type: "text/xml" }), `${wf.id}.bpmn`);
     return this.json<DeployResult>(`/v2/deployments`, { method: "POST", body: form }, "deploy");

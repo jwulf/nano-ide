@@ -27,6 +27,7 @@ export {
   envelope,
   layoutBpmn,
   toBpmn,
+  toDeployableBpmn,
   Worker,
   WorkflowClient,
   WorkflowError,

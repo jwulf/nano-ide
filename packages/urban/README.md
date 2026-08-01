@@ -129,6 +129,9 @@ const flow = defineFlow("pr-review", (w) => {
 
 The SDK derives the executable BPMN, the job types, and the message/correlation
 wiring; `WorkflowClient` deploys and starts, `Worker` hosts your `run` steps.
+`deploy` emits an auto-generated diagram (DI) so the deployed model is
+inspectable in a modeller/Operate — `@nanobpm/urban` bundles `bpmn-auto-layout`
+so this works out of the box.
 
 ## Related packages
 
