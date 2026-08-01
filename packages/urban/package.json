@@ -1,6 +1,6 @@
 {
   "name": "@nanobpm/urban",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Urban: build and run code-first apps on Nano — runtime, derivation toolkit, and CLI in one. Author durable processes with @nanobpm/workflow (defineFlow), a typed datasource, forms, triggers and surfaces from a nano.app.json manifest, on Node or Deno.",
   "license": "Apache-2.0",
   "type": "module",
@@ -19,14 +19,14 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/jwulf/nano-ide.git",
+    "url": "git+https://github.com/jwulf/nano-ide.git",
     "directory": "packages/urban"
   },
   "engines": {
     "node": ">=22.6"
   },
   "bin": {
-    "urban": "./src/bin.mjs"
+    "urban": "src/bin.mjs"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
