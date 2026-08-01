@@ -28,18 +28,31 @@
   "bin": {
     "urban": "./src/bin.mjs"
   },
-  "main": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./runtime": "./src/runtime/index.ts",
-    "./toolkit": "./src/toolkit/index.ts"
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "default": "./dist/runtime/index.js"
+    },
+    "./toolkit": {
+      "types": "./dist/toolkit/index.d.ts",
+      "default": "./dist/toolkit/index.js"
+    },
+    "./source": "./src/index.ts"
   },
   "files": [
+    "dist",
     "src",
     "README.md"
   ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json && mkdir -p dist/runtime/schema && cp src/runtime/schema/nano-app.schema.json dist/runtime/schema/nano-app.schema.json",
+    "prepack": "npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
     "test:deno": "deno test -A --no-check src/"
