@@ -31,10 +31,8 @@ export interface ActivityEvent {
   step?: string;
 }
 
-export interface WorkerOptions {
-  /** Provide a baseUrl (a client is created) or an existing client. */
-  baseUrl?: string;
-  client?: WorkflowClient;
+/** Options common to both ways of building a `Worker`. */
+interface WorkerCommon {
   workflows: Workflow[];
   /** Worker name reported to the gateway. Default "nanobpm-workflow". */
   name?: string;
@@ -54,6 +52,21 @@ export interface WorkerOptions {
   onActivity?: (e: ActivityEvent) => void | Promise<void>;
   onError?: (err: Error, context: { type: string }) => void;
 }
+
+/** Build a `Worker` from **either** a `baseUrl` (a `WorkflowClient` is created)
+ *  **or** an existing `client`. The union makes TypeScript enforce that exactly
+ *  one is supplied, matching the constructor's runtime requirement. */
+export type WorkerOptions =
+  | (WorkerCommon & {
+      /** Base URL of the nanobpmn gateway; a `WorkflowClient` is created for you. */
+      baseUrl: string;
+      client?: never;
+    })
+  | (WorkerCommon & {
+      /** An existing `WorkflowClient` to serve jobs through. */
+      client: WorkflowClient;
+      baseUrl?: never;
+    });
 
 type Handler = (job: Job) => Promise<{ variables: JsonObject; step?: string }>;
 

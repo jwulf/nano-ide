@@ -114,20 +114,32 @@ export type ActivatedJob = Job & {
   fail(body: { errorMessage: string; retries?: number }): Promise<unknown>;
 };
 
-export interface WorkflowClientOptions {
-  /** Base URL of the nanobpmn gateway, e.g. `http://localhost:8080`. The nano-sdk
-   *  client normalises this to the `/v2` REST address. */
-  baseUrl?: string;
-  /** Bearer token for the gateway (CAMUNDA_TOKEN). */
+/** Options common to both ways of building a `WorkflowClient`. */
+interface WorkflowClientCommon {
+  /** Auth token for the gateway (CAMUNDA_TOKEN). */
   token?: string;
   /** Transport mode passed to `createCamundaClient`: "auto" | "falcon" | "rest".
    *  Default "auto" (Falcon on a Nano server, REST elsewhere). */
   transport?: "auto" | "falcon" | "rest";
-  /** Inject a pre-built nano-sdk client (or a compatible fake) instead of
-   *  constructing one from `baseUrl`. Useful for tests, the embedded transport,
-   *  and advanced authors who build the client themselves. */
-  client?: NanoSdkClient;
 }
+
+/** Construct a `WorkflowClient` from **either** a `baseUrl` (a nano-sdk client is
+ *  built for you) **or** a pre-built `client`. The union makes TypeScript enforce
+ *  that exactly one is supplied, matching the constructor's runtime requirement. */
+export type WorkflowClientOptions =
+  | (WorkflowClientCommon & {
+      /** Base URL of the nanobpmn gateway, e.g. `http://localhost:8080`. The
+       *  nano-sdk client normalises this to the `/v2` REST address. */
+      baseUrl: string;
+      client?: never;
+    })
+  | (WorkflowClientCommon & {
+      /** Inject a pre-built nano-sdk client (or a compatible fake) instead of
+       *  constructing one from `baseUrl`. Useful for tests, the embedded
+       *  transport, and advanced authors who build the client themselves. */
+      client: NanoSdkClient;
+      baseUrl?: never;
+    });
 
 export class WorkflowError extends Error {
   constructor(
