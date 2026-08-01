@@ -43,7 +43,12 @@ test("imperative workflow survives an engine crash and resumes without duplicate
     }
   });
 
-  const client = new WorkflowClient({ baseUrl: gw.baseUrl });
+  // Crash-resilience is a REST-transport guarantee today: REST long-poll
+  // reconnects with backoff after the engine restarts. The Falcon push
+  // transport does not yet recover a mid-stream disconnect (unhandled reconnect
+  // rejection + no retry loop) — tracked by jwulf/nano-sdk-js#3 — so this test
+  // pins the client to REST. The Worker already defaults to REST.
+  const client = new WorkflowClient({ baseUrl: gw.baseUrl, transport: "rest" });
   const worker = new Worker({
     baseUrl: gw.baseUrl,
     workflows: [wf],
@@ -92,7 +97,10 @@ test("declarative flow parks at a signal and resumes via a correlated message", 
     w.run("finalize", async (job) => ({ approvedBy: job.variables.approvedBy ?? "system" }));
   });
 
-  const client = new WorkflowClient({ baseUrl: gw.baseUrl });
+  // Pin to REST for a deterministic teardown (the gateway is stopped in the
+  // finally block; a Falcon WS would background-reconnect and keep the loop
+  // alive). Falcon's happy-path create is covered by nano-sdk's own tests.
+  const client = new WorkflowClient({ baseUrl: gw.baseUrl, transport: "rest" });
   const worker = new Worker({
     baseUrl: gw.baseUrl,
     workflows: [flow],

@@ -109,14 +109,23 @@ async function captureDeployXml(
 ): Promise<string> {
   let sent = "";
   const client = new WorkflowClient({
-    baseUrl: "http://gateway.test",
-    fetch: async (_url, init) => {
-      const form = init!.body as unknown as FormData;
-      sent = await (form.get("resources") as Blob).text();
-      return new Response(JSON.stringify({ deploymentKey: "1" }), {
-        status: 200,
-        headers: { "content-type": "application/json" },
-      });
+    client: {
+      async createDeployment(input: { resources: File[] }) {
+        sent = await input.resources[0].text();
+        return { deploymentKey: "1" };
+      },
+      async createProcessInstance() {
+        return {};
+      },
+      async correlateMessage() {
+        return {};
+      },
+      async getProcessInstance() {
+        return {};
+      },
+      createJobWorker() {
+        return { start() {}, stop() {} };
+      },
     },
   });
   await client.deploy(flow, opts);
