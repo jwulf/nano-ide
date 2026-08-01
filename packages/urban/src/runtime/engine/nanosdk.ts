@@ -128,7 +128,7 @@ export class SdkEngineClient implements EngineClient {
   }): Promise<{ processInstanceKey: string; variables?: Record<string, unknown> }> {
     const body = await this.client.createProcessInstance({
       processDefinitionId: input.processDefinitionId,
-      variables: input.variables,
+      variables: input.variables ?? {},
       awaitCompletion: input.awaitCompletion ?? false,
     });
     const key =

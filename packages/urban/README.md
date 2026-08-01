@@ -45,8 +45,10 @@ on Node < 23.6 the `urban` command re-executes with `--experimental-strip-types`
 | `-v`, `--version` | print the version | |
 
 The engine address comes from `$CAMUNDA_REST_ADDRESS` (default
-`http://localhost:8080/v2`). Set `$CAMUNDA_TRANSPORT` to a non-`rest` value to use
-the `@nanobpm/nano-sdk` transport when it is installed.
+`http://localhost:8080/v2`). Transport comes from `$CAMUNDA_TRANSPORT` (default
+`auto`): the `@nanobpm/nano-sdk` client upgrades instance creation and job
+serving to Falcon on a Nano server and falls back to REST elsewhere. Set it to
+`rest`, `falcon`, or `embedded` to pin a specific transport.
 
 ### A typical session
 
@@ -78,19 +80,23 @@ surfaces and webhook triggers), and installs SIGINT/SIGTERM handlers for a
 graceful shutdown. For full control, assemble the pieces yourself:
 
 ```ts
-import { createUrbanApp, selectHost, RestEngineClient } from "@nanobpm/urban";
+import { createUrbanApp, selectHost, createNanoSdkEngineClient } from "@nanobpm/urban";
 
 const host = selectHost();                       // picks the Node or Deno adapter
-const engine = new RestEngineClient({ baseUrl: process.env.CAMUNDA_REST_ADDRESS! });
+const engine = await createNanoSdkEngineClient({
+  restAddress: process.env.CAMUNDA_REST_ADDRESS!,
+  transport: process.env.CAMUNDA_TRANSPORT,      // "auto" (default) | "rest" | "falcon" | "embedded"
+});
 const app = await createUrbanApp({ host, engine, root: "." });
 await app.start();
 // ... later:
 await app.stop();                                // releases workers, server, datasources
 ```
 
-Two engine transports are built in: `RestEngineClient` (default, no extra
-dependencies) and `createNanoSdkEngineClient` (used when `CAMUNDA_TRANSPORT` is
-anything other than `rest`; needs the optional `@nanobpm/nano-sdk`).
+The runtime has a single engine client, `SdkEngineClient`, backed by one
+`@nanobpm/nano-sdk` client (a direct dependency). `createNanoSdkEngineClient`
+selects the wire transport via `CAMUNDA_TRANSPORT`: `auto` (default) upgrades to
+Falcon on a Nano server and falls back to REST elsewhere.
 
 ### Toolkit — derive artifacts (`urban gen`)
 
