@@ -241,9 +241,12 @@ export class Worker {
       // A handler or completion failed. Report; the engine will redeliver the
       // job after its lock times out (at-least-once → handlers must be
       // idempotent). Best-effort surface it as an incident-worthy failure.
-      this.emitError(e as Error, type);
+      // Normalise non-Error throws (strings, objects) so emitError always gets
+      // an Error and errorMessage is never undefined in the failure report.
+      const err = e instanceof Error ? e : new Error(String(e));
+      this.emitError(err, type);
       try {
-        return await job.fail({ errorMessage: (e as Error).message, retries: 0 });
+        return await job.fail({ errorMessage: err.message, retries: 0 });
       } catch {
         // Even reporting the failure failed (e.g. the gateway is unreachable).
         // Awaited + swallowed so a rejected `fail` can't escape as an unhandled
