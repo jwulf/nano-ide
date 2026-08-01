@@ -1,10 +1,9 @@
 // runFromEnv — the one-call entrypoint a scaffolded app's main and the `urban run` CLI both
-// use: select the host for the current runtime, build a REST engine client from env, create
-// the Urban app, start it, and install a graceful-shutdown handler.
+// use: select the host for the current runtime, build the nano-sdk engine client from env,
+// create the Urban app, start it, and install a graceful-shutdown handler.
 
 import { createUrbanApp, type CreateUrbanAppOptions, type UrbanApp } from "./core/runtime.ts";
 import { selectHost } from "./adapters/detect.ts";
-import { RestEngineClient } from "./engine/rest.ts";
 import { createNanoSdkEngineClient } from "./engine/nanosdk.ts";
 import type { EngineClient } from "./core/host.ts";
 
@@ -14,9 +13,10 @@ export interface RunOptions extends Partial<CreateUrbanAppOptions> {
   /** Engine REST base. Default $CAMUNDA_REST_ADDRESS or http://localhost:8080/v2. */
   restAddress?: string;
   /**
-   * Engine transport: "rest" (default) uses the built-in REST client; "auto" | "falcon" try
-   * `@nanobpm/nano-sdk` (Falcon on instance creation, REST fallback), falling back to REST if the
-   * SDK is not installed. Overridable via $CAMUNDA_TRANSPORT.
+   * Engine transport passed to `@nanobpm/nano-sdk`: "auto" (default) upgrades
+   * process-instance creation and job serving to the Falcon protocol on a Nano
+   * server and falls back to REST elsewhere; "falcon" forces it; "rest" never
+   * upgrades; "embedded" runs an in-process engine. Overridable via $CAMUNDA_TRANSPORT.
    */
   transport?: string;
   /** Install SIGINT/SIGTERM handlers to stop the app. Default true. */
@@ -27,15 +27,16 @@ export async function runFromEnv(opts: RunOptions = {}): Promise<UrbanApp> {
   const host = opts.host ?? selectHost({ cwd: opts.root });
   const restAddress =
     opts.restAddress ?? host.env("CAMUNDA_REST_ADDRESS") ?? "http://localhost:8080/v2";
-  const transport = opts.transport ?? host.env("CAMUNDA_TRANSPORT") ?? "rest";
+  const transport = opts.transport ?? host.env("CAMUNDA_TRANSPORT") ?? "auto";
 
-  let engine: EngineClient | undefined = opts.engine;
-  if (!engine && transport !== "rest") {
-    engine =
-      (await createNanoSdkEngineClient({ restAddress, token: host.env("CAMUNDA_TOKEN"), transport, log: host.log })) ??
-      undefined;
-  }
-  engine ??= new RestEngineClient({ baseUrl: restAddress, token: host.env("CAMUNDA_TOKEN"), log: host.log });
+  const engine: EngineClient =
+    opts.engine ??
+    (await createNanoSdkEngineClient({
+      restAddress,
+      token: host.env("CAMUNDA_TOKEN"),
+      transport,
+      log: host.log,
+    }));
 
   const app = await createUrbanApp({
     host,
