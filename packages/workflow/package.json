@@ -1,0 +1,54 @@
+{
+  "name": "@nanobpm/workflow",
+  "version": "0.4.0",
+  "description": "Code-first durable orchestration for nanobpmn (ADR 0044/0045). Author a durable workflow as a declarative flow — `defineFlow(id, w => { w.run(...); w.signal(...); w.task(...) })` — and the SDK derives the executable BPMN model, the job types, and the message/correlation wiring, then hosts a generic worker. `w.run` is a local step, `w.signal` is a durable human-in-the-loop wait, `w.task` is a step serviced by an external worker. `defineFlow` is the single code-first surface; the imperative `defineWorkflow` replay function is experimental/internal, not a recommended API. No diagram, no task-type wiring, no correlation plumbing authored by hand — and you can optionally auto-generate a diagram (DI) for the derived model with `declarativeToLayoutedBpmn` via the optional `bpmn-auto-layout` peer dependency. Talks to a running nanobpmn gateway over the REST v2 API.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jwulf/nano-ide.git",
+    "directory": "packages/workflow"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./source": "./src/index.ts"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run build && npm run test:ci",
+    "test:ci": "node --experimental-strip-types --test test/*.test.ts",
+    "test:integration": "node --experimental-strip-types --test test/integration.test.ts",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "bpmn-auto-layout": "^2.0.0-alpha.2",
+    "typescript": "^5.6.3"
+  },
+  "peerDependencies": {
+    "bpmn-auto-layout": "^2.0.0-alpha.2"
+  },
+  "peerDependenciesMeta": {
+    "bpmn-auto-layout": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

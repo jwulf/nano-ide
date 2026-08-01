@@ -1,0 +1,619 @@
+// Strategy A — the declarative surface: a TREE of nodes compiled to a real BPMN
+// model. Leaf activities (`run`/`task`/`signal`) plus structural combinators
+// (`switch`/`branch`/`loop`) that compile to exclusive gateways + back-edges the
+// engine already runs (engine-core supports XOR gateways with in-order condition
+// evaluation and a default flow, and tasks with multiple incoming flows act as
+// an implicit XOR merge).
+//
+//   const convergence = defineFlow(
+//     "convergence-loop",
+//     {                                             // contracts keyed by step name
+//       "review-round": { in: PrReviewRoundIn, out: PrReviewRoundOut },
+//       "persist-round": { out: RoundState },
+//       "wait-review":  { in: ReviewReady },
+//       "wait-answer":  { in: EscalationAnswered },
+//     },
+//     (w) => {
+//       w.loop((b) => {
+//         b.run("review-round", reviewRound);       // job.variables typed from the contract
+//         b.switch("status", {
+//           converged: (c) => { c.run("persist-converged", finalize); c.break(); },
+//           addressed: (c) => c.branch("round >= maxRounds", {
+//             then: (g) => { g.run("persist-escalation-maxrounds", persistEsc);
+//                            g.signal("wait-answer", { correlationKey: "prKey" }); },
+//             else: (g) => { g.run("persist-round", persistRound);   // returns { round: round + 1 }
+//                            g.signal("wait-review", { correlationKey: "prKey" }); },
+//           }),
+//           default: (c) => { c.run("persist-escalation", persistEsc);
+//                             c.signal("wait-answer", { correlationKey: "prKey" }); },
+//         });
+//       });
+//     },
+//   );
+//
+// Typed data envelopes are LIFTED into the model (nano:shape + dataEnvelope
+// zeebe:property), so the generated .bpmn is ejectable to model-first with its
+// typed contracts intact.
+
+import type {
+  DeclarativeFlow,
+  FlowContracts,
+  FlowNode,
+  JsonObject,
+  NodeEnvelopes,
+  StepContract,
+  StepHandler,
+  SwitchCase,
+} from "./types.js";
+import type { Envelope, EnvelopeField } from "./envelope.js";
+import { assertIdent, assertJobType, escapeXml, jobType, messageName } from "./xml.js";
+
+// --- Authoring surface -------------------------------------------------------
+
+/** The TS payload type of a contract's input envelope (untyped fallback). */
+type InPayload<Ct> = Ct extends { in: Envelope } ? Ct["in"]["type"] : JsonObject;
+/** The TS payload type of a contract's output envelope (untyped fallback). */
+type OutPayload<Ct> = Ct extends { out: Envelope } ? Ct["out"]["type"] : JsonObject;
+/** The input payload type of step `K` under contracts `C`. */
+type VarsOf<C, K extends string> = K extends keyof C ? InPayload<C[K]> : JsonObject;
+/** The output payload type of step `K` under contracts `C`. */
+type ResultOf<C, K extends string> = K extends keyof C ? OutPayload<C[K]> : JsonObject;
+
+/** A typed handler for a `run` step: its job variables and result are resolved
+ *  from the flow contracts by the step name. */
+type TypedHandler<V, R> = (job: {
+  jobKey: string;
+  processInstanceKey: string;
+  elementId: string;
+  type: string;
+  variables: V;
+}) => Promise<R | void> | R | void;
+
+/** A block: the callback that populates a nested body (a case, arm, or loop). */
+type Block<C extends FlowContracts> = (b: FlowBuilder<C>) => void;
+
+export interface FlowBuilder<C extends FlowContracts = Record<string, never>> {
+  /**
+   * A durable activity served by a worker THIS program hosts (a BPMN service
+   * task; the handler runs in the in-process `Worker`). If `name` is a key in
+   * the flow's contracts, the handler's job variables and return value are typed
+   * from that contract's `in`/`out` envelopes; otherwise they are `JsonObject`.
+   */
+  run<K extends string>(name: K, handler: TypedHandler<VarsOf<C, K>, ResultOf<C, K>>): FlowBuilder<C>;
+  /**
+   * A durable activity served by a worker OUTSIDE this program (a BPMN service
+   * task, but no locally-hosted handler). Its job type defaults to the derived
+   * `${flowId}:${name}`; pass `{ jobType }` to override it with an explicit
+   * worker token (e.g. a `rank:capability` token like `senior:pr-review` that a
+   * `c8ctl nano work` matrix subscribes to) so an existing pool of agents can
+   * service it without renaming the flow. The step name stays the BPMN element
+   * id; only the emitted `zeebe:taskDefinition` type changes. Use
+   * `externalJobTypes(flow)` to list the (possibly overridden) types those
+   * workers must poll. Its contract envelopes (if any) type the model, not a
+   * local handler.
+   */
+  task<K extends string>(name: K, opts?: { jobType?: string }): FlowBuilder<C>;
+  /**
+   * A durable wait for an external/human event, correlated on a process
+   * variable (a BPMN message intermediate catch event). Resume it with
+   * `WorkflowClient.signal(flow, name, correlationKeyValue, vars)`. The message
+   * payload envelope, if any, comes from the contract's `in`.
+   */
+  signal<K extends string>(name: K, opts: { correlationKey: string }): FlowBuilder<C>;
+  /**
+   * A multi-way exclusive choice (a BPMN exclusive gateway). `subject` is a FEEL
+   * expression (usually a variable name); each case routes when `subject` equals
+   * the case value. An optional `default` case is the unconditional fallback.
+   */
+  switch(subject: string, cases: Record<string, Block<C>> & { default?: Block<C> }): FlowBuilder<C>;
+  /**
+   * A two-way exclusive choice on a FEEL boolean `condition` (a BPMN exclusive
+   * gateway). The `then` branch is guarded by the condition; the `else` branch
+   * (the gateway default) runs otherwise. Omitting `else` skips to whatever
+   * follows the branch when the condition is false.
+   */
+  branch(condition: string, arms: { then: Block<C>; else?: Block<C> }): FlowBuilder<C>;
+  /**
+   * A durable loop (a back-edge to the loop head). The body runs, then control
+   * returns to the top of the loop unless a branch calls `break()`. Nodes after
+   * the loop run once `break()` is reached.
+   */
+  loop(body: Block<C>): FlowBuilder<C>;
+  /** Exit the enclosing loop (routes to whatever follows it). Only valid inside
+   *  a `loop`. */
+  break(): FlowBuilder<C>;
+  /** Jump straight back to the top of the enclosing loop, skipping the rest of
+   *  the body. Only valid inside a `loop`. */
+  continue(): FlowBuilder<C>;
+}
+
+interface BuilderCtx {
+  contracts: FlowContracts;
+  handlers: Record<string, StepHandler>;
+  seen: Set<string>;
+  loopDepth: number;
+}
+
+/** Ids the emitter generates for structural nodes / flows / messages. A step
+ *  name that collides with one of these would produce a duplicate BPMN id and an
+ *  invalid model, so reject them at authoring time. */
+const RESERVED_PREFIXES = /^(Gw_|Loop_|Msg_|f_)/;
+
+function claimName(ctx: BuilderCtx, id: string, name: string): void {
+  assertIdent("step name", name);
+  if (name === "Start" || name === "End" || name === id) {
+    throw new Error(`step name "${name}" is reserved (collides with a generated BPMN id) in flow "${id}"`);
+  }
+  if (RESERVED_PREFIXES.test(name)) {
+    throw new Error(
+      `step name "${name}" uses a reserved prefix (Gw_/Loop_/Msg_/f_ are generated ids) in flow "${id}"`,
+    );
+  }
+  if (ctx.seen.has(name)) throw new Error(`duplicate step name "${name}" in flow "${id}"`);
+  ctx.seen.add(name);
+}
+
+/** Resolve a step's declared envelopes from the flow contracts. */
+function contractEnvelopes(ctx: BuilderCtx, name: string): { in?: Envelope; out?: Envelope } | undefined {
+  const c: StepContract | undefined = ctx.contracts[name];
+  if (!c || (!c.in && !c.out)) return undefined;
+  return { in: c.in, out: c.out };
+}
+
+/** Build a FlowBuilder that appends its nodes to `out`, sharing the flow-wide
+ *  `ctx` (contracts, handler registry, name set, loop nesting). Structural
+ *  combinators recurse with a fresh `out` array for each nested body. */
+function makeBuilder<C extends FlowContracts>(id: string, out: FlowNode[], ctx: BuilderCtx): FlowBuilder<C> {
+  const child = (fn: Block<C>, inLoop: boolean): FlowNode[] => {
+    const body: FlowNode[] = [];
+    const depth = inLoop ? ctx.loopDepth + 1 : ctx.loopDepth;
+    fn(makeBuilder<C>(id, body, { ...ctx, loopDepth: depth }));
+    return body;
+  };
+  const b = {
+    run(name: string, handler: StepHandler): FlowBuilder<C> {
+      claimName(ctx, id, name);
+      if (typeof handler !== "function") throw new Error(`run("${name}") needs a handler function`);
+      ctx.handlers[name] = handler;
+      out.push({ kind: "run", name, envelopes: contractEnvelopes(ctx, name) });
+      return b as unknown as FlowBuilder<C>;
+    },
+    task(name: string, opts?: { jobType?: string }): FlowBuilder<C> {
+      claimName(ctx, id, name);
+      const override = opts?.jobType;
+      if (override !== undefined) assertJobType("task jobType", override);
+      out.push({ kind: "task", name, envelopes: contractEnvelopes(ctx, name), jobType: override });
+      return b as unknown as FlowBuilder<C>;
+    },
+    signal(name: string, opts: { correlationKey: string }): FlowBuilder<C> {
+      claimName(ctx, id, name);
+      if (!opts || !opts.correlationKey) throw new Error(`signal("${name}") needs { correlationKey }`);
+      assertIdent("correlationKey", opts.correlationKey);
+      out.push({ kind: "signal", name, correlationKey: opts.correlationKey, payload: ctx.contracts[name]?.in });
+      return b as unknown as FlowBuilder<C>;
+    },
+    switch(subject: string, cases: Record<string, Block<C>> & { default?: Block<C> }): FlowBuilder<C> {
+      if (typeof subject !== "string" || subject.trim() === "") {
+        throw new Error(`switch() needs a non-empty subject expression`);
+      }
+      const entries = Object.entries(cases).filter(([k]) => k !== "default") as [string, Block<C>][];
+      if (entries.length === 0) throw new Error(`switch("${subject}") needs at least one case`);
+      const caseNodes: SwitchCase[] = entries.map(([value, fn]) => ({ value, body: child(fn, false) }));
+      const def = cases.default ? child(cases.default, false) : undefined;
+      out.push({ kind: "switch", subject, cases: caseNodes, default: def });
+      return b as unknown as FlowBuilder<C>;
+    },
+    branch(condition: string, arms: { then: Block<C>; else?: Block<C> }): FlowBuilder<C> {
+      if (typeof condition !== "string" || condition.trim() === "") {
+        throw new Error(`branch() needs a non-empty FEEL condition`);
+      }
+      if (!arms || typeof arms.then !== "function") throw new Error(`branch("${condition}") needs a then arm`);
+      out.push({
+        kind: "branch",
+        condition,
+        then: child(arms.then, false),
+        else: arms.else ? child(arms.else, false) : undefined,
+      });
+      return b as unknown as FlowBuilder<C>;
+    },
+    loop(body: Block<C>): FlowBuilder<C> {
+      if (typeof body !== "function") throw new Error(`loop() needs a body function`);
+      out.push({ kind: "loop", body: child(body, true) });
+      return b as unknown as FlowBuilder<C>;
+    },
+    break(): FlowBuilder<C> {
+      if (ctx.loopDepth === 0) throw new Error(`break() is only valid inside a loop`);
+      out.push({ kind: "break" });
+      return b as unknown as FlowBuilder<C>;
+    },
+    continue(): FlowBuilder<C> {
+      if (ctx.loopDepth === 0) throw new Error(`continue() is only valid inside a loop`);
+      out.push({ kind: "continue" });
+      return b as unknown as FlowBuilder<C>;
+    },
+  };
+  return b as unknown as FlowBuilder<C>;
+}
+
+/**
+ * Define a declarative flow. Pass a typed `contracts` map (keyed by step name)
+ * to type each step's I/O and lift its data envelopes into the model; or omit it
+ * for an untyped flow. `build(w)` declares a tree of nodes.
+ */
+export function defineFlow<C extends FlowContracts>(
+  id: string,
+  contracts: C,
+  build: (w: FlowBuilder<C>) => void,
+): DeclarativeFlow;
+export function defineFlow(id: string, build: (w: FlowBuilder) => void): DeclarativeFlow;
+export function defineFlow(
+  id: string,
+  second: FlowContracts | ((w: FlowBuilder) => void),
+  third?: (w: FlowBuilder<FlowContracts>) => void,
+): DeclarativeFlow {
+  assertIdent("workflow id", id);
+  if (typeof second !== "function" && (second === null || typeof second !== "object")) {
+    throw new Error(`defineFlow("${id}"): the contracts argument must be an object`);
+  }
+  const contracts: FlowContracts = typeof second === "function" ? {} : second;
+  const build = (typeof second === "function" ? second : third) as (w: FlowBuilder<FlowContracts>) => void;
+  if (typeof build !== "function") {
+    throw new Error(`defineFlow("${id}"): a build callback (w) => {…} is required`);
+  }
+  const steps: FlowNode[] = [];
+  const handlers: Record<string, StepHandler> = {};
+  const ctx: BuilderCtx = { contracts, handlers, seen: new Set(), loopDepth: 0 };
+  build(makeBuilder<FlowContracts>(id, steps, ctx));
+  if (steps.length === 0) throw new Error(`flow "${id}" declared no steps`);
+  return { kind: "declarative", id, steps, handlers };
+}
+
+// --- Tree walkers ------------------------------------------------------------
+
+/** Depth-first visit of every node in a flow tree (structural combinators
+ *  recurse into their bodies). */
+export function walkNodes(nodes: FlowNode[], visit: (n: FlowNode) => void): void {
+  for (const n of nodes) {
+    visit(n);
+    switch (n.kind) {
+      case "switch":
+        for (const c of n.cases) walkNodes(c.body, visit);
+        if (n.default) walkNodes(n.default, visit);
+        break;
+      case "branch":
+        walkNodes(n.then, visit);
+        if (n.else) walkNodes(n.else, visit);
+        break;
+      case "loop":
+        walkNodes(n.body, visit);
+        break;
+      default:
+        break;
+    }
+  }
+}
+
+/** The job types of a flow's external `task` steps (anywhere in the tree) — the
+ *  contract workers outside this program must subscribe to. Each is the derived
+ *  `<flowId>:<stepName>` unless the step overrode it via `w.task(name,
+ *  { jobType })`. Deduplicated (preserving first-seen order) since several steps
+ *  may intentionally share one override token. */
+export function externalJobTypes(flow: DeclarativeFlow): string[] {
+  const seen = new Set<string>();
+  const types: string[] = [];
+  walkNodes(flow.steps, (n) => {
+    if (n.kind !== "task") return;
+    const type = n.jobType ?? jobType(flow.id, n.name);
+    if (seen.has(type)) return;
+    seen.add(type);
+    types.push(type);
+  });
+  return types;
+}
+
+// --- Model emitter (two-phase graph compiler) --------------------------------
+
+interface RenderNode {
+  id: string;
+  render(incoming: string[], outgoing: string[]): string;
+  /** For exclusive gateways: the flow id of the unconditional default edge. */
+  defaultFlow?: string;
+}
+
+interface Edge {
+  id: string;
+  from: string;
+  to?: string;
+  condition?: string;
+  name?: string;
+}
+
+interface LoopCtx {
+  headId: string;
+  breaks: Edge[];
+}
+
+class Compiler {
+  private readonly nodes: RenderNode[] = [];
+  private readonly edges: Edge[] = [];
+  /** envelope name → its fields, deduped for lifting to a single nano:shape. */
+  private readonly envelopes = new Map<string, EnvelopeField[]>();
+  private seq = 0;
+  private gw = 0;
+
+  constructor(private readonly flow: DeclarativeFlow) {}
+
+  private newEdge(from: string, opts: { condition?: string; name?: string } = {}): Edge {
+    const e: Edge = { id: `f_${this.seq++}`, from, condition: opts.condition, name: opts.name };
+    this.edges.push(e);
+    return e;
+  }
+
+  private connect(incoming: Edge[], toId: string): void {
+    for (const e of incoming) e.to = toId;
+  }
+
+  private recordEnvelope(env?: Envelope): void {
+    if (!env) return;
+    const prev = this.envelopes.get(env.name);
+    if (prev) {
+      if (JSON.stringify(prev) !== JSON.stringify(env.fields)) {
+        throw new Error(
+          `envelope "${env.name}" is declared with two different field sets in flow "${this.flow.id}"`,
+        );
+      }
+      return;
+    }
+    this.envelopes.set(env.name, env.fields);
+  }
+
+  private addServiceTask(node: { name: string; envelopes?: NodeEnvelopes; jobType?: string }): void {
+    const type = node.jobType ?? jobType(this.flow.id, node.name);
+    this.recordEnvelope(node.envelopes?.in);
+    this.recordEnvelope(node.envelopes?.out);
+    const props: string[] = [];
+    if (node.envelopes?.in) props.push(envelopeProp("in", node.envelopes.in.name));
+    if (node.envelopes?.out) props.push(envelopeProp("out", node.envelopes.out.name));
+    const ext =
+      `      <bpmn:extensionElements>\n` +
+      `        <zeebe:taskDefinition type="${escapeXml(type)}" />\n` +
+      (props.length ? `        <zeebe:properties>\n${props.join("\n")}\n        </zeebe:properties>\n` : "") +
+      `      </bpmn:extensionElements>`;
+    const id = node.name;
+    this.nodes.push({
+      id,
+      render: (inc, outg) =>
+        `    <bpmn:serviceTask id="${escapeXml(id)}" name="${escapeXml(id)}">\n` +
+        ext +
+        "\n" +
+        incomingOutgoing(inc, outg) +
+        `    </bpmn:serviceTask>`,
+    });
+  }
+
+  private addCatchEvent(node: { name: string }): void {
+    const id = node.name;
+    const msgId = `Msg_${id}`;
+    this.nodes.push({
+      id,
+      render: (inc, outg) =>
+        `    <bpmn:intermediateCatchEvent id="${escapeXml(id)}" name="${escapeXml(id)}">\n` +
+        incomingOutgoing(inc, outg) +
+        `      <bpmn:messageEventDefinition messageRef="${msgId}" />\n` +
+        `    </bpmn:intermediateCatchEvent>`,
+    });
+  }
+
+  private addGateway(id: string, name?: string): RenderNode {
+    const gwNode: RenderNode = {
+      id,
+      render: (inc, outg) => {
+        const def = gwNode.defaultFlow ? ` default="${gwNode.defaultFlow}"` : "";
+        const nm = name ? ` name="${escapeXml(name)}"` : "";
+        return (
+          `    <bpmn:exclusiveGateway id="${id}"${nm}${def}>\n` +
+          incomingOutgoing(inc, outg) +
+          `    </bpmn:exclusiveGateway>`
+        );
+      },
+    };
+    this.nodes.push(gwNode);
+    return gwNode;
+  }
+
+  private emitList(list: FlowNode[], incoming: Edge[], loop: LoopCtx | null): Edge[] {
+    let cur = incoming;
+    for (const node of list) cur = this.emitNode(node, cur, loop);
+    return cur;
+  }
+
+  private emitNode(node: FlowNode, incoming: Edge[], loop: LoopCtx | null): Edge[] {
+    switch (node.kind) {
+      case "run":
+      case "task": {
+        this.addServiceTask(node);
+        this.connect(incoming, node.name);
+        return [this.newEdge(node.name)];
+      }
+      case "signal": {
+        this.addCatchEvent(node);
+        this.connect(incoming, node.name);
+        this.recordEnvelope(node.payload);
+        return [this.newEdge(node.name)];
+      }
+      case "switch": {
+        const id = `Gw_${this.gw++}`;
+        const gw = this.addGateway(id, node.subject);
+        this.connect(incoming, id);
+        const out: Edge[] = [];
+        for (const c of node.cases) {
+          const e = this.newEdge(id, { condition: feelEquals(node.subject, c.value), name: c.value });
+          out.push(...this.emitList(c.body, [e], loop));
+        }
+        // The default (or a synthesised fall-through) is the unconditional edge.
+        const de = this.newEdge(id, { name: "default" });
+        gw.defaultFlow = de.id;
+        out.push(...this.emitList(node.default ?? [], [de], loop));
+        return out;
+      }
+      case "branch": {
+        const id = `Gw_${this.gw++}`;
+        const gw = this.addGateway(id);
+        this.connect(incoming, id);
+        const te = this.newEdge(id, { condition: feel(node.condition), name: "then" });
+        const out = this.emitList(node.then, [te], loop);
+        const ee = this.newEdge(id, { name: "else" });
+        gw.defaultFlow = ee.id;
+        out.push(...this.emitList(node.else ?? [], [ee], loop));
+        return out;
+      }
+      case "loop": {
+        const headId = `Loop_${this.gw++}`;
+        this.addGateway(headId);
+        this.connect(incoming, headId);
+        const ctx: LoopCtx = { headId, breaks: [] };
+        const headOut = this.newEdge(headId);
+        const bodyOut = this.emitList(node.body, [headOut], ctx);
+        // Normal fall-through of the body loops back to the head (continue).
+        this.connect(bodyOut, headId);
+        // The loop exits only via break edges.
+        return ctx.breaks;
+      }
+      case "break": {
+        if (!loop) throw new Error(`break outside a loop in flow "${this.flow.id}"`);
+        // The incoming edges (from the previous node) become the loop's exit
+        // danglers; this path does not fall through.
+        loop.breaks.push(...incoming);
+        return [];
+      }
+      case "continue": {
+        if (!loop) throw new Error(`continue outside a loop in flow "${this.flow.id}"`);
+        this.connect(incoming, loop.headId);
+        return [];
+      }
+    }
+  }
+
+  compile(): string {
+    // Start → top-level sequence → End.
+    this.nodes.push({
+      id: "Start",
+      render: (_inc, outg) => `    <bpmn:startEvent id="Start">${outgoingOnly(outg)}</bpmn:startEvent>`,
+    });
+    const s0 = this.newEdge("Start");
+    const finalDanglers = this.emitList(this.flow.steps, [s0], null);
+    this.nodes.push({
+      id: "End",
+      render: (inc) => `    <bpmn:endEvent id="End">${incomingOnly(inc)}</bpmn:endEvent>`,
+    });
+    this.connect(finalDanglers, "End");
+
+    // A sequence flow needs both ends; drop any edge that never got a target.
+    const live = this.edges.filter((e) => e.to !== undefined);
+    const incomingOf = (id: string) => live.filter((e) => e.to === id).map((e) => e.id);
+    const outgoingOf = (id: string) => live.filter((e) => e.from === id).map((e) => e.id);
+
+    const nodeXml = this.nodes.map((n) => n.render(incomingOf(n.id), outgoingOf(n.id))).join("\n");
+    const flowXml = live.map((e) => sequenceFlow(e)).join("\n");
+    const messageXml = this.emitMessages();
+    const shapeXml = this.emitShapes();
+
+    return (
+      `<?xml version="1.0" encoding="UTF-8"?>\n` +
+      `<bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL" ` +
+      `xmlns:zeebe="http://camunda.org/schema/zeebe/1.0" ` +
+      `xmlns:nano="https://nanobpm.io/schema/shapes/1.0" ` +
+      `id="Definitions_${escapeXml(this.flow.id)}" targetNamespace="http://bpmn.io/schema/bpmn">\n` +
+      `  <bpmn:process id="${escapeXml(this.flow.id)}" name="${escapeXml(this.flow.id)}" isExecutable="true">\n` +
+      (shapeXml ? shapeXml + "\n" : "") +
+      nodeXml +
+      "\n" +
+      flowXml +
+      "\n" +
+      `  </bpmn:process>\n` +
+      messageXml +
+      (messageXml ? "\n" : "") +
+      `</bpmn:definitions>\n`
+    );
+  }
+
+  /** Emit a `<bpmn:message>` per signal step, with its subscription and (when
+   *  typed) its payload data envelope. */
+  private emitMessages(): string {
+    const msgs: string[] = [];
+    walkNodes(this.flow.steps, (n) => {
+      if (n.kind !== "signal") return;
+      const msgId = `Msg_${n.name}`;
+      const payloadProp = n.payload
+        ? `\n      <zeebe:properties>\n${envelopeProp("in", n.payload.name)}\n      </zeebe:properties>`
+        : "";
+      msgs.push(
+        `  <bpmn:message id="${msgId}" name="${escapeXml(messageName(this.flow.id, n.name))}">\n` +
+          `    <bpmn:extensionElements>\n` +
+          `      <zeebe:subscription correlationKey="=${escapeXml(n.correlationKey)}" />` +
+          payloadProp +
+          `\n    </bpmn:extensionElements>\n` +
+          `  </bpmn:message>`,
+      );
+    });
+    return msgs.join("\n");
+  }
+
+  /** Lift the referenced data envelopes into a `<nano:shapes>` container on the
+   *  process extension elements, so the model carries the typed contracts and is
+   *  ejectable to model-first. */
+  private emitShapes(): string {
+    if (this.envelopes.size === 0) return "";
+    const shapes = [...this.envelopes.entries()].map(([name, fields]) => {
+      const exts = fields.map((f) => {
+        const opt = f.optional ? ` optional="true"` : "";
+        const list = f.list ? ` list="true"` : "";
+        return `        <nano:extend name="${escapeXml(f.name)}" type="${escapeXml(f.type)}"${opt}${list} />`;
+      });
+      return `      <nano:shape id="${escapeXml(name)}">\n${exts.join("\n")}\n      </nano:shape>`;
+    });
+    return (
+      `    <bpmn:extensionElements>\n` +
+      `      <nano:shapes>\n${shapes.join("\n")}\n      </nano:shapes>\n` +
+      `    </bpmn:extensionElements>`
+    );
+  }
+}
+
+/** Derive an executable BPMN model from a declarative flow. */
+export function declarativeToBpmn(flow: DeclarativeFlow): string {
+  return new Compiler(flow).compile();
+}
+
+// --- small XML / FEEL helpers ------------------------------------------------
+
+const envelopeProp = (dir: "in" | "out", value: string): string =>
+  `          <zeebe:property name="io.nanobpm.dataEnvelope.${dir}" value="${escapeXml(value)}" />`;
+
+/** Wrap a raw FEEL expression as a Zeebe condition body (leading `=`). */
+const feel = (expr: string): string => `=${expr}`;
+
+/** A FEEL equality test `subject = "value"`, with the value as a FEEL string. */
+const feelEquals = (subject: string, value: string): string =>
+  `=${subject} = "${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+
+function incomingOutgoing(inc: string[], outg: string[]): string {
+  return (
+    inc.map((f) => `      <bpmn:incoming>${f}</bpmn:incoming>\n`).join("") +
+    outg.map((f) => `      <bpmn:outgoing>${f}</bpmn:outgoing>\n`).join("")
+  );
+}
+const incomingOnly = (inc: string[]): string => inc.map((f) => `<bpmn:incoming>${f}</bpmn:incoming>`).join("");
+const outgoingOnly = (outg: string[]): string => outg.map((f) => `<bpmn:outgoing>${f}</bpmn:outgoing>`).join("");
+
+function sequenceFlow(e: Edge): string {
+  const nm = e.name ? ` name="${escapeXml(e.name)}"` : "";
+  if (e.condition) {
+    return (
+      `    <bpmn:sequenceFlow id="${e.id}" sourceRef="${e.from}" targetRef="${e.to}"${nm}>\n` +
+      `      <bpmn:conditionExpression>${escapeXml(e.condition)}</bpmn:conditionExpression>\n` +
+      `    </bpmn:sequenceFlow>`
+    );
+  }
+  return `    <bpmn:sequenceFlow id="${e.id}" sourceRef="${e.from}" targetRef="${e.to}"${nm} />`;
+}
