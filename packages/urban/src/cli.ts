@@ -1,7 +1,8 @@
-// The `urban` CLI — a thin command surface over @nanobpm/urban-runtime.
+// The `urban` CLI — a thin command surface over the Urban runtime + toolkit.
 //
 //   urban new <name>     scaffold a new app (delegates to create-urban-app)
 //   urban check          load + validate the manifest, report issues
+//   urban gen            derive generated artifacts (migrations, worker I/O)
 //   urban run            materialize + serve the app (deploy, data, workers, surfaces, triggers)
 //   urban dev            like run (hot-reload is not yet implemented; documented below)
 //   urban deploy         deploy models only, then exit
@@ -14,12 +15,12 @@ import {
   loadManifest,
   runFromEnv,
   selectHost,
-} from "@nanobpm/urban-runtime";
+} from "./runtime/index.ts";
 import { scaffold, slugify } from "create-urban-app";
-import { createNodeGenIO, runGen } from "@nanobpm/urban-toolkit";
+import { createNodeGenIO, runGen } from "./toolkit/index.ts";
 import { pathToFileURL } from "node:url";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 
 interface Flags {
   root: string;
@@ -63,7 +64,7 @@ const USAGE = `urban — build and run Urban apps (nano.app.json)
 Usage:
   urban new <name> [--root <path>]    scaffold a new Urban app
   urban check                       validate the manifest
-  urban gen [--check]               derive artifacts (migrations, worker-io, models)
+  urban gen [--check]               derive artifacts (migrations, worker-io)
   urban run                         materialize + serve the app
   urban dev                         run (hot-reload not yet implemented)
   urban deploy                      deploy models only, then exit

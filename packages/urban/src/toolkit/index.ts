@@ -1,5 +1,7 @@
-// Public API for @nanobpm/urban-toolkit — the shared derivation library. The IDE and the
-// `urban gen` CLI are peer callers of these pure derivers (ADR 0053).
+// The Urban derivation toolkit — the shared derivation library. The IDE and the
+// `urban gen` CLI are peer callers of these pure derivers (ADR 0053). Code-first
+// process authoring is provided by `@nanobpm/workflow` (`defineFlow`), not here
+// (ADR 0054) — the toolkit derives migrations and worker I/O from the model.
 
 // Artifact + deriver contract
 export type { DerivedArtifact, Deriver } from "./artifact.ts";
@@ -24,15 +26,10 @@ export {
 } from "./derivers/worker-io.ts";
 export type { ModelSource, WorkerIo, WorkerBindingDecl } from "./derivers/worker-io.ts";
 
-export { deriveModelFromFlow, modelDeriver } from "./derivers/model.ts";
-export type { CodeFlow, CodeFlowStep } from "./bpmn.ts";
-export { flowToBpmn } from "./bpmn.ts";
-
 // The registry of all derivers (for discovery / IDE migration).
 import { migrationsDeriver } from "./derivers/migrations.ts";
 import { workerIoDeriver } from "./derivers/worker-io.ts";
-import { modelDeriver } from "./derivers/model.ts";
-export const DERIVERS = [migrationsDeriver, workerIoDeriver, modelDeriver] as const;
+export const DERIVERS = [migrationsDeriver, workerIoDeriver] as const;
 
 // Gen orchestrator + IO
 export { collectArtifacts, runGen, joinPath } from "./gen.ts";

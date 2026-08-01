@@ -84,7 +84,7 @@ export function deriveMigrations(manifest: ToolkitManifest): DerivedArtifact[] {
   const artifacts: DerivedArtifact[] = [];
   for (const [src, list] of bySource) {
     const header =
-      `-- Derived from manifest \`types\` by @nanobpm/urban-toolkit. Do not edit.\n` +
+      `-- Derived from manifest \`types\` by @nanobpm/urban (urban gen). Do not edit.\n` +
       `-- Datasource: ${src}\n\n`;
     const body = list.map(([name, def]) => createTableSql(name, def)).join("\n\n");
     artifacts.push({ path: `${GENERATED_DIR}/${src}.schema.sql`, content: `${header}${body}\n` });

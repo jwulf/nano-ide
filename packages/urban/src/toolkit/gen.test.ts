@@ -33,7 +33,7 @@ function memIO(files: Record<string, string>): GenIO & { files: Record<string, s
 const MANIFEST = JSON.stringify({
   id: "demo",
   data: { default: "app" },
-  models: { processes: ["processes/*.bpmn"], flows: ["flows/*.flow.json"] },
+  models: { processes: ["processes/*.bpmn"] },
   types: { greeting: { table: "greetings", fields: { who: { type: "string" } } } },
 });
 
@@ -43,23 +43,19 @@ const BPMN = `<bpmn:process id="p" xmlns:bpmn="x" xmlns:zeebe="y">
   </bpmn:extensionElements></bpmn:serviceTask>
 </bpmn:process>`;
 
-const FLOW = JSON.stringify({ id: "hello", steps: [{ id: "S", taskType: "demo.do" }] });
-
 function fixture(): Record<string, string> {
   return {
     "/app/nano.app.json": MANIFEST,
     "/app/processes/p.bpmn": BPMN,
-    "/app/flows/hello.flow.json": FLOW,
   };
 }
 
-test("runGen writes migrations, worker index, and derived model", async () => {
+test("runGen writes migrations and the worker index", async () => {
   const io = memIO(fixture());
   const res = await runGen({ root: "/app", io });
   const paths = res.artifacts.map((a) => a.path).sort();
   assert.deepEqual(paths, [
     "nano-generated/app.schema.sql",
-    "nano-generated/processes/hello.bpmn",
     "nano-generated/worker-io.d.ts",
   ]);
   assert.ok(io.files["/app/nano-generated/app.schema.sql"].includes("CREATE TABLE"));

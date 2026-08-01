@@ -1,4 +1,4 @@
-// Public API for @nanobpm/urban-runtime.
+// Public API for the Urban runtime (@nanobpm/urban, subpath ./runtime).
 
 // Core runtime
 export { createUrbanApp } from "./core/runtime.ts";

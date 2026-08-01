@@ -1,5 +1,5 @@
-// The gen orchestrator: the one impure edge of the toolkit. It reads an app's manifest, models,
-// and flows, runs the pure derivers, and either writes the artifacts to disk (`urban gen`) or
+// The gen orchestrator: the one impure edge of the toolkit. It reads an app's manifest and
+// models, runs the pure derivers, and either writes the artifacts to disk (`urban gen`) or
 // compares them against what's on disk and reports drift (`urban gen --check`). The derivers stay
 // pure; all IO is confined here behind a tiny FS port so the same code runs on Node and Deno.
 
@@ -7,8 +7,6 @@ import type { DerivedArtifact } from "./artifact.ts";
 import { sortArtifacts } from "./artifact.ts";
 import { deriveMigrations, type ToolkitManifest } from "./derivers/migrations.ts";
 import { deriveWorkerBindings, type ModelSource } from "./derivers/worker-io.ts";
-import { deriveModelFromFlow } from "./derivers/model.ts";
-import type { CodeFlow } from "./bpmn.ts";
 
 /** Minimal filesystem port. Node/Deno impls live in `fsio.ts`. */
 export interface GenIO {
@@ -64,7 +62,7 @@ export async function collectArtifacts(opts: GenOptions): Promise<DerivedArtifac
   const { root, io } = opts;
   const manifestPath = join(root, opts.manifestFile ?? "nano.app.json");
   const manifest = JSON.parse(await io.readText(manifestPath)) as ToolkitManifest & {
-    models?: { processes?: string[]; flows?: string[] };
+    models?: { processes?: string[] };
   };
 
   const artifacts: DerivedArtifact[] = [];
@@ -85,15 +83,6 @@ export async function collectArtifacts(opts: GenOptions): Promise<DerivedArtifac
   if (models.length > 0) {
     const declaredTypeIds = Object.keys(manifest.types ?? {});
     artifacts.push(...deriveWorkerBindings(models, declaredTypeIds));
-  }
-
-  // 3. code-first flows → BPMN models
-  const flowPatterns = manifest.models?.flows ?? ["flows/*.flow.json"];
-  for (const pat of flowPatterns) {
-    for (const rel of await expandPattern(root, io, pat)) {
-      const flow = JSON.parse(await io.readText(join(root, rel))) as CodeFlow;
-      artifacts.push(...deriveModelFromFlow(flow));
-    }
   }
 
   return sortArtifacts(artifacts);

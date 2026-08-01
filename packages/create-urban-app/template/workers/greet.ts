@@ -8,7 +8,7 @@
 // The handler receives the job and the app API: `app.data` (typed datasource),
 // `app.engine`, `app.env`, `app.log`. Return a map to complete the job with variables.
 
-import type { AppApi, EngineJob } from "@nanobpm/urban-runtime";
+import type { AppApi, EngineJob } from "@nanobpm/urban";
 
 export async function greet(job: EngineJob, app: AppApi): Promise<Record<string, unknown>> {
   const who = String(job.variables.who ?? "world");

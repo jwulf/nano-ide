@@ -5,7 +5,7 @@
 //   Node:  npm start          (or: npx urban run)
 //   Deno:  deno task start     (or: deno run -A npm:@nanobpm/urban run)
 
-import { runFromEnv } from "@nanobpm/urban-runtime";
+import { runFromEnv } from "@nanobpm/urban";
 
 const app = await runFromEnv({ root: import.meta.dirname ?? "." });
 const info = app.inspect();

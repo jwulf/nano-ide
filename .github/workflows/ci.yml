@@ -17,14 +17,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run validate
-      - run: npm run typecheck
       - run: npm run build
+      - run: npm run typecheck
       - run: npm test --if-present
 
-  # The Urban runtime + toolkit ship as source .ts and must run on Deno as well
-  # as Node (ADR 0052/0053: hosts are interchangeable). This job proves the
-  # dual-runtime contract by running the Deno test suites and a scaffold→gen→
-  # check smoke under Deno.
+  # The Urban stack ships as source .ts and must run on Deno as well as Node
+  # (ADR 0052/0053: hosts are interchangeable). This job proves the dual-runtime
+  # contract by running the Deno test suite.
   urban-deno:
     runs-on: ubuntu-latest
     steps:
@@ -37,10 +36,8 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
-      - name: Deno test — urban-runtime
-        run: npm run test:deno -w packages/urban-runtime
-      - name: Deno test — urban-toolkit
-        run: npm run test:deno -w packages/urban-toolkit
+      - name: Deno test — @nanobpm/urban
+        run: npm run test:deno -w packages/urban
 
   # The `intellisense` block in each language pack's nano-ide.ext.json is a
   # committed, generated artifact — derived from the pack's SDK's own strongly

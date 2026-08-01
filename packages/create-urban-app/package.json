@@ -1,6 +1,6 @@
 {
   "name": "create-urban-app",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Scaffold a runnable Urban app (nano.app.json + processes/forms/db/workers) that runs on both Node and Deno via @nanobpm/urban. The create-react-app of Urban (ADR 0052).",
   "license": "Apache-2.0",
   "type": "module",
