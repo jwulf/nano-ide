@@ -11,13 +11,20 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = join(HERE, "..");
-const REPO_ROOT = join(PKG_ROOT, "..");
+// packages/workflow -> repo root is two levels up (packages/workflow/../..).
+const REPO_ROOT = join(PKG_ROOT, "..", "..");
 
 /** Locate a built gateway binary, or null if none is available. */
 export function resolveServerBin(): string | null {
   if (process.env.SERVER_BIN && existsSync(process.env.SERVER_BIN)) return process.env.SERVER_BIN;
   const rel = ["debug", "release"].map((p) => join("server", "target", p, "nanobpm-gateway-rest-server"));
-  const roots = [REPO_ROOT, join(REPO_ROOT, "..", "..", "nanobpmn")];
+  // The gateway lives in the sibling nanobpmn checkout (not in this repo), so also probe a
+  // `nanobpmn` repo checked out alongside or one level above nano-ide.
+  const roots = [
+    REPO_ROOT,
+    join(REPO_ROOT, "..", "nanobpmn"),
+    join(REPO_ROOT, "..", "..", "nanobpmn"),
+  ];
   for (const root of roots) for (const r of rel) {
     const cand = join(root, r);
     if (existsSync(cand)) return cand;

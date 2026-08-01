@@ -75,18 +75,21 @@ Two facts make the fix clear:
 
 ## Scope of this change
 
-This ADR lands the **relocation** only — the lowest-risk, highest-leverage step:
+This ADR lands the **relocation** (plus a small DI-on-deploy feature) — the lowest-risk,
+highest-leverage step:
 
 - **nano-ide (this repo):** add `packages/workflow` (a faithful move of nano-bpm's `workflow/`;
-  `repository` retargeted to nano-ide, version unchanged at `0.4.0`, `src`/`test`/`tsconfig`
-  intact). It joins the `packages/*` workspace and publishes through the existing
-  `scripts/publish.mjs` / `release.yml` flow.
+  `repository` retargeted to nano-ide, `src`/`test`/`tsconfig` intact). The move also bumps the
+  version to `0.5.0`: `deploy` now auto-generates diagram interchange (DI) via `bpmn-auto-layout`
+  so derived code-first models are inspectable (graceful degradation when the optional dep is
+  absent; opt out with `{ layout: false }`). It joins the `packages/*` workspace and publishes
+  through the existing `scripts/publish.mjs` / `release.yml` flow.
 - **nano-bpm (separate PR):** delete `workflow/`, `release-workflow-npm.yml`,
   `scripts/workflow-release.mjs`, `docs/releasing-workflow-npm.md`, and CI references, so the
   package is no longer published from two origins.
 
-`0.4.0` is already on npm (published from nano-bpm), so `publish.mjs` skips it until a version bump;
-the first nano-ide publish happens on the next version after the npm **Trusted Publisher** is
+`0.4.0` is already on npm (published from nano-bpm); this PR bumps to `0.5.0`, so `publish.mjs`
+publishes it as the first nano-ide-origin release once the npm **Trusted Publisher** is
 reconfigured to point at nano-ide (OIDC; owner-configured).
 
 ## Follow-ups (out of scope here, tracked separately)
