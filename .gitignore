@@ -2,6 +2,8 @@ node_modules/
 dist/
 *.tsbuildinfo
 .DS_Store
+# Derived by `urban gen` / the console — regenerable, never committed (ADR 0053).
+nano-generated/
 # Rust build artifacts from example/template smoke builds
 target/
 Cargo.lock

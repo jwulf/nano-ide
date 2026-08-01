@@ -1,0 +1,6 @@
+db/*.db
+db/*.db-*
+node_modules/
+.env
+# Derived by `urban gen` — regenerable, never committed (ADR 0053).
+nano-generated/

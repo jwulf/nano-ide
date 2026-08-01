@@ -1,0 +1,13 @@
+{
+  "tasks": {
+    "check": "deno run -A npm:@nanobpm/urban@^0.1.0 check",
+    "start": "deno run -A npm:@nanobpm/urban@^0.1.0 run",
+    "dev": "deno run -A npm:@nanobpm/urban@^0.1.0 dev",
+    "deploy": "deno run -A npm:@nanobpm/urban@^0.1.0 deploy"
+  },
+  "imports": {
+    "@nanobpm/urban-runtime": "npm:@nanobpm/urban-runtime@^0.1.0",
+    "@nanobpm/urban": "npm:@nanobpm/urban@^0.1.0"
+  },
+  "nodeModulesDir": "auto"
+}

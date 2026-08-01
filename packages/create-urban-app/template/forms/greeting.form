@@ -1,0 +1,18 @@
+{
+  "components": [
+    {
+      "label": "Who",
+      "type": "textfield",
+      "key": "who",
+      "validate": { "required": true }
+    },
+    {
+      "label": "Message",
+      "type": "textarea",
+      "key": "message"
+    }
+  ],
+  "type": "default",
+  "id": "greeting-form",
+  "schemaVersion": 16
+}

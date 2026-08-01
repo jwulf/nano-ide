@@ -1,0 +1,47 @@
+{
+  "name": "create-urban-app",
+  "version": "0.1.0",
+  "description": "Scaffold a runnable Urban app (nano.app.json + processes/forms/db/workers) that runs on both Node and Deno via @nanobpm/urban. The create-react-app of Urban (ADR 0052).",
+  "license": "Apache-2.0",
+  "type": "module",
+  "keywords": [
+    "nanobpm",
+    "urban",
+    "create-urban-app",
+    "scaffold",
+    "nano-app",
+    "rad"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jwulf/nano-ide.git",
+    "directory": "packages/create-urban-app"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "bin": {
+    "create-urban-app": "./src/bin.mjs"
+  },
+  "main": "./src/scaffold.ts",
+  "types": "./src/scaffold.ts",
+  "exports": {
+    ".": "./src/scaffold.ts"
+  },
+  "files": [
+    "src",
+    "template",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.9.3"
+  }
+}

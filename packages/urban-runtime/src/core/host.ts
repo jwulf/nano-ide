@@ -1,0 +1,130 @@
+// The host contract — the ONLY seam through which the runtime touches a concrete
+// JavaScript runtime (Node or Deno) or the Nano engine. Everything under core/ is
+// written against these interfaces and MUST NOT import `node:*` or reference `Deno`.
+// The adapters/ directory supplies concrete implementations.
+
+/** A minimal HTTP request as seen by a mounted surface/trigger handler. */
+export interface HttpRequest {
+  method: string;
+  /** Path portion of the URL, e.g. "/tasks". */
+  path: string;
+  /** Parsed query parameters. */
+  query: URLSearchParams;
+  headers: Headers;
+  /** Read the raw request body as text (empty string when there is none). */
+  text(): Promise<string>;
+}
+
+/** A minimal HTTP response returned by a handler. */
+export interface HttpResponse {
+  status?: number;
+  headers?: Record<string, string>;
+  body?: string;
+}
+
+export type HttpHandler = (req: HttpRequest) => Promise<HttpResponse> | HttpResponse;
+
+/** A running HTTP server handle. */
+export interface HttpServer {
+  readonly port: number;
+  stop(): Promise<void>;
+}
+
+/** A tiny synchronous SQLite handle — the subset the runtime needs. */
+export interface SqliteDb {
+  /** Execute one or more statements with no result (DDL, PRAGMA, migrations). */
+  exec(sql: string): void;
+  /** Run a parameterised statement, returning the changed-row count. */
+  run(sql: string, params?: unknown[]): { changes: number; lastInsertRowid: number | bigint };
+  /** Run a query, returning all rows as plain objects. */
+  all<T = Record<string, unknown>>(sql: string, params?: unknown[]): T[];
+  close(): void;
+}
+
+/**
+ * HostContext is the runtime-agnostic capability surface. A Node adapter and a Deno
+ * adapter each implement it; core code depends only on this.
+ */
+export interface HostContext {
+  /** Which concrete runtime is backing this host. */
+  readonly runtime: "node" | "deno";
+  /** Read an environment variable. */
+  env(name: string): string | undefined;
+  /** Read a UTF-8 text file relative to the app root. */
+  readTextFile(path: string): Promise<string>;
+  /** List file names (not directories) directly under `dir`. Returns [] if missing. */
+  listDir(dir: string): Promise<string[]>;
+  /** True if the path exists (file or directory). */
+  exists(path: string): Promise<boolean>;
+  /** Open (creating if needed) a SQLite database at a filesystem path. */
+  openSqlite(path: string): SqliteDb;
+  /**
+   * Dynamically import a handler/module by app-relative path. Path resolution differs
+   * between runtimes, so it lives behind the host seam.
+   */
+  importModule(path: string): Promise<Record<string, unknown>>;
+  /** Start an HTTP server. Routing is done by the caller inside `handler`. */
+  serveHttp(port: number, handler: HttpHandler): Promise<HttpServer>;
+  /** Current wall-clock time in ms since epoch (seam for tests). */
+  now(): number;
+  /** Structured log sink. */
+  log(level: "info" | "warn" | "error", msg: string, fields?: Record<string, unknown>): void;
+}
+
+/** A job handed to a worker handler, plus the ack/fail callbacks. */
+export interface EngineJob {
+  jobKey: string;
+  jobType: string;
+  processInstanceKey?: string;
+  elementId?: string;
+  variables: Record<string, unknown>;
+}
+
+export type JobHandler = (
+  job: EngineJob,
+) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
+
+/** A registered worker subscription. */
+export interface WorkerSubscription {
+  readonly jobType: string;
+  unsubscribe(): Promise<void>;
+}
+
+/**
+ * EngineClient is the seam onto a Nano engine. The SDK/REST-backed adapter implements
+ * it against a live engine; tests implement it in-memory. Core modules depend only on this.
+ */
+export interface EngineClient {
+  /** Deploy model resources (BPMN/DMN/forms). Returns the number deployed. */
+  deployResources(
+    resources: { name: string; content: string; contentType: string }[],
+  ): Promise<{ deployed: number }>;
+  /** Start a process instance. */
+  createInstance(input: {
+    processDefinitionId: string;
+    variables?: Record<string, unknown>;
+    awaitCompletion?: boolean;
+  }): Promise<{ processInstanceKey: string; variables?: Record<string, unknown> }>;
+  /** Publish a message for correlation. */
+  publishMessage(input: {
+    name: string;
+    correlationKey?: string;
+    variables?: Record<string, unknown>;
+  }): Promise<void>;
+  /** Search open user tasks (optionally by process instance). */
+  searchUserTasks(filter?: {
+    processInstanceKey?: string;
+    assignee?: string;
+    candidateGroup?: string;
+  }): Promise<{ userTaskKey: string; elementId?: string; variables?: Record<string, unknown> }[]>;
+  /** Complete a user task. */
+  completeUserTask(userTaskKey: string, variables?: Record<string, unknown>): Promise<void>;
+  /** Register a push worker for a job type. Draining is handled by the adapter. */
+  registerWorker(
+    jobType: string,
+    handler: JobHandler,
+    options?: { workerName?: string; maxParallelJobs?: number; fetchVariables?: string[] },
+  ): Promise<WorkerSubscription>;
+  /** Tear down all connections. */
+  close(): Promise<void>;
+}
