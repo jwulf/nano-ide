@@ -51,7 +51,7 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && mkdir -p dist/runtime/schema && cp src/runtime/schema/nano-app.schema.json dist/runtime/schema/nano-app.schema.json",
+    "build": "tsc -p tsconfig.build.json && node -e \"const fs=require('fs');fs.mkdirSync('dist/runtime/schema',{recursive:true});fs.copyFileSync('src/runtime/schema/nano-app.schema.json','dist/runtime/schema/nano-app.schema.json')\"",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",

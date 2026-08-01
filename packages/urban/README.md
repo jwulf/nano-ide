@@ -19,8 +19,10 @@ npx @nanobpm/urban new my-app
 deno run -A npm:@nanobpm/urban run
 ```
 
-Requires Node ≥ 22.6 or Deno. It ships as TypeScript source with no build step;
-on Node < 23.6 the `urban` command re-executes with `--experimental-strip-types`.
+Requires Node ≥ 22.6 or Deno. It ships as compiled JavaScript with `.d.ts` type
+declarations: Node can't strip types under `node_modules`, so the published package
+carries `dist/` and needs no build step or `--experimental-strip-types` flag to run.
+Deno users can still import the TypeScript source directly via the `./source` export.
 
 ## The `urban` CLI
 
