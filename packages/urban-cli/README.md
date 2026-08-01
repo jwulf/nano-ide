@@ -1,47 +1,62 @@
-# `urban` — the Urban CLI (`@nanobpm/urban`)
+# `@nanobpm/urban`
 
-> One command to scaffold, derive, check and run an Urban app — outside the
-> console, on **Node or Deno**. The peer caller of `@nanobpm/urban-toolkit`
-> (derivation) and `@nanobpm/urban-runtime` (execution). (ADR 0052 / 0053.)
+The `urban` command-line tool: scaffold, validate, generate and run an Urban app
+from your terminal — on **Node or Deno**.
 
 ## Install
 
 ```bash
-npm i -g @nanobpm/urban
-# or run once:
+npm i -g @nanobpm/urban      # install the `urban` command
+# or run without installing:
 npx @nanobpm/urban new my-app
 ```
 
-The `urban` bin re-execs Node with `--experimental-strip-types` when Node < 23.6,
-so source `.ts` runs directly. Needs Node ≥ 22.6 or Deno.
+Requires Node ≥ 22.6 or Deno. On Node < 23.6 the `urban` command re-executes with
+`--experimental-strip-types` so its TypeScript source runs directly.
+
+Under Deno you can run it without installing:
+
+```bash
+deno run -A npm:@nanobpm/urban run
+```
 
 ## Commands
 
-| Command | Does |
+| Command | What it does |
 |---|---|
-| `urban new <name> [--root <path>]` | scaffold a new app (delegates to `create-urban-app`) |
-| `urban check` | validate the `nano.app.json` manifest |
-| `urban gen [--check]` | derive `nano-generated/` artifacts; `--check` is a drift gate |
-| `urban run` | materialize + run the app (starts workers, connects the engine) |
-| `urban dev` | run (hot-reload TBD) |
-| `urban deploy` | deploy models only, then exit |
+| `urban new <name>` | scaffold a new app in a new directory |
+| `urban check` | validate the app's `nano.app.json` manifest |
+| `urban gen` | generate the `nano-generated/` artifacts (migrations, worker I/O, models) |
+| `urban gen --check` | fail if the generated artifacts are out of date (a CI drift gate) |
+| `urban run` | generate, then run the app — starts its workers and serves its surfaces |
+| `urban dev` | run the app (hot-reload is not yet implemented) |
+| `urban deploy` | deploy the app's models to the engine, then exit |
 
-## Global flags
+## Options
 
-- `--root <dir>` — app root (default `.`)
-- `--manifest <file>` — manifest filename (default `nano.app.json`)
-- `--port <n>` — HTTP port (default `$PORT` or 8090)
-- `-h/--help`, `-v/--version`
+| Flag | Purpose | Default |
+|---|---|---|
+| `--root <dir>` | app directory | `.` |
+| `--manifest <file>` | manifest filename | `nano.app.json` |
+| `--port <n>` | HTTP port for surfaces and triggers (integer 0–65535) | `$PORT` or `8090` |
+| `-h`, `--help` | show help | |
+| `-v`, `--version` | print the version | |
 
-Engine address: `$CAMUNDA_REST_ADDRESS` (default `http://localhost:8080/v2`).
-Transport: `$CAMUNDA_TRANSPORT` (`rest` default; anything else opts into
-`@nanobpm/nano-sdk` Falcon on the hot path).
+The engine address comes from `$CAMUNDA_REST_ADDRESS` (default
+`http://localhost:8080/v2`). Set `$CAMUNDA_TRANSPORT` to a non-`rest` value to use
+the `@nanobpm/nano-sdk` transport when it is installed.
 
-## Typical loop
+## A typical session
 
 ```bash
 urban new invoices && cd invoices
-urban gen            # derive nano-generated/
-urban check          # validate
-urban run            # serve
+urban gen        # generate nano-generated/
+urban check      # validate the manifest
+urban run        # start workers and serve surfaces
 ```
+
+## Related packages
+
+- [`create-urban-app`](../create-urban-app) — the scaffolder behind `urban new`.
+- [`@nanobpm/urban-toolkit`](../urban-toolkit) — the generation behind `urban gen`.
+- [`@nanobpm/urban-runtime`](../urban-runtime) — the runtime behind `urban run`.

@@ -1,46 +1,59 @@
 # `create-urban-app`
 
-> Scaffold a runnable Urban app in one command — the Create-React-App of Urban.
-> Materializes a manifest, a process, a form, a datasource migration and a
-> worker, wired to `@nanobpm/urban-runtime`. Runs on **Node and Deno**.
-> (ADR 0052.)
+Scaffold a new, runnable Urban app in one command.
 
-## Use
+## Create an app
 
 ```bash
 npm create urban-app my-app
-# or via the CLI:
+# or, if you have the CLI installed:
 urban new my-app
 ```
 
-This writes a directory containing:
+This creates a `my-app/` directory:
 
 ```
 my-app/
-  nano.app.json          # the manifest — the app's contract
-  processes/greet.bpmn   # a process (with DI, opens in the modeller)
+  nano.app.json          # the manifest: the app's contract
+  processes/greet.bpmn   # a process (with layout; opens in the modeller)
   forms/greeting.form    # a form
   db/migrations/001_init.sql
   workers/greet.ts       # a job worker
-  main.ts                # entrypoint → runFromEnv()
-  package.json           # Node run scripts
-  deno.json              # Deno tasks + import map
-  .gitignore             # ignores nano-generated/
+  main.ts                # entrypoint that runs the app
+  package.json           # npm run scripts
+  deno.json              # Deno tasks and import map
+  .gitignore
   README.md
 ```
 
-Then:
+## Run it
 
 ```bash
 cd my-app
-urban gen && urban run    # Node
-# or
-deno task start           # Deno (tasks: check, start, dev, deploy)
+
+# Node
+npm install
+npm start                # or: npx urban run
+
+# Deno
+deno task start
 ```
 
-## What it is not
+Both `npm start` and `deno task start` run the app: they generate its
+`nano-generated/` artifacts and start it against a nano-bpm engine (set
+`CAMUNDA_REST_ADDRESS`, default `http://localhost:8080/v2`). The scaffolded
+`package.json` and `deno.json` also expose `check`, `dev` and `deploy` tasks.
 
-The scaffolder only writes files (token substitution `__APP_ID__` / `__APP_NAME__`,
-`_gitignore` → `.gitignore`). Derivation is `@nanobpm/urban-toolkit`; execution
-is `@nanobpm/urban-runtime`. Keeping these separate is the whole point of ADR
-0052/0053: an app is a decoupled directory, not a console feature.
+## Options
+
+| Flag | Purpose | Default |
+|---|---|---|
+| `--dir <path>` | target directory | `./<name>` (slugified) |
+| `--id <slug>` | app id in the manifest | derived from the name |
+| `--preset <full\|headless>` | `full` includes surfaces, triggers and forms; `headless` is workers-only | `full` |
+
+## Related packages
+
+- [`@nanobpm/urban`](../urban-cli) — the CLI (`urban new`, `run`, `gen`, `check`, `deploy`).
+- [`@nanobpm/urban-runtime`](../urban-runtime) — runs the scaffolded app.
+- [`@nanobpm/urban-toolkit`](../urban-toolkit) — generates the app's artifacts.

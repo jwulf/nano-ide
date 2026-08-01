@@ -1,55 +1,94 @@
-# Urban runtime — `@nanobpm/urban-runtime`
+# `@nanobpm/urban-runtime`
 
-> The decoupled interpreter that **runs** an Urban app from its `nano.app.json`
-> manifest, on **both Node and Deno**. No console required. (ADR 0052.)
+Run an Urban app from its `nano.app.json` manifest — on **Node or Deno**, with no
+console or IDE required.
 
-An Urban app is a directory with a `nano.app.json` manifest that names its
-processes, forms, datasources and workers. This package reads that manifest and
-runs the app: it selects a host, validates the manifest, wires an
-`EngineClient`, starts the app's workers, and connects to a nano-bpm engine.
+An Urban app is a directory with a `nano.app.json` manifest that declares its
+processes, forms, datasources, workers, HTTP surfaces and triggers. This package
+reads that manifest and brings the app to life: it validates the manifest,
+connects to a nano-bpm engine, deploys the models, provisions the datasources,
+starts the workers, and serves the app's HTTP surfaces and webhook triggers.
 
-The runtime ships as source `.ts` (no build step, matching `connector-slack`).
-It needs Node ≥ 22.6 (run tests/code with `--experimental-strip-types`) or Deno.
+Requires Node ≥ 22.6 (with `--experimental-strip-types`) or Deno. It ships as
+TypeScript source with no build step.
 
-## Use
+## Install
+
+```bash
+npm i @nanobpm/urban-runtime
+```
+
+## Quick start
+
+Run the app in the current directory:
 
 ```ts
 import { runFromEnv } from "@nanobpm/urban-runtime";
 
-await runFromEnv(); // reads ./nano.app.json + env, starts the app
+const app = await runFromEnv();          // reads ./nano.app.json and the environment
+console.log(app.inspect());              // { app, name, httpPort, ... }
 ```
 
-Or load a manifest via the host and pick a transport explicitly:
+`runFromEnv` reads the engine address and transport from the environment, starts
+the app, and installs SIGINT/SIGTERM handlers for a graceful shutdown. Useful
+options:
 
 ```ts
-import { selectHost, loadManifest, validateManifest, RestEngineClient } from "@nanobpm/urban-runtime";
-
-const host = selectHost();
-const manifest = validateManifest(await loadManifest(host, "./nano.app.json"));
-const engine = new RestEngineClient({ baseUrl: process.env.CAMUNDA_REST_ADDRESS! });
+await runFromEnv({
+  root: "./my-app",        // app directory (default ".")
+  port: 3000,              // HTTP port for surfaces/triggers (default $PORT or 8090)
+  restAddress: "http://localhost:8080/v2",
+  handleSignals: false,    // manage the lifecycle yourself
+});
 ```
 
-## Engine transport
+## Building an app by hand
 
-The `EngineClient` is a thin seam with two implementations:
+For full control, assemble the pieces yourself:
 
-| Transport | When | How |
+```ts
+import {
+  createUrbanApp,
+  selectHost,
+  RestEngineClient,
+} from "@nanobpm/urban-runtime";
+
+const host = selectHost();                       // picks the Node or Deno adapter
+const engine = new RestEngineClient({ baseUrl: process.env.CAMUNDA_REST_ADDRESS! });
+
+const app = await createUrbanApp({ host, engine, root: "." });
+await app.start();
+// ... later:
+await app.stop();                                // releases workers, server, datasources
+```
+
+`createUrbanApp` returns an `UrbanApp` with `start()`, `stop()`, `inspect()`, and
+accessors for `data`, `security` and `httpPort`. A failed `start()` tears down
+anything it mounted and resets state, so the app can be started again.
+
+## Connecting to the engine
+
+The runtime talks to a nano-bpm engine through an `EngineClient`. Two are built in:
+
+| Transport | When it is used | What it does |
 |---|---|---|
-| `RestEngineClient` | default; dependency-free | Orchestration Cluster REST |
-| `createNanoSdkEngineClient` | `CAMUNDA_TRANSPORT` ≠ `rest` | `@nanobpm/nano-sdk` — **Falcon** protocol on the instance-creation hot path, REST fallback for cold paths |
+| REST (`RestEngineClient`) | default; no extra dependencies | Orchestration Cluster REST API |
+| nano-sdk (`createNanoSdkEngineClient`) | `CAMUNDA_TRANSPORT` set to anything other than `rest` | uses `@nanobpm/nano-sdk` (Falcon protocol) for instance creation, falling back to REST for everything else |
 
-`@nanobpm/nano-sdk` is an **optional** dependency, imported lazily; if it is not
-installed the runtime falls back to REST. Select it via `CAMUNDA_TRANSPORT` or
-the `transport` option to `runFromEnv`.
+`@nanobpm/nano-sdk` is an optional dependency, imported only when requested. If it
+is not installed, the runtime uses REST.
 
-## Scripts
+## Configuration
 
-- `npm run typecheck` — `tsc --noEmit`
-- `npm test` — Node test runner (strip-types)
-- `npm run test:deno` — Deno test runner
+| Variable | Purpose | Default |
+|---|---|---|
+| `CAMUNDA_REST_ADDRESS` | engine REST base URL | `http://localhost:8080/v2` |
+| `CAMUNDA_TRANSPORT` | `rest`, or any other value to use the nano-sdk transport | `rest` |
+| `CAMUNDA_TOKEN` | bearer token for the engine, if required | — |
+| `PORT` | HTTP port for surfaces and triggers | `8090` |
 
-## See also
+## Related packages
 
-- `@nanobpm/urban-toolkit` — derives the app's generated modules (ADR 0053)
-- `@nanobpm/urban` — the CLI that drives this runtime (`urban run`/`dev`)
-- `create-urban-app` — scaffolds a runnable app around this runtime
+- [`@nanobpm/urban`](../urban-cli) — a CLI that scaffolds, checks, derives and runs Urban apps.
+- [`@nanobpm/urban-toolkit`](../urban-toolkit) — derives an app's generated artifacts (migrations, worker I/O, BPMN).
+- [`create-urban-app`](../create-urban-app) — scaffolds a new, runnable Urban app.

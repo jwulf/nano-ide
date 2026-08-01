@@ -1,59 +1,64 @@
-# Urban toolkit — `@nanobpm/urban-toolkit`
+# `@nanobpm/urban-toolkit`
 
-> Derivation as a **library**, not an IDE feature. Pure, deterministic
-> `derive(inputs) → artifacts` functions that both the IDE and the `urban gen`
-> CLI call, producing the console's `nano-generated/` output as a drop-in.
-> (ADR 0053, extends ADR 0052.)
+Generate an Urban app's derived artifacts — SQL migrations, worker I/O types and
+BPMN — from its manifest and models. Pure functions plus a small file-IO
+orchestrator that runs the same on **Node and Deno**.
 
-An Urban app is not only *run* — it is *derived*. The console currently derives
-typed modules from the model and the database into `nano-generated/` as a side
-effect of the IDE running. This package lifts that derivation into a shared,
-decoupled library so agents, CI and standalone users can regenerate outside the
-console, with a **drift gate**.
+Use it two ways: call `runGen` to (re)generate the whole `nano-generated/`
+directory for an app, or call an individual deriver to turn one input into
+artifacts in memory.
 
-## Invariants
+## Install
 
-1. **Derivers are pure and deterministic** — `(input) → DerivedArtifact[]`, no
-   IO, byte-identical output for identical input.
-2. **All IO is confined** to the `gen` orchestrator behind a tiny FS port
-   (`GenIO`), so the same code runs on Node and Deno.
-3. **Output is a drop-in** for the console: same `nano-generated/` directory,
-   same filenames, same `@nanobpm/*` specifiers.
-4. **The model is authoritative; artifacts are a cache** — `urban gen --check`
-   regenerates in memory and fails on drift.
+```bash
+npm i @nanobpm/urban-toolkit
+```
 
-## Derivers (first cut)
-
-| Deriver | Input | Output |
-|---|---|---|
-| `deriveMigrations` | datasource types | `nano-generated/<source>.schema.sql` (CREATE TABLE) |
-| `deriveWorkerBindings` | BPMN service tasks + data-envelope io | `nano-generated/worker-io.d.ts` — a **byte-compatible port** of the console's `emitWorkerBindings` (ADR 0033 §3) |
-| `deriveModelFromFlow` | a code-first flow | `nano-generated/processes/<id>.bpmn` (BPMN + DI, auto-layout) |
-
-## Use
+## Generate an app's artifacts
 
 ```ts
 import { runGen, createNodeGenIO } from "@nanobpm/urban-toolkit";
 
 const io = createNodeGenIO();
-await runGen({ root: ".", io });                          // write nano-generated/
-const { drift } = await runGen({ root: ".", io, check: true }); // drift gate
-if (drift.length) throw new Error(`stale: ${drift.join(", ")}`);
+await runGen({ root: ".", io });          // writes nano-generated/
 ```
 
-`runGen({ check: true })` does not write; it returns the list of paths that
-differ from disk in `GenResult.drift` (empty ⇒ up to date). The `urban gen
---check` command wraps this and exits non-zero on drift.
+Check for drift instead of writing — regenerates in memory and reports the paths
+that differ from what's on disk (empty ⇒ up to date):
 
-Or call a deriver directly (pure, no IO) and inspect the artifacts.
+```ts
+const { drift } = await runGen({ root: ".", io, check: true });
+if (drift.length) throw new Error(`out of date: ${drift.join(", ")}`);
+```
 
-## Migration path
+## Derivers
 
-The console migrates onto the toolkit **emitter-by-emitter**, lowest-risk first
-(`worker-io` → `messages`/`meta` → `domain`), with `urban gen --check` proving
-parity at each step. See ADR 0053.
+Each deriver is a pure `(input) → artifacts` function you can call directly, with
+no file IO:
 
-## Scripts
+| Deriver | Input | Output |
+|---|---|---|
+| `deriveMigrations` | the manifest's datasource types | `nano-generated/<source>.schema.sql` (`CREATE TABLE` per type) |
+| `deriveWorkerBindings` | BPMN service tasks + their data-envelope I/O | `nano-generated/worker-io.d.ts` (typed worker input/output) |
+| `deriveModelFromFlow` | a code-first flow definition | `nano-generated/processes/<id>.bpmn` (BPMN with auto-layout) |
 
-- `npm run typecheck`
-- `npm test` (Node, strip-types) · `npm run test:deno`
+```ts
+import { deriveMigrations } from "@nanobpm/urban-toolkit";
+
+const artifacts = deriveMigrations(manifest);   // DerivedArtifact[] — { path, content }
+```
+
+Derivers are deterministic: the same input always produces byte-identical output,
+so generated files are safe to commit and to gate in CI.
+
+## Running on Deno
+
+All IO goes through a small `GenIO` port. `createNodeGenIO()` implements it with
+`node:fs/promises`, which both Node and Deno provide, so a single implementation
+serves both runtimes. Supply your own `GenIO` to generate against an in-memory or
+virtual filesystem.
+
+## Related packages
+
+- [`@nanobpm/urban`](../urban-cli) — the CLI whose `urban gen` command wraps this toolkit.
+- [`@nanobpm/urban-runtime`](../urban-runtime) — runs the app the artifacts belong to.
