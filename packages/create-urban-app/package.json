@@ -1,6 +1,6 @@
 {
   "name": "create-urban-app",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Scaffold a runnable Urban app (nano.app.json + processes/forms/db/workers) that runs on both Node and Deno via @nanobpm/urban. The create-react-app of Urban (ADR 0052).",
   "license": "Apache-2.0",
   "type": "module",
@@ -26,17 +26,24 @@
   "bin": {
     "create-urban-app": "./src/bin.mjs"
   },
-  "main": "./src/scaffold.ts",
-  "types": "./src/scaffold.ts",
+  "main": "./dist/scaffold.js",
+  "types": "./dist/scaffold.d.ts",
   "exports": {
-    ".": "./src/scaffold.ts"
+    ".": {
+      "types": "./dist/scaffold.d.ts",
+      "default": "./dist/scaffold.js"
+    },
+    "./source": "./src/scaffold.ts"
   },
   "files": [
+    "dist",
     "src",
     "template",
     "README.md"
   ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\""
   },
