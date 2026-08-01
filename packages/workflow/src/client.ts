@@ -162,9 +162,11 @@ function asWorkflowError(e: unknown, what: string): WorkflowError {
 }
 
 export class WorkflowClient {
-  /** The underlying nano-sdk client. Exposed so the Worker runtime and app
-   *  authors can reach the full engine surface (user tasks, decisions, signals,
-   *  messages, …) through the same transport (ADR 0055). */
+  /** The underlying nano-sdk client, exposed so the Worker runtime and app
+   *  authors can reach the engine through the same transport (ADR 0055). The
+   *  exported `NanoSdkClient` type intentionally models only the subset of
+   *  methods this package uses (deploy, create, correlate, get, job workers);
+   *  the runtime value is the full nano-sdk client. */
   readonly sdk: NanoSdkClient;
 
   constructor(opts: WorkflowClientOptions) {
