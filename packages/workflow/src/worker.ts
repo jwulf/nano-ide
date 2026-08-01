@@ -162,23 +162,27 @@ export class Worker {
     return [...this.routes.keys()];
   }
 
-  /** Begin serving. Creates one nano-sdk job worker per derived job type; the
-   *  SDK owns the poll lifecycle (it starts each worker itself once it has bound
-   *  a transport — Falcon on a Nano server, REST otherwise), so we create them
-   *  here (nothing polls before `start`) but do not start them by hand. */
+  /** Begin serving. Creates one nano-sdk job worker per derived job type with
+   *  `autoStart: false`, then starts each explicitly, so the poll lifecycle is
+   *  deterministic and owned here rather than left to the SDK's auto-start
+   *  default (matching the `JobWorkerConfig.autoStart` contract). Nothing polls
+   *  before `start()` is called. */
   start(): void {
     if (this.running) return;
     this.running = true;
-    this.workers = [...this.routes.entries()].map(([type, route]) =>
-      this.client.sdk.createJobWorker({
+    this.workers = [...this.routes.entries()].map(([type, route]) => {
+      const worker = this.client.sdk.createJobWorker({
         jobType: type,
         workerName: this.name,
         maxParallelJobs: this.maxParallelJobs,
         jobTimeoutMs: this.jobTimeoutMs,
         pollTimeoutMs: this.pollTimeoutMs,
+        autoStart: false,
         jobHandler: (job) => this.handleJob(type, route, job),
-      }),
-    );
+      });
+      worker.start();
+      return worker;
+    });
   }
 
   /** Stop serving and wait for in-flight jobs to drain. Stopping is best-effort
@@ -225,7 +229,15 @@ export class Worker {
       // job after its lock times out (at-least-once → handlers must be
       // idempotent). Best-effort surface it as an incident-worthy failure.
       this.emitError(e as Error, type);
-      return job.fail({ errorMessage: (e as Error).message, retries: 0 });
+      try {
+        return await job.fail({ errorMessage: (e as Error).message, retries: 0 });
+      } catch {
+        // Even reporting the failure failed (e.g. the gateway is unreachable).
+        // Awaited + swallowed so a rejected `fail` can't escape as an unhandled
+        // rejection out of the SDK worker's handler; the engine redelivers the
+        // job once its lock times out regardless.
+        return undefined;
+      }
     }
   }
 }
