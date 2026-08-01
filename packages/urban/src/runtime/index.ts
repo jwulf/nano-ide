@@ -60,9 +60,12 @@ export { evalCorrelation } from "./core/modules/triggers.ts";
 export { createNodeHost } from "./adapters/node.ts";
 export { createDenoHost } from "./adapters/deno.ts";
 export { isDeno, selectHost } from "./adapters/detect.ts";
-export { RestEngineClient } from "./engine/rest.ts";
-export type { RestEngineOptions } from "./engine/rest.ts";
-export { createNanoSdkEngineClient } from "./engine/nanosdk.ts";
-export type { NanoSdkEngineOptions, NanoSdkClient } from "./engine/nanosdk.ts";
+export { createNanoSdkEngineClient, SdkEngineClient } from "./engine/nanosdk.ts";
+export type {
+  NanoSdkClient,
+  NanoSdkEngineOptions,
+  NanoSdkJobWorker,
+  NanoSdkJobWorkerConfig,
+} from "./engine/nanosdk.ts";
 export { runFromEnv } from "./run.ts";
 export type { RunOptions } from "./run.ts";
