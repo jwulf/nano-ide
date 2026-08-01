@@ -55,7 +55,13 @@ export type {
   FieldTs,
 } from "./envelope.js";
 export { WorkflowClient, WorkflowError, toBpmn, toDeployableBpmn } from "./client.js";
-export type { WorkflowClientOptions, ActivateOptions } from "./client.js";
+export type {
+  WorkflowClientOptions,
+  NanoSdkClient,
+  NanoJobWorker,
+  JobWorkerConfig,
+  ActivatedJob,
+} from "./client.js";
 export { Worker } from "./worker.js";
 export type { WorkerOptions, ActivityEvent } from "./worker.js";
 export type {

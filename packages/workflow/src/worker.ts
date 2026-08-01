@@ -1,6 +1,7 @@
 // The Worker runtime — hosts one or more workflows against a gateway and drives
-// them: long-polls each derived job type, dispatches jobs to handlers, completes
-// them. It generalises the two surfaces:
+// them: it registers one nano-sdk job worker per derived job type, dispatches
+// each activated job to its handler, and completes it. It generalises the two
+// surfaces:
 //
 //   - a declarative flow contributes one job type per `run` step, dispatched to
 //     the user handler (external `task` steps are intentionally NOT hosted here —
@@ -8,11 +9,13 @@
 //   - an imperative workflow contributes its single orchestrator job type,
 //     dispatched to the replay engine (which advances the journal one step).
 //
-// It is resilient to the gateway disappearing (each poll loop backs off and
-// reconnects on its own), so it survives an engine crash/restart — the property
-// the ADR 0044 spike proved.
+// Transport (activation, completion, failure, long-poll, backoff/reconnect) is
+// the nano-sdk job worker (ADR 0055), reached through `WorkflowClient.sdk`. The
+// nano-sdk worker reschedules its poll on an activation error, so the runtime
+// survives an engine crash/restart — the property the ADR 0044 spike proved.
 
 import { WorkflowClient } from "./client.js";
+import type { ActivatedJob, NanoJobWorker } from "./client.js";
 import { replayOnce } from "./imperative.js";
 import { walkNodes } from "./declarative.js";
 import type { Job, JsonObject, Workflow } from "./types.js";
@@ -35,39 +38,46 @@ export interface WorkerOptions {
   workflows: Workflow[];
   /** Worker name reported to the gateway. Default "nanobpm-workflow". */
   name?: string;
+  /** Transport for the worker's own client (used only when `client` is not
+   *  supplied): "auto" | "falcon" | "rest". Defaults to "rest" — job serving is
+   *  resilience-critical, and REST long-poll reconnects with backoff after an
+   *  engine restart (the ADR 0044 property), whereas the Falcon push transport
+   *  does not recover a mid-stream disconnect. Instance creation, by contrast,
+   *  defaults to Falcon on its own `WorkflowClient` for throughput. */
+  transport?: "auto" | "falcon" | "rest";
   /** Long-poll timeout per activation, ms. Also bounds stop() latency. Default 10000. */
   pollTimeoutMs?: number;
   /** Job lock timeout, ms. Default 30000. */
   jobTimeoutMs?: number;
-  /** Backoff after a transport error, ms. Default 500. */
-  backoffMs?: number;
+  /** Max jobs handled in parallel per derived job type. Default 1. */
+  maxParallelJobs?: number;
   onActivity?: (e: ActivityEvent) => void | Promise<void>;
   onError?: (err: Error, context: { type: string }) => void;
 }
 
 type Handler = (job: Job) => Promise<{ variables: JsonObject; step?: string }>;
 
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
 export class Worker {
   private readonly client: WorkflowClient;
   private readonly name: string;
   private readonly pollTimeoutMs: number;
   private readonly jobTimeoutMs: number;
-  private readonly backoffMs: number;
+  private readonly maxParallelJobs: number;
   private readonly onActivity?: WorkerOptions["onActivity"];
   private readonly onError?: WorkerOptions["onError"];
   /** job type → { workflowId, handle } */
   private readonly routes = new Map<string, { workflowId: string; handle: Handler }>();
   private running = false;
-  private loops: Promise<void>[] = [];
+  private workers: NanoJobWorker[] = [];
 
   constructor(opts: WorkerOptions) {
-    this.client = opts.client ?? new WorkflowClient({ baseUrl: requireBaseUrl(opts) });
+    this.client =
+      opts.client ??
+      new WorkflowClient({ baseUrl: requireBaseUrl(opts), transport: opts.transport ?? "rest" });
     this.name = opts.name ?? "nanobpm-workflow";
     this.pollTimeoutMs = opts.pollTimeoutMs ?? 10000;
     this.jobTimeoutMs = opts.jobTimeoutMs ?? 30000;
-    this.backoffMs = opts.backoffMs ?? 500;
+    this.maxParallelJobs = opts.maxParallelJobs ?? 1;
     this.onActivity = opts.onActivity;
     this.onError = opts.onError;
     for (const wf of opts.workflows) this.register(wf);
@@ -152,62 +162,70 @@ export class Worker {
     return [...this.routes.keys()];
   }
 
-  /** Begin polling. Resolves once the loops are running (they run until stop()). */
+  /** Begin serving. Creates one nano-sdk job worker per derived job type; the
+   *  SDK owns the poll lifecycle (it starts each worker itself once it has bound
+   *  a transport — Falcon on a Nano server, REST otherwise), so we create them
+   *  here (nothing polls before `start`) but do not start them by hand. */
   start(): void {
     if (this.running) return;
     this.running = true;
-    this.loops = [...this.routes.entries()].map(([type, route]) => this.pollLoop(type, route));
+    this.workers = [...this.routes.entries()].map(([type, route]) =>
+      this.client.sdk.createJobWorker({
+        jobType: type,
+        workerName: this.name,
+        maxParallelJobs: this.maxParallelJobs,
+        jobTimeoutMs: this.jobTimeoutMs,
+        pollTimeoutMs: this.pollTimeoutMs,
+        jobHandler: (job) => this.handleJob(type, route, job),
+      }),
+    );
   }
 
-  /** Stop polling and wait for in-flight loops to unwind (≤ pollTimeoutMs). */
+  /** Stop serving and wait for in-flight jobs to drain. Stopping is best-effort
+   *  per worker: the Falcon worker's `stop` throws if it never bound a transport
+   *  (detection still pending), which must not fail the whole shutdown. */
   async stop(): Promise<void> {
     this.running = false;
-    await Promise.all(this.loops);
-    this.loops = [];
+    await Promise.all(
+      this.workers.map(async (w) => {
+        try {
+          await (w.stopGracefully
+            ? w.stopGracefully({ waitUpToMs: this.pollTimeoutMs })
+            : w.stop());
+        } catch {
+          /* worker never fully started (transport unbound); nothing to drain */
+        }
+      }),
+    );
+    this.workers = [];
   }
 
-  private async pollLoop(type: string, route: { workflowId: string; handle: Handler }): Promise<void> {
-    while (this.running) {
-      let jobs: Job[] = [];
-      try {
-        jobs = await this.client.activateJobs(type, {
-          worker: this.name,
-          maxJobsToActivate: 1,
-          timeout: this.jobTimeoutMs,
-          requestTimeout: this.pollTimeoutMs,
-        });
-      } catch (e) {
-        // Transport/gateway error (e.g. engine restarting): back off, reconnect.
-        this.emitError(e as Error, type);
-        await sleep(this.backoffMs);
-        continue;
-      }
-      for (const job of jobs) {
-        if (!this.running) break;
-        try {
-          const { variables, step } = await route.handle(job);
-          await this.client.completeJob(job.jobKey, variables);
-          // Job is now completed; the observer hook is isolated (emitActivity
-          // swallows its own errors) so it can never fall into the failure path.
-          await this.emitActivity({
-            workflowId: route.workflowId,
-            type,
-            jobKey: job.jobKey,
-            elementId: job.elementId,
-            step,
-          });
-        } catch (e) {
-          // A handler or completion failed. Report; the engine will redeliver the
-          // job after its lock times out (at-least-once → handlers must be
-          // idempotent). Best-effort surface it as an incident-worthy failure.
-          this.emitError(e as Error, type);
-          try {
-            await this.client.failJob(job.jobKey, (e as Error).message, 0);
-          } catch {
-            /* engine may be down; the lock will expire and redeliver */
-          }
-        }
-      }
+  /** Dispatch one activated job to its route handler and acknowledge it. Returns
+   *  the nano-sdk action receipt (its `complete`/`fail` result). */
+  private async handleJob(
+    type: string,
+    route: { workflowId: string; handle: Handler },
+    job: ActivatedJob,
+  ): Promise<unknown> {
+    try {
+      const { variables, step } = await route.handle(job);
+      const receipt = await job.complete(variables);
+      // Job is now completed; the observer hook is isolated (emitActivity
+      // swallows its own errors) so it can never fall into the failure path.
+      await this.emitActivity({
+        workflowId: route.workflowId,
+        type,
+        jobKey: job.jobKey,
+        elementId: job.elementId,
+        step,
+      });
+      return receipt;
+    } catch (e) {
+      // A handler or completion failed. Report; the engine will redeliver the
+      // job after its lock times out (at-least-once → handlers must be
+      // idempotent). Best-effort surface it as an incident-worthy failure.
+      this.emitError(e as Error, type);
+      return job.fail({ errorMessage: (e as Error).message, retries: 0 });
     }
   }
 }

@@ -40,7 +40,10 @@ export type {
   FieldSpec,
   ScalarType,
   WorkflowClientOptions,
-  ActivateOptions,
+  NanoSdkClient,
+  NanoJobWorker,
+  JobWorkerConfig,
+  ActivatedJob,
   WorkerOptions,
   ActivityEvent,
 } from "@nanobpm/workflow";

@@ -1,7 +1,10 @@
-// A thin, dependency-free client for a running nanobpmn gateway (REST v2):
-// deploy a workflow's derived model, start instances, correlate signals, and the
-// low-level job activate/complete/fail used by the Worker runtime.
+// A client for a running nanobpmn gateway, built on `@nanobpm/nano-sdk` (the
+// single engine-transport spine — ADR 0055). It derives a workflow's model,
+// deploys it (with diagram interchange), starts instances, and correlates
+// signals; the low-level job protocol used by the Worker runtime is the SDK's
+// own job worker, reached through the exposed `sdk` client.
 
+import { createCamundaClient } from "@nanobpm/nano-sdk";
 import { declarativeToBpmn, walkNodes } from "./declarative.js";
 import { imperativeToBpmn } from "./imperative.js";
 import { layoutBpmn } from "./layout.js";
@@ -55,22 +58,75 @@ export async function toDeployableBpmn(
   }
 }
 
-type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
-export interface WorkflowClientOptions {
-  /** Base URL of the nanobpmn gateway, e.g. `http://localhost:8080`. */
-  baseUrl: string;
-  /** Injectable fetch (defaults to the global). Useful for tests/proxies. */
-  fetch?: FetchLike;
+/**
+ * The subset of the `@nanobpm/nano-sdk` (Camunda orchestration-cluster) client
+ * that the workflow surface uses. `createCamundaClient` returns a superset of
+ * this, so a test — or an author bringing their own transport (e.g. the embedded
+ * engine) — can inject any object satisfying it.
+ */
+export interface NanoSdkClient {
+  createDeployment(
+    input: { resources: File[]; [k: string]: unknown },
+    options?: unknown,
+  ): Promise<Record<string, unknown>>;
+  createProcessInstance(
+    input: { processDefinitionId: string; variables?: JsonObject },
+    options?: unknown,
+  ): Promise<Record<string, unknown>>;
+  correlateMessage(
+    input: { name: string; correlationKey: string; variables?: JsonObject },
+    options?: unknown,
+  ): Promise<Record<string, unknown>>;
+  getProcessInstance(
+    input: { processInstanceKey: string },
+    consistency: { consistency: { waitUpToMs: number } },
+    options?: unknown,
+  ): Promise<Record<string, unknown>>;
+  createJobWorker(cfg: JobWorkerConfig): NanoJobWorker;
 }
 
-export interface ActivateOptions {
-  worker: string;
-  maxJobsToActivate?: number;
-  /** Job timeout in ms (how long the worker holds the job). Default 30000. */
-  timeout?: number;
-  /** Long-poll timeout in ms; `< 0` disables long-poll. Default 15000. */
-  requestTimeout?: number;
+/** Config for a nano-sdk job worker (the subset the Worker runtime sets). */
+export interface JobWorkerConfig {
+  jobType: string;
+  jobHandler: (job: ActivatedJob) => Promise<unknown> | unknown;
+  workerName?: string;
+  maxParallelJobs?: number;
+  /** Job lock timeout in ms. */
+  jobTimeoutMs?: number;
+  /** Long-poll timeout in ms. */
+  pollTimeoutMs?: number;
+  /** Start polling immediately. The Worker runtime sets this false and starts explicitly. */
+  autoStart?: boolean;
+}
+
+/** The handle returned by `createJobWorker`. */
+export interface NanoJobWorker {
+  start(): void;
+  stop(): void | Promise<void>;
+  stopGracefully?(opts?: { waitUpToMs?: number }): Promise<void>;
+}
+
+/** An activated job as delivered to a nano-sdk job handler: the workflow `Job`
+ *  fields plus the acknowledgement actions. */
+export type ActivatedJob = Job & {
+  complete(variables?: JsonObject): Promise<unknown>;
+  fail(body: { errorMessage: string; retries?: number }): Promise<unknown>;
+};
+
+export interface WorkflowClientOptions {
+  /** Base URL of the nanobpmn gateway, e.g. `http://localhost:8080`. The nano-sdk
+   *  client normalises this to the `/v2` REST address. */
+  baseUrl?: string;
+  /** Bearer token for the gateway (CAMUNDA_TOKEN). */
+  token?: string;
+  /** Transport mode passed to `createCamundaClient`: "auto" | "falcon" | "rest".
+   *  Default "auto" (Falcon on a Nano server, REST elsewhere). */
+  transport?: "auto" | "falcon" | "rest";
+  /** Inject a pre-built nano-sdk client (or a compatible fake) instead of
+   *  constructing one from `baseUrl`. Useful for tests, the embedded transport,
+   *  and advanced authors who build the client themselves. */
+  client?: NanoSdkClient;
 }
 
 export class WorkflowError extends Error {
@@ -84,37 +140,34 @@ export class WorkflowError extends Error {
   }
 }
 
+/** Normalise a thrown SDK/transport error into a WorkflowError, preserving an
+ *  HTTP status when the SDK attached one. */
+function asWorkflowError(e: unknown, what: string): WorkflowError {
+  if (e instanceof WorkflowError) return e;
+  const err = e as { message?: string; status?: number; response?: { status?: number } };
+  const status = err?.status ?? err?.response?.status;
+  return new WorkflowError(`${what} failed: ${err?.message ?? String(e)}`, status);
+}
+
 export class WorkflowClient {
-  private readonly baseUrl: string;
-  private readonly fetchImpl: FetchLike;
+  /** The underlying nano-sdk client. Exposed so the Worker runtime and app
+   *  authors can reach the full engine surface (user tasks, decisions, signals,
+   *  messages, …) through the same transport (ADR 0055). */
+  readonly sdk: NanoSdkClient;
 
   constructor(opts: WorkflowClientOptions) {
-    if (!opts?.baseUrl) throw new Error("WorkflowClient needs a baseUrl");
-    this.baseUrl = opts.baseUrl.replace(/\/+$/, "");
-    const f = opts.fetch ?? (globalThis.fetch as FetchLike | undefined);
-    if (!f) throw new Error("no fetch available; pass options.fetch (Node < 18)");
-    this.fetchImpl = f;
-  }
-
-  private async json<T>(path: string, init: RequestInit, what: string): Promise<T> {
-    const res = await this.send(path, init, what);
-    return (await res.json()) as T;
-  }
-
-  /** Perform a request, throwing WorkflowError on transport error or !ok, and
-   *  return the raw Response (for endpoints with an empty/no-content body). */
-  private async send(path: string, init: RequestInit, what: string): Promise<Response> {
-    let res: Response;
-    try {
-      res = await this.fetchImpl(`${this.baseUrl}${path}`, init);
-    } catch (e) {
-      throw new WorkflowError(`${what} transport error: ${(e as Error).message}`);
+    if (opts?.client) {
+      this.sdk = opts.client;
+      return;
     }
-    if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      throw new WorkflowError(`${what} failed: ${res.status}`, res.status, body);
-    }
-    return res;
+    if (!opts?.baseUrl) throw new Error("WorkflowClient needs a baseUrl or a client");
+    this.sdk = createCamundaClient({
+      config: {
+        CAMUNDA_REST_ADDRESS: opts.baseUrl.replace(/\/+$/, ""),
+        ...(opts.token ? { CAMUNDA_TOKEN: opts.token } : {}),
+        CAMUNDA_TRANSPORT: opts.transport ?? "auto",
+      },
+    }) as unknown as NanoSdkClient;
   }
 
   /**
@@ -126,9 +179,12 @@ export class WorkflowClient {
    */
   async deploy(wf: Workflow, opts: { layout?: boolean } = {}): Promise<DeployResult> {
     const xml = await toDeployableBpmn(wf, opts);
-    const form = new FormData();
-    form.append("resources", new Blob([xml], { type: "text/xml" }), `${wf.id}.bpmn`);
-    return this.json<DeployResult>(`/v2/deployments`, { method: "POST", body: form }, "deploy");
+    const file = new File([xml], `${wf.id}.bpmn`, { type: "text/xml" });
+    try {
+      return (await this.sdk.createDeployment({ resources: [file] })) as DeployResult;
+    } catch (e) {
+      throw asWorkflowError(e, "deploy");
+    }
   }
 
   /**
@@ -139,15 +195,14 @@ export class WorkflowClient {
   async start(wf: Workflow, input: JsonObject = {}): Promise<StartResult> {
     const variables: JsonObject =
       wf.kind === "imperative" ? { input, journal: {}, wfDone: false } : input;
-    return this.json<StartResult>(
-      `/v2/process-instances`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ processDefinitionId: wf.id, variables }),
-      },
-      "start",
-    );
+    try {
+      return (await this.sdk.createProcessInstance({
+        processDefinitionId: wf.id,
+        variables,
+      })) as StartResult;
+    } catch (e) {
+      throw asWorkflowError(e, "start");
+    }
   }
 
   /** Correlate a signal to a parked declarative `signal` step. Fails fast on an
@@ -172,59 +227,27 @@ export class WorkflowClient {
         }`,
       );
     }
-    return this.json<JsonObject>(
-      `/v2/messages/correlation`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name: messageName(flow.id, signalName), correlationKey, variables }),
-      },
-      `signal "${signalName}"`,
-    );
-  }
-
-  /** Fetch an instance (used by demos/tests to observe completion). */
-  async getInstance(processInstanceKey: string): Promise<JsonObject | null> {
     try {
-      const res = await this.fetchImpl(`${this.baseUrl}/v2/process-instances/${processInstanceKey}`);
-      if (!res.ok) return null;
-      return (await res.json()) as JsonObject;
-    } catch {
-      return null;
+      return (await this.sdk.correlateMessage({
+        name: messageName(flow.id, signalName),
+        correlationKey,
+        variables,
+      })) as JsonObject;
+    } catch (e) {
+      throw asWorkflowError(e, `signal "${signalName}"`);
     }
   }
 
-  // --- low-level job protocol (used by the Worker runtime) -------------------
-
-  async activateJobs(type: string, opts: ActivateOptions): Promise<Job[]> {
-    const body = {
-      type,
-      worker: opts.worker,
-      maxJobsToActivate: opts.maxJobsToActivate ?? 1,
-      timeout: opts.timeout ?? 30000,
-      requestTimeout: opts.requestTimeout ?? 15000,
-    };
-    const res = await this.json<{ jobs?: Job[] }>(
-      `/v2/jobs/activation`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) },
-      `activate ${type}`,
-    );
-    return res.jobs ?? [];
-  }
-
-  async completeJob(jobKey: string, variables: JsonObject = {}): Promise<void> {
-    await this.send(
-      `/v2/jobs/${jobKey}/completion`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ variables }) },
-      "complete job",
-    );
-  }
-
-  async failJob(jobKey: string, errorMessage: string, retries = 0): Promise<void> {
-    await this.send(
-      `/v2/jobs/${jobKey}/failure`,
-      { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ errorMessage, retries }) },
-      "fail job",
-    );
+  /** Fetch an instance (used by demos/tests to observe completion). Reads with
+   *  zero-wait consistency; returns null when the instance is not (yet) visible. */
+  async getInstance(processInstanceKey: string): Promise<JsonObject | null> {
+    try {
+      return (await this.sdk.getProcessInstance(
+        { processInstanceKey },
+        { consistency: { waitUpToMs: 0 } },
+      )) as JsonObject;
+    } catch {
+      return null;
+    }
   }
 }
