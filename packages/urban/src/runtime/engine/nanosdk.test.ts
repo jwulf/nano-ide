@@ -254,6 +254,12 @@ test("close stops every worker and closes the SDK client", async () => {
   assert.equal(client.closed, 1);
 });
 
+test("exposes the underlying nano-sdk client as .sdk", () => {
+  const client = fakeSdkClient();
+  const engine = new SdkEngineClient(client);
+  assert.equal(engine.sdk, client, "sdk returns the exact client the adapter was built from");
+});
+
 test("createNanoSdkEngineClient uses an injected client", async () => {
   const client = fakeSdkClient();
   const engine = await createNanoSdkEngineClient({ restAddress: "http://x/v2", client });

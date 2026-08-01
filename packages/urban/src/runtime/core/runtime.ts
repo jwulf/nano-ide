@@ -5,6 +5,7 @@
 
 import type { AppApi, Mounted } from "./context.ts";
 import type { EngineClient, HostContext, HttpServer } from "./host.ts";
+import type { EngineSdkClient } from "../engine/sdk.ts";
 import { loadManifest, type AppManifest } from "./manifest.ts";
 import { validateManifest } from "./validate.ts";
 import { makeRouter, type Route } from "./router.ts";
@@ -25,6 +26,13 @@ export function resolvePort(explicit: number | undefined, envPort: string | unde
     throw new Error(`invalid PORT "${envPort}": expected an integer in 0..65535`);
   }
   return n;
+}
+
+/** Read the underlying nano-sdk client off an engine when it exposes one (the
+ *  `SdkEngineClient` does). Non-SDK engines (e.g. an in-memory test double) have no
+ *  `sdk`, so handlers get `undefined` and fall back to the transport-agnostic seam. */
+function engineSdk(engine: EngineClient): EngineSdkClient | undefined {
+  return (engine as { sdk?: EngineSdkClient }).sdk;
 }
 
 export interface MountFlags {
@@ -152,6 +160,7 @@ export async function createUrbanApp(opts: CreateUrbanAppOptions): Promise<Urban
           manifest,
           data,
           engine,
+          sdk: engineSdk(engine),
           env: (n) => host.env(n),
           log: (l, m, f) => host.log(l, m, f),
         };

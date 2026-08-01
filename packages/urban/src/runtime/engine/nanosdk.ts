@@ -17,6 +17,7 @@ import type {
   JobHandler,
   WorkerSubscription,
 } from "../core/host.ts";
+import type { EngineSdkClient } from "./sdk.ts";
 
 /** Coerce an engine response's process-instance key to a non-empty string, or
  * throw — a missing key means a malformed/partial response, not a real instance. */
@@ -111,6 +112,15 @@ export class SdkEngineClient implements EngineClient {
   constructor(client: NanoSdkClient, log: Log = () => {}) {
     this.client = client;
     this.log = log;
+  }
+
+  /**
+   * The underlying `@nanobpm/nano-sdk` client — the full Camunda orchestration-cluster
+   * surface (decisions, cluster variables, incidents, agents, batch operations, …) over
+   * the same connection. Surfaced to handlers as `AppApi.sdk`.
+   */
+  get sdk(): EngineSdkClient {
+    return this.client as unknown as EngineSdkClient;
   }
 
   async deployResources(

@@ -15,6 +15,13 @@
 // Runtime — app materialization + hosting
 export * from "./runtime/index.ts";
 
+// The nano-sdk engine client factory: build a client to talk to a Nano/Camunda
+// engine directly, or type an `AppApi.sdk`. The runtime uses this same factory, so a
+// code-first author reaches the full engine surface without a separate
+// `@nanobpm/nano-sdk` dependency. (`EngineSdkClient`, its return type, is re-exported
+// from ./runtime/index.ts above.)
+export { createCamundaClient } from "@nanobpm/nano-sdk";
+
 // Toolkit — derivation library (`urban gen`)
 export * from "./toolkit/index.ts";
 

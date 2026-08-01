@@ -1,5 +1,6 @@
 import type { AppManifest } from "./manifest.ts";
 import type { EngineClient, HostContext } from "./host.ts";
+import type { EngineSdkClient } from "../engine/sdk.ts";
 
 /** Everything a runtime module needs. Passed to each module's mount function. */
 export interface RuntimeContext {
@@ -30,6 +31,15 @@ export interface AppApi {
   manifest: AppManifest;
   data: DataLayer;
   engine: EngineClient;
+  /**
+   * The underlying `@nanobpm/nano-sdk` engine client, present when the app runs on
+   * the nano-sdk transport (the default). It exposes the full Camunda
+   * orchestration-cluster surface — decisions, cluster variables, incidents, user
+   * tasks, agents, batch operations — beyond the transport-agnostic `engine` seam,
+   * over the same connection. Undefined when a non-SDK engine is injected (e.g. an
+   * in-memory test double).
+   */
+  sdk?: EngineSdkClient;
   env(name: string): string | undefined;
   log(level: "info" | "warn" | "error", msg: string, fields?: Record<string, unknown>): void;
 }
