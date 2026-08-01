@@ -19,8 +19,21 @@ import {
 import { scaffold, slugify } from "create-urban-app";
 import { createNodeGenIO, runGen } from "./toolkit/index.ts";
 import { pathToFileURL } from "node:url";
+import { readFileSync } from "node:fs";
 
-const VERSION = "0.2.0";
+// Read the package version from package.json (one hop up from both src/cli.ts and the
+// compiled dist/cli.js) so `urban --version` never drifts from the published version.
+function readVersion(): string {
+  try {
+    const url = new URL("../package.json", import.meta.url);
+    return (JSON.parse(readFileSync(url, "utf8")) as { version?: string }).version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+}
+
+const VERSION = readVersion();
+
 
 interface Flags {
   root: string;

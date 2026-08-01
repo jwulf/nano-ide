@@ -69,7 +69,7 @@ async function makeFixture(): Promise<string> {
     `export const handlers = {
       "wf.claim": async (job, app) => {
         app.data.repo("task").insert({ title: job.variables.title, status: "claimed" });
-        return { claimed: true };
+        return { claimed: true, hasSdk: !!app.sdk, sdkMarker: app.sdk?.__marker };
       },
     };`,
   );
@@ -148,6 +148,51 @@ test("runtime materializes the manifest end-to-end against a fake engine", async
 
     // field-drift guard
     assert.throws(() => app.data!.repo("task").insert({ bogus: 1 }));
+  } finally {
+    await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("threads the engine SDK client onto app.sdk for handlers (SDK-backed engine)", async () => {
+  const dir = await makeFixture();
+  const host = createNodeHost({ cwd: dir, log: () => {} });
+  class SdkEngine extends FakeEngine {
+    sdk = { __marker: "engine-sdk" };
+  }
+  const engine = new SdkEngine();
+  const app = await createUrbanApp({ host, engine, root: ".", port: 0 });
+  await app.start();
+
+  try {
+    const out = (await engine.deliver("wf.claim", {
+      jobKey: "j1",
+      jobType: "wf.claim",
+      variables: { title: "Fix bug" },
+    })) as Record<string, unknown>;
+    assert.equal(out.hasSdk, true, "handler saw app.sdk");
+    assert.equal(out.sdkMarker, "engine-sdk", "app.sdk is the engine's own client");
+  } finally {
+    await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("app.sdk is undefined when the engine exposes no SDK client", async () => {
+  const dir = await makeFixture();
+  const host = createNodeHost({ cwd: dir, log: () => {} });
+  const engine = new FakeEngine();
+  const app = await createUrbanApp({ host, engine, root: ".", port: 0 });
+  await app.start();
+
+  try {
+    const out = (await engine.deliver("wf.claim", {
+      jobKey: "j1",
+      jobType: "wf.claim",
+      variables: { title: "Fix bug" },
+    })) as Record<string, unknown>;
+    assert.equal(out.hasSdk, false, "no app.sdk for a non-SDK engine");
+    assert.equal(out.sdkMarker, undefined);
   } finally {
     await app.stop();
     await rm(dir, { recursive: true, force: true });

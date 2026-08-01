@@ -67,5 +67,6 @@ export type {
   NanoSdkJobWorker,
   NanoSdkJobWorkerConfig,
 } from "./engine/nanosdk.ts";
+export type { EngineSdkClient } from "./engine/sdk.ts";
 export { runFromEnv } from "./run.ts";
 export type { RunOptions } from "./run.ts";
