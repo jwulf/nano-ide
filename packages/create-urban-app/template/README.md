@@ -51,4 +51,4 @@ curl -X POST localhost:8090/hooks/greet -H 'content-type: application/json' \
 - Add a domain type to `types` in the manifest and a migration under `db/migrations/`.
 - Enable more surfaces (task inbox, chat) or triggers in the manifest.
 
-See the [Urban runtime docs](https://github.com/jwulf/nano-ide/tree/main/packages/urban-runtime).
+See the [Urban runtime docs](https://github.com/jwulf/nano-ide/tree/main/packages/urban).

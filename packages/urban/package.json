@@ -1,16 +1,18 @@
 {
-  "name": "@nanobpm/urban-runtime",
-  "version": "0.1.0",
-  "description": "The Urban runtime: reads a nano.app.json manifest and materializes the app (deploy models, provision datasources + migrations, start workers, mount surfaces, install triggers, apply security) against a Nano engine. Runtime-agnostic core with Node + Deno adapters (ADR 0052).",
+  "name": "@nanobpm/urban",
+  "version": "0.2.0",
+  "description": "Urban: build and run code-first apps on Nano — runtime, derivation toolkit, and CLI in one. Author durable processes with @nanobpm/workflow (defineFlow), a typed datasource, forms, triggers and surfaces from a nano.app.json manifest, on Node or Deno.",
   "license": "Apache-2.0",
   "type": "module",
   "keywords": [
     "nanobpm",
     "urban",
-    "urban-runtime",
-    "bpmn",
-    "rad",
-    "nano-app"
+    "cli",
+    "runtime",
+    "codegen",
+    "derivation",
+    "nano-app",
+    "rad"
   ],
   "publishConfig": {
     "access": "public"
@@ -18,17 +20,20 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/jwulf/nano-ide.git",
-    "directory": "packages/urban-runtime"
+    "directory": "packages/urban"
   },
   "engines": {
     "node": ">=22.6"
+  },
+  "bin": {
+    "urban": "./src/bin.mjs"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./node": "./src/adapters/node.ts",
-    "./deno": "./src/adapters/deno.ts"
+    "./runtime": "./src/runtime/index.ts",
+    "./toolkit": "./src/toolkit/index.ts"
   },
   "files": [
     "src",
@@ -38,6 +43,10 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
     "test:deno": "deno test -A --no-check src/"
+  },
+  "dependencies": {
+    "@nanobpm/workflow": "^0.4.0",
+    "create-urban-app": "^0.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",

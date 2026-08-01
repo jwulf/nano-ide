@@ -54,6 +54,5 @@ Both `npm start` and `deno task start` run the app: they generate its
 
 ## Related packages
 
-- [`@nanobpm/urban`](../urban-cli) — the CLI (`urban new`, `run`, `gen`, `check`, `deploy`).
-- [`@nanobpm/urban-runtime`](../urban-runtime) — runs the scaffolded app.
-- [`@nanobpm/urban-toolkit`](../urban-toolkit) — generates the app's artifacts.
+- [`@nanobpm/urban`](../urban) — the runtime, derivation toolkit, and CLI (`urban new`, `run`, `gen`, `check`, `deploy`) in one package.
+- [`@nanobpm/workflow`](../workflow) — the code-first process surface (`defineFlow`).
