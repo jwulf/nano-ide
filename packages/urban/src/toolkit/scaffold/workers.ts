@@ -131,7 +131,7 @@ export function planWorkerScaffold(
   const seenTaskTypes = new Set<string>();
   const usedSlugs = new Set<string>();
 
-  for (const model of [...models].sort((a, b) => (a.path < b.path ? -1 : 1))) {
+  for (const model of [...models].sort((a, b) => a.path.localeCompare(b.path))) {
     for (const io of scanModelWorkers(model.xml)) {
       const taskType = io.taskType;
       if (taskType.endsWith(ORCHESTRATOR_SUFFIX)) {

@@ -40,7 +40,11 @@ export interface StubOutcome {
 export interface ScaffoldRun {
   outcomes: StubOutcome[];
   skipped: SkippedWorker[];
-  /** Manifest entries added to `workers[]` (only when `write` and non-empty). */
+  /**
+   * Manifest entries that would be appended to `workers[]` — one per planned stub, so this is
+   * populated on a dry-run too (letting a caller preview the wiring). They are actually written
+   * to the manifest only when `write` is set (see `manifestPatched`).
+   */
   wired: StubManifestEntry[];
   manifestPatched: boolean;
   write: boolean;
