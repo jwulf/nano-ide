@@ -187,7 +187,10 @@ export function mountTriggers(
         return;
       }
       const delay = Math.max(0, next.getTime() - sched.now());
-      const handle = sched.setTimer(() => {
+      // Declare `handle` before arming so the callback can reference it even if a scheduler
+      // double invokes it synchronously (avoids a TDZ ReferenceError on `timers.delete`).
+      let handle: unknown;
+      handle = sched.setTimer(() => {
         timers.delete(handle);
         if (stopped) return;
         void (async () => {
@@ -261,16 +264,17 @@ export function mountTriggers(
         }
 
         if (!trig.action?.message && !trig.action?.start) {
-          app.log("warn", `trigger "${trig.id}": no action.message/start; nothing published`);
-          return json({ ok: true, published: false });
+          app.log("warn", `trigger "${trig.id}": no action.message/start; nothing to do`);
+          return json({ ok: true, fired: false });
         }
         const res = await runTriggerAction(app, trig.action, {
           body,
           headers,
           query: Object.fromEntries(req.query),
         });
-        app.log("info", `trigger "${trig.id}" published`, { ...res });
-        return json({ ok: true, published: true, ...res });
+        // `res.kind` is the honest verb (start | message); don't hard-code "published".
+        app.log("info", `trigger "${trig.id}" fired`, { ...res });
+        return json({ ok: true, fired: true, ...res });
       },
     });
   }

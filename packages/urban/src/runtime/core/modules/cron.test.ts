@@ -59,6 +59,19 @@ test("only dom restricted → dow ignored (AND with wildcard)", () => {
   assert.equal(cronMatches(s, utc("2026-08-02T00:00:00Z")), false);
 });
 
+test("a `*/n` day field counts as a wildcard (Vixie rule), so dow alone applies", () => {
+  // dom is `*/1` (a star field) + dow=Monday → only Mondays match, not every day.
+  const s = parseCron("0 0 */1 * 1");
+  assert.equal(s.domWildcard, true);
+  assert.equal(s.dowWildcard, false);
+  assert.equal(cronMatches(s, utc("2026-08-17T00:00:00Z")), true); // Monday
+  assert.equal(cronMatches(s, utc("2026-08-18T00:00:00Z")), false); // Tuesday
+  // An explicit full range is NOT a wildcard: `1-31` stays restricted → OR rule.
+  const r = parseCron("0 0 1-31 * 1");
+  assert.equal(r.domWildcard, false);
+  assert.equal(cronMatches(r, utc("2026-08-18T00:00:00Z")), true); // any dom 1-31
+});
+
 test("nextCronFire returns the first fire strictly after 'after'", () => {
   const s = parseCron("0 6 * * *");
   const next = nextCronFire(s, utc("2026-08-01T06:00:00Z"));

@@ -80,8 +80,11 @@ export function parseCron(spec: string): CronSchedule {
     daysOfMonth: parseField(dom, 1, 31),
     months: parseField(mon, 1, 12, MONTHS),
     daysOfWeek,
-    domWildcard: dom.trim() === "*",
-    dowWildcard: dow.trim() === "*",
+    // The OR-vs-AND day rule keys off whether dom/dow are "star" fields. Following Vixie
+    // cron, a field counts as a wildcard when it *starts* with `*` (so `*` and `*/n` both
+    // qualify); an explicit full range like `1-31` is a restricted field, not a wildcard.
+    domWildcard: dom.trim().startsWith("*"),
+    dowWildcard: dow.trim().startsWith("*"),
   };
 }
 
