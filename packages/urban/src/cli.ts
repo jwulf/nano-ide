@@ -59,6 +59,7 @@ function parse(argv: string[]): Flags {
     else if (a === "-v" || a === "--version") f.version = true;
     else if (a === "--check") f.check = true;
     else if (a === "--deno") f.deno = true;
+    else if (a === "--") continue; // end-of-options delimiter: runners/wrappers may inject it
     else if (a === "--root") f.root = need(++i, a);
     else if (a === "--manifest") f.manifest = need(++i, a);
     else if (a === "--port") {

@@ -6,6 +6,7 @@ import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scaffold, slugify } from "./scaffold.ts";
+import { main } from "./cli.ts";
 
 async function exists(p: string): Promise<boolean> {
   try {
@@ -79,4 +80,12 @@ test("--deno keeps deno.json and the Deno block, with markers removed", async ()
   const readme = await readFile(join(dir, "README.md"), "utf8");
   assert.ok(/deno task check/.test(readme), "Deno usage block is kept");
   assert.ok(!/if:deno/.test(readme), "conditional markers are removed");
+});
+
+test("CLI tolerates a `--` end-of-options delimiter (npm create injects it)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-delim-"));
+  // e.g. `npm create urban-app -- "Delim App" --dir <dir> --deno`
+  const code = await main(["Delim App", "--dir", dir, "--", "--deno"]);
+  assert.equal(code, 0, "does not error on `--`");
+  assert.ok(await exists(join(dir, "deno.json")), "--deno after `--` still applied");
 });

@@ -26,6 +26,7 @@ function parse(argv: string[]): Parsed {
     const a = argv[i];
     if (a === "-h" || a === "--help") out.help = true;
     else if (a === "--deno") out.deno = true;
+    else if (a === "--") continue; // end-of-options delimiter: npm create/init may inject it
     else if (a === "--dir") out.dir = need(++i, a);
     else if (a === "--id") out.id = need(++i, a);
     else if (a === "--preset") {
