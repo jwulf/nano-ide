@@ -81,6 +81,9 @@ function fakeSdkClient(overrides: Partial<NanoSdkClient> = {}): NanoSdkClient & 
           rec.stopped++;
         },
       };
+      // The real nano-sdk starts the worker itself after async transport detection
+      // (autoStart defaults on). Model that here so the adapter must NOT call start().
+      if (cfg.autoStart !== false) worker.start();
       return worker;
     },
     close() {
@@ -198,7 +201,7 @@ test("completeUserTask routes through the SDK", async () => {
   assert.deepEqual(seen, { userTaskKey: "utk", variables: { done: true } });
 });
 
-test("registerWorker creates a worker (autoStart false), starts it, and dispatches + completes", async () => {
+test("registerWorker creates a worker the SDK auto-starts, and dispatches + completes", async () => {
   const client = fakeSdkClient();
   const engine = new SdkEngineClient(client);
   const handled: Record<string, unknown>[] = [];
@@ -212,7 +215,9 @@ test("registerWorker creates a worker (autoStart false), starts it, and dispatch
   );
   assert.equal(sub.jobType, "svc");
   const rec = client.workers[0];
-  assert.equal(rec.cfg.autoStart, false);
+  // The adapter must not force autoStart off or call start() itself (that races the
+  // SDK's async transport detection); the SDK owns the start lifecycle.
+  assert.equal(rec.cfg.autoStart, undefined);
   assert.equal(rec.cfg.workerName, "urban:svc");
   assert.equal(rec.cfg.maxParallelJobs, 4);
   assert.equal(rec.started, 1);
