@@ -217,6 +217,28 @@ test("cron trigger with an impossible spec warns and is not reported as schedule
   assert.ok(logs.some((l) => l.level === "warn" && /never fires/.test(l.msg)));
 });
 
+test("cron trigger with a far-future fire chunks the wait instead of overflowing setTimeout", async () => {
+  const { app, calls } = fakeApp();
+  // Annual: Jan 1 00:00. Start just after so the next fire is ~1 year away (>> 24.8 days).
+  const { ctx } = fakeCtx([{ id: "annual", type: "cron", spec: "0 0 1 1 *", action: { start: "yr" } }]);
+  const start = Date.parse("2026-01-01T00:01:00Z");
+  const nextFire = Date.parse("2027-01-01T00:00:00Z");
+  const sched = fakeScheduler(start);
+  const handle = mountTriggers(ctx, app, sched);
+  assert.equal(sched.pending(), 1);
+
+  // Advance to just before the deadline: the wait was chunked (re-armed) and never fired.
+  await sched.advance(nextFire - start - 60_000);
+  assert.equal(calls.length, 0);
+  assert.equal(sched.pending(), 1);
+
+  // Cross the deadline: fires exactly once, on the intended instant, then re-arms.
+  await sched.advance(120_000);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].variables?.firedAt, "2027-01-01T00:00:00.000Z");
+  await handle.stop();
+});
+
 test("webhook trigger still routes and publishes", async () => {
   const { app, calls } = fakeApp();
   const { ctx } = fakeCtx([

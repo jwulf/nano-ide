@@ -104,7 +104,8 @@ function headerRecord(req: HttpRequest): Record<string, string> {
 /**
  * Fire a trigger's action against the engine: start a process or publish a message
  * (ADR 0025 §1). `scope` supplies the event body/headers/query for FEEL-ish resolution
- * of `correlationKey`/`variables`; cron passes an empty body. Returns what was done.
+ * of `correlationKey`/`variables`; cron passes a minimal `{ firedAt }` body. Returns what
+ * was done.
  */
 export async function runTriggerAction(
   app: AppApi,
@@ -127,6 +128,9 @@ export async function runTriggerAction(
 }
 
 const emptyScope = { body: {}, headers: {} as Record<string, string>, query: {} as Record<string, string> };
+
+/** Max delay a single `setTimeout` honours before its 32-bit signed overflow (~24.8 days). */
+const MAX_TIMER_DELAY_MS = 2_147_483_647;
 
 /** Default (live) scheduler seam, backed by the global timer functions. */
 function defaultScheduler(): SchedulerDeps {
@@ -191,7 +195,22 @@ export function mountTriggers(
       const nowMs = sched.now();
       const next = nextCronFire(schedule, new Date(nowMs));
       if (!next) return; // spec became unsatisfiable (defensive; the probe above already vetted it)
-      const delay = Math.max(0, next.getTime() - nowMs);
+      const remaining = Math.max(0, next.getTime() - nowMs);
+
+      // setTimeout delays are clamped to a 32-bit signed int (~24.8 days); a larger delay
+      // overflows and fires immediately. For far-future fires (monthly/annual specs), sleep in
+      // bounded chunks and re-arm — without firing — until the real deadline is within range.
+      if (remaining > MAX_TIMER_DELAY_MS) {
+        let chunk: unknown;
+        chunk = sched.setTimer(() => {
+          timers.delete(chunk);
+          if (stopped) return;
+          arm();
+        }, MAX_TIMER_DELAY_MS);
+        timers.add(chunk);
+        return;
+      }
+
       // Declare `handle` before arming so the callback can reference it even if a scheduler
       // double invokes it synchronously (avoids a TDZ ReferenceError on `timers.delete`).
       let handle: unknown;
@@ -211,7 +230,7 @@ export function mountTriggers(
             arm(); // reschedule regardless of success (at-least-once, idempotent handlers)
           }
         })();
-      }, delay);
+      }, remaining);
       timers.add(handle);
     };
     arm();
