@@ -32,6 +32,24 @@ export interface WorkerDecl {
   llm?: string;
 }
 
+/**
+ * One named LLM binding (`llm.<id>` in the manifest). A binding is usable as a worker
+ * (LLM-as-worker, ADR 0022 §E role 1) or as a chat surface agent. `provider` selects how
+ * the endpoint is resolved (`"env"` reads it from the environment); `model` is typically
+ * an env template. When `output.decision` is set, the model's JSON reply is fed through
+ * that DMN decision (the "rails") and the decision's output is returned instead.
+ */
+export interface LlmBinding {
+  /** Provider selector. `"env"` resolves an OpenAI-compatible endpoint from the environment. */
+  provider: string;
+  /** Model id, typically an env template (e.g. `${NANO_APP_LLM_MODEL}`). */
+  model: string;
+  /** Constrains the model's structured output — currently a DMN decision id (the rails). */
+  output?: { decision?: string };
+  /** Action-API tools the agent may call (chat-agent role; unused by the worker role). */
+  tools?: string[];
+}
+
 export interface TriggerDecl {
   id: string;
   type: string;
@@ -86,7 +104,7 @@ export interface AppManifest {
   surfaces?: Record<string, SurfaceDecl>;
   actions?: ActionDecl[];
   workers?: WorkerDecl[];
-  llm?: Record<string, unknown>;
+  llm?: Record<string, LlmBinding>;
   security?: Record<string, unknown>;
   [k: string]: unknown;
 }
