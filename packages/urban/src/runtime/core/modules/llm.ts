@@ -99,6 +99,9 @@ export function buildMessages(vars: LlmVars): ChatMessage[] {
 
   let msgs: ChatMessage[];
   if (Array.isArray(vars.messages)) {
+    if (vars.messages.length === 0) {
+      throw new Error("llm worker: 'messages' must not be an empty array");
+    }
     msgs = (vars.messages as unknown[]).map((m, i) => {
       const o = m as { role?: unknown; content?: unknown };
       if (
@@ -198,7 +201,9 @@ export async function runLlmJob(
       );
     }
     const out = await rt.evaluateDecision(decisionId, obj);
-    return out !== null && typeof out === "object" ? (out as Record<string, unknown>) : { result: out };
+    return out !== null && typeof out === "object" && !Array.isArray(out)
+      ? (out as Record<string, unknown>)
+      : { result: out };
   }
   return obj;
 }

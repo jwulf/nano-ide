@@ -98,6 +98,10 @@ test("buildMessages requires a prompt or messages", () => {
   assert.throws(() => buildMessages({}), /needs a 'prompt' string or a 'messages' array/);
 });
 
+test("buildMessages rejects an empty messages array", () => {
+  assert.throws(() => buildMessages({ messages: [] }), /must not be an empty array/);
+});
+
 // --- callLlm ---------------------------------------------------------------
 
 test("callLlm posts to /chat/completions and returns the message content", async () => {
@@ -211,6 +215,15 @@ test("runLlmJob wraps a scalar decision output as { result }", async () => {
     { env: model, fetch: fakeFetch("{}"), evaluateDecision: async () => "APPROVE" },
   );
   assert.deepEqual(out, { result: "APPROVE" });
+});
+
+test("runLlmJob wraps an array decision output as { result } (not a var map)", async () => {
+  const out = await runLlmJob(
+    { prompt: "x" },
+    { provider: "env", model: "", output: { decision: "risk" } },
+    { env: model, fetch: fakeFetch("{}"), evaluateDecision: async () => [1, 2] },
+  );
+  assert.deepEqual(out, { result: [1, 2] });
 });
 
 test("runLlmJob throws when decision rails are declared but no evaluator is available", async () => {
