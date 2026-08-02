@@ -73,11 +73,22 @@ export function createNodeHost(opts: NodeHostOptions = {}): HostContext {
       return await startNodeServer(port, handler);
     },
     watch(onChange) {
-      // Recursive watch of the app root. `recursive` is supported on Linux since
-      // Node 20 (this package requires >=22.6). filename can be null on some events.
-      const w = fsWatch(cwd, { recursive: true }, (_event, filename) => {
+      const onFsEvent = (_event: unknown, filename: string | Buffer | null) => {
         if (filename) onChange(String(filename));
-      });
+      };
+      // Recursive watch is supported on macOS, Windows, and — since Node 19.1.0 — Linux.
+      // This package requires Node >=22.6, so the recursive path is available on all three;
+      // the try/catch only trips on an unusual platform, where we degrade honestly to a
+      // non-recursive root watch (and warn) rather than silently miss nested changes.
+      let w;
+      try {
+        w = fsWatch(cwd, { recursive: true }, onFsEvent);
+      } catch (err) {
+        log("warn", "recursive file watch unavailable — nested changes may be missed", {
+          error: String(err),
+        });
+        w = fsWatch(cwd, onFsEvent);
+      }
       // A watcher error (e.g. the dir is removed) must not crash the dev server.
       w.on("error", (err) => log("warn", "file watch error", { error: String(err) }));
       return { close: () => w.close() } satisfies WatchHandle;

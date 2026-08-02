@@ -4,10 +4,12 @@
 // action handlers are re-evaluated. main.ts is NOT re-run in dev (the CLI drives the runtime
 // directly), so main.ts edits don't need a reload.
 //
-// The reload strategy is a full in-process restart (stop → gen → start): the same code path
-// as a fresh `urban run`, so every change kind — manifest, BPMN/DMN, forms, migrations/types,
-// worker code — is picked up correctly. It is intentionally simple and robust; a finer-grained
-// surface remount + browser live-reload can layer on later behind this same seam.
+// The reload strategy is a full in-process restart: regenerate + build a fresh host, then
+// stop the old app and start the new one. Regenerating first means a bad edit (invalid
+// manifest/model) fails before the running app is torn down, so it keeps serving. It is the
+// same start path as a fresh `urban run`, so every change kind — manifest, BPMN/DMN, forms,
+// migrations/types, worker code — is picked up. A finer-grained surface remount + browser
+// live-reload can layer on later behind this same seam.
 
 import { runFromEnv } from "./run.ts";
 import { selectHost } from "./adapters/detect.ts";
@@ -84,12 +86,19 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
   const d: DevDeps = { ...defaultDeps(root), ...deps };
 
   const startCycle = async (): Promise<{ host: HostContext; app: UrbanApp }> => {
+    const host = await prepareHost();
+    const app = await d.startApp(host, { manifestPath: manifestFile, port: opts.port });
+    return { host, app };
+  };
+
+  // Derive artifacts and build a fresh host (with a new import nonce). This is pure/FS work
+  // that does NOT touch the running app, so it can run *before* a reload tears the old app
+  // down — most bad edits (invalid manifest/model) fail here, leaving the app serving.
+  const prepareHost = async (): Promise<HostContext> => {
     const nonce = String(d.now());
     const { count } = await d.regenerate(root, manifestFile);
     if (count > 0) log(`  derived ${count} artifact(s)`);
-    const host = d.makeHost(nonce);
-    const app = await d.startApp(host, { manifestPath: manifestFile, port: opts.port });
-    return { host, app };
+    return d.makeHost(nonce);
   };
 
   let { host, app } = await startCycle();
@@ -107,8 +116,12 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
     reloading = true;
     try {
       log("↻ change detected — reloading…");
+      // Regenerate + rebuild the host BEFORE stopping the running app, so a bad edit
+      // throws here and the current app keeps serving untouched.
+      const nextHost = await prepareHost();
       await app.stop();
-      ({ host, app } = await startCycle());
+      app = await d.startApp(nextHost, { manifestPath: manifestFile, port: opts.port });
+      host = nextHost;
       log("✔ reloaded");
     } catch (err) {
       // Keep the dev server alive on a bad edit; the next save will retry.
