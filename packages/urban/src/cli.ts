@@ -87,7 +87,8 @@ function parse(argv: string[]): Flags {
 const USAGE = `urban — build and run Urban apps (nano.app.json)
 
 Usage:
-  urban new <name> [--root <path>] [--deno] [--code-first]    scaffold a new Urban app
+  urban new <name> [--root <path>] [--deno] [--style model|code]    scaffold a new Urban app
+                                    (--code-first is shorthand for --style code)
   urban check                       validate the manifest
   urban gen [--check]               derive artifacts (migrations, worker-io)
   urban run                         materialize + serve the app
@@ -169,7 +170,7 @@ async function cmdDeploy(f: Flags): Promise<number> {
 async function cmdNew(f: Flags): Promise<number> {
   const name = f._[1];
   if (!name) {
-    console.error("usage: urban new <name> [--root <path>] [--deno] [--code-first]");
+    console.error("usage: urban new <name> [--root <path>] [--deno] [--style model|code] (or --code-first)");
     return 1;
   }
   const dir = f.root !== "." ? f.root : `./${slugify(name)}`;
