@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@nanobpm/nano-sdk": "^1.2.0"
+    "@nanobpm/nano-sdk": "^1.2.3"
   },
   "devDependencies": {
     "@types/node": "^22",
