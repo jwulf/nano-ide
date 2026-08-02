@@ -95,6 +95,14 @@ test("evalCorrelation resolves literals and = body paths", () => {
   assert.equal(evalCorrelation(undefined, scope), undefined);
 });
 
+test("resolveExpr ignores inherited (prototype-chain) properties", () => {
+  const scope = { body: { id: "x" }, headers: {}, query: {} };
+  // `constructor`/`toString` live on Object.prototype, not the body — must not resolve.
+  assert.equal(evalCorrelation("= body.constructor", scope), undefined);
+  assert.equal(evalCorrelation("= body.toString", scope), undefined);
+  assert.equal(evalCorrelation("= body.__proto__", scope), undefined);
+});
+
 test("runTriggerAction starts a process with action.variables", async () => {
   const { app, calls } = fakeApp();
   const res = await runTriggerAction(app, { start: "proc-1", variables: { a: 1 } }, {

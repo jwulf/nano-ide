@@ -34,7 +34,7 @@ export function resolveExpr(expr: string, scope: Scope): unknown {
   const pathExpr = trimmed.slice(1).trim(); // e.g. "body.taskId"
   let cur: unknown = scope;
   for (const seg of pathExpr.split(".")) {
-    if (cur && typeof cur === "object" && seg in (cur as Record<string, unknown>)) {
+    if (cur && typeof cur === "object" && Object.prototype.hasOwnProperty.call(cur, seg)) {
       cur = (cur as Record<string, unknown>)[seg];
     } else {
       return undefined;
@@ -187,9 +187,11 @@ export function mountTriggers(
 
     const arm = (): void => {
       if (stopped) return;
-      const next = nextCronFire(schedule, new Date(sched.now()));
+      // Capture the clock once so `next` and `delay` are derived from the same instant.
+      const nowMs = sched.now();
+      const next = nextCronFire(schedule, new Date(nowMs));
       if (!next) return; // spec became unsatisfiable (defensive; the probe above already vetted it)
-      const delay = Math.max(0, next.getTime() - sched.now());
+      const delay = Math.max(0, next.getTime() - nowMs);
       // Declare `handle` before arming so the callback can reference it even if a scheduler
       // double invokes it synchronously (avoids a TDZ ReferenceError on `timers.delete`).
       let handle: unknown;
