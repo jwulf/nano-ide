@@ -17,13 +17,28 @@ interface DecisionCapableSdk {
 }
 
 /** Adapt an engine SDK client into the LLM module's `DecisionEvaluator`, parsing the
- *  decision's JSON-string `output` into the value fed back to the LLM job. */
+ *  decision's JSON-string `output` into the value fed back to the LLM job. Validates the
+ *  SDK shape and adds decision context to a parse failure rather than surfacing a raw
+ *  "is not a function" / `JSON.parse` error. */
 export function sdkDecisionEvaluator(sdk: unknown): DecisionEvaluator {
-  const client = sdk as DecisionCapableSdk;
+  const client = sdk as Partial<DecisionCapableSdk>;
   return async (decisionId, variables) => {
+    if (typeof client.evaluateDecision !== "function") {
+      throw new Error(
+        `llm worker: the engine SDK does not support evaluateDecision ` +
+          `(needed for decision rails "${decisionId}")`,
+      );
+    }
     const res = await client.evaluateDecision({ decisionDefinitionId: decisionId, variables });
     const out = res?.output;
-    return typeof out === "string" ? JSON.parse(out) : out;
+    if (typeof out !== "string") return out;
+    try {
+      return JSON.parse(out);
+    } catch {
+      throw new Error(
+        `llm worker: decision "${decisionId}" returned unparseable JSON output: ${out.slice(0, 300)}`,
+      );
+    }
   };
 }
 

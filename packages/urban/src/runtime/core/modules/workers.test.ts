@@ -144,3 +144,15 @@ test("sdkDecisionEvaluator passes through a non-string output", async () => {
   });
   assert.deepEqual(await evaluate("d", {}), { ok: 2 });
 });
+
+test("sdkDecisionEvaluator throws with decision context on unparseable output", async () => {
+  const evaluate = sdkDecisionEvaluator({
+    evaluateDecision: async () => ({ output: "not json" }),
+  });
+  await assert.rejects(evaluate("risk", {}), /decision "risk" returned unparseable JSON/);
+});
+
+test("sdkDecisionEvaluator throws a clear error when the SDK lacks evaluateDecision", async () => {
+  const evaluate = sdkDecisionEvaluator({});
+  await assert.rejects(evaluate("risk", {}), /does not support evaluateDecision.*"risk"/);
+});

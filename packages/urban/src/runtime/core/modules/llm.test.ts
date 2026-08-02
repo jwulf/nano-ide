@@ -61,6 +61,13 @@ test("resolveProvider throws when no model resolves", () => {
   assert.throws(() => resolveProvider({ provider: "env", model: "" }, noEnv), /no model resolved/);
 });
 
+test("resolveProvider throws on an unsupported provider", () => {
+  assert.throws(
+    () => resolveProvider({ provider: "openai", model: "gpt" }, noEnv),
+    /unsupported provider "openai"/,
+  );
+});
+
 // --- buildMessages ---------------------------------------------------------
 
 test("buildMessages wraps a prompt string as a single user message", () => {
@@ -164,6 +171,19 @@ test("runLlmJob throws when JSON output is expected but not returned", async () 
     }),
     /expected JSON output/,
   );
+});
+
+test("runLlmJob rejects a non-object JSON output (scalar/array/null)", async () => {
+  for (const bad of ["42", "[1,2]", "null", '"just a string"']) {
+    await assert.rejects(
+      runLlmJob({ prompt: "x" }, { provider: "env", model: "", output: {} }, {
+        env: model,
+        fetch: fakeFetch(bad),
+      }),
+      /expected a JSON object output/,
+      `should reject ${bad}`,
+    );
+  }
 });
 
 test("runLlmJob feeds parsed JSON through the decision rails and returns its output", async () => {

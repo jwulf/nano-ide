@@ -70,6 +70,12 @@ export interface LlmRuntime {
  * The binding's `model` is env-templated (`${VAR}` / `${VAR:-default}`).
  */
 export function resolveProvider(binding: LlmBinding, env: EnvLookup): ProviderConfig {
+  if (binding.provider !== "env") {
+    throw new Error(
+      `llm worker: unsupported provider "${binding.provider}" (only "env" is built in — ` +
+        `it resolves an OpenAI-compatible endpoint from NANO_APP_LLM_* env)`,
+    );
+  }
   const baseUrl = (env("NANO_APP_LLM_BASE_URL") ?? "http://localhost:11434/v1").replace(/\/+$/, "");
   const apiKey = env("NANO_APP_LLM_API_KEY") || undefined;
   const model = expandEnvString(binding.model ?? "", env) || env("NANO_APP_LLM_MODEL") || "";
@@ -170,12 +176,18 @@ export async function runLlmJob(
 
   if (!wantJson) return { text };
 
-  let parsed: Record<string, unknown>;
+  let parsed: unknown;
   try {
-    parsed = JSON.parse(text) as Record<string, unknown>;
+    parsed = JSON.parse(text);
   } catch {
     throw new Error(`llm worker: expected JSON output but got: ${text.slice(0, 300)}`);
   }
+  // response_format asks for a JSON object, but a provider can still return a scalar, array,
+  // or null — none of which is a valid variable map (nor valid decision-rails input).
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(`llm worker: expected a JSON object output but got: ${text.slice(0, 300)}`);
+  }
+  const obj = parsed as Record<string, unknown>;
 
   const decisionId = binding.output?.decision;
   if (decisionId) {
@@ -185,8 +197,8 @@ export async function runLlmJob(
           `evaluator is available (the engine SDK surface is required for decision rails)`,
       );
     }
-    const out = await rt.evaluateDecision(decisionId, parsed);
+    const out = await rt.evaluateDecision(decisionId, obj);
     return out !== null && typeof out === "object" ? (out as Record<string, unknown>) : { result: out };
   }
-  return parsed;
+  return obj;
 }
