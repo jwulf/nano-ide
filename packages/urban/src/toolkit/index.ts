@@ -32,6 +32,23 @@ import { workerIoDeriver } from "./derivers/worker-io.ts";
 export const DERIVERS = [migrationsDeriver, workerIoDeriver] as const;
 
 // Gen orchestrator + IO
-export { collectArtifacts, runGen, joinPath } from "./gen.ts";
+export { collectArtifacts, runGen, joinPath, readModels } from "./gen.ts";
 export type { GenIO, GenOptions, GenResult } from "./gen.ts";
 export { createNodeGenIO } from "./fsio.ts";
+
+// Worker-stub scaffolder (ADR 0056): write-once handler stubs from the model.
+export {
+  planWorkerScaffold,
+  renderWorkerStub,
+  slugifyTaskType,
+} from "./scaffold/workers.ts";
+export type {
+  ScaffoldWorker,
+  SkippedWorker,
+  SkipReason,
+  StubManifestEntry,
+  WorkerScaffoldPlan,
+  WorkerStubPlan,
+} from "./scaffold/workers.ts";
+export { scaffoldWorkers } from "./scaffold.ts";
+export type { ScaffoldOptions, ScaffoldRun, StubOutcome, StubStatus } from "./scaffold.ts";
