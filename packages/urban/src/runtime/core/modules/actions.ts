@@ -100,7 +100,7 @@ export function mountActions(ctx: RuntimeContext, app: AppApi): ActionsHandle {
       });
       continue;
     }
-    const method = (decl.method ?? "POST").toUpperCase();
+    const method = (decl.method ?? "POST").trim().toUpperCase() || "POST";
     const prefix = decl.prefix === true;
     // The router's prefix match is a raw `startsWith`, so a prefix route needs a trailing
     // slash to stay boundary-safe (otherwise "/hooks" would also match "/hooks2"). Exact

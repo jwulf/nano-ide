@@ -228,3 +228,12 @@ test("a prefix route at the root path does not become //", async () => {
   assert.equal(res.status, 200);
   assert.equal(JSON.parse(res.body!), "root");
 });
+
+test("method is trimmed and falls back to POST for whitespace", async () => {
+  const { router } = build(
+    [{ path: "/a", method: "  post  ", module: "m.ts" }, { path: "/b", method: "   ", module: "m.ts" }],
+    { "/app/m.ts": { default: () => ({ body: "ok" }) } },
+  );
+  assert.equal((await router(req("POST", "/a", { body: "{}" }))).status, 200);
+  assert.equal((await router(req("POST", "/b", { body: "{}" }))).status, 200);
+});
