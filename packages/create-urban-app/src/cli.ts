@@ -10,6 +10,7 @@ interface Parsed {
   dir?: string;
   id?: string;
   preset?: "full" | "headless";
+  style?: "model" | "code";
   deno?: boolean;
   help?: boolean;
 }
@@ -26,6 +27,14 @@ function parse(argv: string[]): Parsed {
     const a = argv[i];
     if (a === "-h" || a === "--help") out.help = true;
     else if (a === "--deno") out.deno = true;
+    else if (a === "--code-first") out.style = "code";
+    else if (a === "--style") {
+      const v = need(++i, a);
+      if (v !== "model" && v !== "code") {
+        throw new Error(`flag --style must be "model" or "code" (got "${v}")`);
+      }
+      out.style = v;
+    }
     else if (a === "--") continue; // tolerate a bare "--" some runners inject (not an option terminator here)
     else if (a === "--dir") out.dir = need(++i, a);
     else if (a === "--id") out.id = need(++i, a);
@@ -46,11 +55,16 @@ function parse(argv: string[]): Parsed {
 const USAGE = `create-urban-app — scaffold a runnable Urban app
 
 Usage:
-  npm create urban-app@latest <name> [--dir <path>] [--id <slug>] [--preset full|headless] [--deno]
-  deno run -A npm:create-urban-app <name> [--deno]
+  npm create urban-app@latest <name> [--dir <path>] [--id <slug>] [--preset full|headless] [--style model|code] [--code-first] [--deno]
+  deno run -A npm:create-urban-app <name> [--code-first] [--deno]
 
 Scaffolds a Node app by default. Pass --deno to also emit a deno.json and Deno docs;
 the Urban runtime is host-agnostic, so --deno is purely additive.
+
+Authoring style (default: model-first):
+  model-first  the process is an authored processes/*.bpmn, run by \`urban run\`.
+  code-first   the process is authored in TypeScript with \`defineFlow\`
+               (workflows/*.ts); use --code-first (or --style code).
 `;
 
 export async function main(argv: string[]): Promise<number> {
@@ -65,6 +79,7 @@ export async function main(argv: string[]): Promise<number> {
     dir,
     id: opts.id,
     preset: opts.preset ?? "full",
+    style: opts.style ?? "model",
     deno: opts.deno ?? false,
   });
   console.log(`✔ Scaffolded "${res.id}" in ${res.dir} (${res.files.length} files)`);
