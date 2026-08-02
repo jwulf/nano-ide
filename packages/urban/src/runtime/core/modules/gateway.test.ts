@@ -162,3 +162,60 @@ test("query/exec run raw parameterised SQL", async () => {
     assert.equal(Number((rows[0] as { total: number }).total), 42);
   });
 });
+
+test("insert omits undefined-valued keys so the column DEFAULT applies", async () => {
+  await withGateway(async (src) => {
+    const orders = src.table<Order>("orders");
+    // `total` is `NOT NULL DEFAULT 0`; passing it as undefined must omit the column
+    // (not bind NULL, which would violate NOT NULL), letting the DEFAULT fill it.
+    const id = await orders.insert({ status: "new", total: undefined });
+    assert.equal((await orders.get(id))?.total, 0);
+  });
+});
+
+test("insert preserves an explicit null; omits undefined", async () => {
+  await withGateway(async (src) => {
+    await src.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT, tag TEXT DEFAULT 'none')");
+    const notes = src.table("notes");
+    const id = await notes.insert({ body: null, tag: undefined });
+    const row = await notes.get(id);
+    assert.equal(row?.body, null); // explicit null is stored as NULL
+    assert.equal(row?.tag, "none"); // undefined omitted → column DEFAULT
+  });
+});
+
+test("update skips undefined keys and clears on explicit null", async () => {
+  await withGateway(async (src) => {
+    await src.exec("CREATE TABLE notes (id INTEGER PRIMARY KEY, body TEXT, tag TEXT DEFAULT 'none')");
+    const notes = src.table("notes");
+    const id = await notes.insert({ body: "hello", tag: "x" });
+    // tag:undefined must be left unchanged; body updated.
+    await notes.update(id, { tag: undefined, body: "world" });
+    let row = await notes.get(id);
+    assert.equal(row?.body, "world");
+    assert.equal(row?.tag, "x");
+    // explicit null clears the column.
+    await notes.update(id, { body: null });
+    row = await notes.get(id);
+    assert.equal(row?.body, null);
+    // a patch of only-undefined keys is a no-op.
+    assert.equal(await notes.update(id, { tag: undefined }), 0);
+  });
+});
+
+test("insert throws when every provided value is undefined", async () => {
+  await withGateway(async (src) => {
+    const orders = src.table<Order>("orders");
+    await assert.rejects(
+      orders.insert({ status: undefined, total: undefined }),
+      /all values were undefined/,
+    );
+  });
+});
+
+test("insert throws a distinct message for a genuinely empty row", async () => {
+  await withGateway(async (src) => {
+    const orders = src.table<Order>("orders");
+    await assert.rejects(orders.insert({} as Partial<Order>), /empty row/);
+  });
+});
