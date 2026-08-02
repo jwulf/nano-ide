@@ -152,6 +152,12 @@ test("runtime materializes the manifest end-to-end against a fake engine", async
 
     // field-drift guard
     assert.throws(() => app.data!.repo("task").insert({ bogus: 1 }));
+    // all-declared-but-undefined payload throws (parity with Table.insert): the caller
+    // meant to write those columns, so we don't silently insert a DEFAULT VALUES row.
+    assert.throws(
+      () => app.data!.repo("task").insert({ title: undefined, status: undefined }),
+      /all values were undefined/,
+    );
   } finally {
     await app.stop();
     await rm(dir, { recursive: true, force: true });

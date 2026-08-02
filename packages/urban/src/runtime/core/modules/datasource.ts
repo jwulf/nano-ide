@@ -62,8 +62,17 @@ export class TypeRepo {
     this.assertFields(row);
     // Omit keys whose value is `undefined` so the column's own `DEFAULT`/`NULL` governs;
     // `undefined` means "not provided", never a bound value. An explicit `null` is preserved.
-    const keys = Object.keys(row).filter((k) => row[k] !== undefined);
+    const provided = Object.keys(row);
+    const keys = provided.filter((k) => row[k] !== undefined);
     if (keys.length === 0) {
+      // A present-but-all-undefined payload throws (parity with Table.insert): the caller
+      // meant to write those values, so silently inserting a full DEFAULT row would create
+      // an unintended record. A genuinely empty `insert({})` is the explicit "default row".
+      if (provided.length > 0) {
+        throw new Error(
+          `insert into type "${this.typeName}": no columns to insert (all values were undefined)`,
+        );
+      }
       return this.db.run(`INSERT INTO ${this.table()} DEFAULT VALUES`, []);
     }
     const cols = keys.join(", ");

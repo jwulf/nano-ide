@@ -105,9 +105,14 @@ export class Table<T extends object = Row> {
    * `DEFAULT`/`NULL` governs — `undefined` means "not provided, let the schema decide", never
    * a bound value. An explicit `null` is preserved (it stores `NULL`). */
   async insert(row: Partial<T>): Promise<number | bigint> {
-    const keys = Object.keys(row).filter((k) => (row as Row)[k] !== undefined);
+    const provided = Object.keys(row);
+    const keys = provided.filter((k) => (row as Row)[k] !== undefined);
     if (keys.length === 0) {
-      throw new Error(`Table(${this.name}).insert: no columns to insert (all values were undefined)`);
+      throw new Error(
+        provided.length === 0
+          ? `Table(${this.name}).insert: no columns to insert (empty row)`
+          : `Table(${this.name}).insert: no columns to insert (all values were undefined)`,
+      );
     }
     const cols = keys.map(quoteIdent).join(", ");
     const ph = keys.map(() => "?").join(", ");

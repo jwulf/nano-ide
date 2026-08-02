@@ -212,3 +212,10 @@ test("insert throws when every provided value is undefined", async () => {
     );
   });
 });
+
+test("insert throws a distinct message for a genuinely empty row", async () => {
+  await withGateway(async (src) => {
+    const orders = src.table<Order>("orders");
+    await assert.rejects(orders.insert({} as Partial<Order>), /empty row/);
+  });
+});
