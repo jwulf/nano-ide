@@ -100,12 +100,14 @@ export class Table<T extends object = Row> {
     this.pk = pk;
   }
 
-  /** Insert one row (only the present keys are written); returns the new primary-key value
-   * (the inserted rowid for an INTEGER PRIMARY KEY). */
+  /** Insert one row; returns the new primary-key value (the inserted rowid for an INTEGER
+   * PRIMARY KEY). Keys whose value is `undefined` are omitted, so the table's own column
+   * `DEFAULT`/`NULL` governs — `undefined` means "not provided, let the schema decide", never
+   * a bound value. An explicit `null` is preserved (it stores `NULL`). */
   async insert(row: Partial<T>): Promise<number | bigint> {
-    const keys = Object.keys(row);
+    const keys = Object.keys(row).filter((k) => (row as Row)[k] !== undefined);
     if (keys.length === 0) {
-      throw new Error(`Table(${this.name}).insert: no columns to insert`);
+      throw new Error(`Table(${this.name}).insert: no columns to insert (all values were undefined)`);
     }
     const cols = keys.map(quoteIdent).join(", ");
     const ph = keys.map(() => "?").join(", ");
@@ -158,9 +160,11 @@ export class Table<T extends object = Row> {
     return rows[0] as T | undefined;
   }
 
-  /** Patch the row with the given primary key; returns rows changed. */
+  /** Patch the row with the given primary key; returns rows changed. Keys whose value is
+   * `undefined` are skipped (that column is left unchanged); an explicit `null` clears the
+   * column to `NULL`. A patch with no defined keys is a no-op. */
   async update(id: unknown, patch: Partial<T>): Promise<number> {
-    const keys = Object.keys(patch);
+    const keys = Object.keys(patch).filter((k) => (patch as Row)[k] !== undefined);
     if (keys.length === 0) return 0;
     const set = keys.map((k) => `${quoteIdent(k)} = ?`).join(", ");
     const r = await this.#src.exec(

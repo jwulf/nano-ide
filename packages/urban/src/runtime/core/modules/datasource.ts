@@ -60,7 +60,9 @@ export class TypeRepo {
 
   insert(row: Record<string, unknown>): { changes: number; lastInsertRowid: number | bigint } {
     this.assertFields(row);
-    const keys = Object.keys(row);
+    // Omit keys whose value is `undefined` so the column's own `DEFAULT`/`NULL` governs;
+    // `undefined` means "not provided", never a bound value. An explicit `null` is preserved.
+    const keys = Object.keys(row).filter((k) => row[k] !== undefined);
     if (keys.length === 0) {
       return this.db.run(`INSERT INTO ${this.table()} DEFAULT VALUES`, []);
     }
