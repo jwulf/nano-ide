@@ -88,7 +88,7 @@ export function assertTimerCycle(kind: string, value: string): void {
   const v = typeof value === "string" ? value.trim() : "";
   if (v === "" || (!isFeel(v) && !isIsoCycle(v))) {
     throw new Error(
-      `${kind} "${value}" is not an ISO-8601 repeating interval (e.g. R/PT1H, R5/PT30M) or a FEEL expression (=...)`,
+      `${kind} "${value}" is not an ISO-8601 repeating interval (e.g. R/PT1H, R5/PT30M), a bare duration (e.g. PT1H), or a FEEL expression (=...)`,
     );
   }
 }
