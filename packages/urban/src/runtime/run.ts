@@ -56,7 +56,7 @@ export async function runFromEnv(opts: RunOptions = {}): Promise<UrbanApp> {
   return app;
 }
 
-function installSignalHandlers(stop: () => Promise<void>): void {
+export function installSignalHandlers(stop: () => Promise<void>): void {
   let stopping = false;
   const onSignal = () => {
     if (stopping) return;

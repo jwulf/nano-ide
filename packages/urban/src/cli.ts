@@ -4,7 +4,7 @@
 //   urban check          load + validate the manifest, report issues
 //   urban gen            derive generated artifacts (migrations, worker I/O)
 //   urban run            materialize + serve the app (deploy, data, workers, surfaces, triggers)
-//   urban dev            like run (hot-reload is not yet implemented; documented below)
+//   urban dev            like run, plus watch sources and hot-reload on change
 //   urban deploy         deploy models only, then exit
 //
 // Global flags: --root <dir> (default "."), --manifest <file> (default nano.app.json),
@@ -12,7 +12,9 @@
 
 import {
   collectManifestIssues,
+  installSignalHandlers,
   loadManifest,
+  runDev,
   runFromEnv,
   selectHost,
 } from "./runtime/index.ts";
@@ -82,7 +84,7 @@ Usage:
   urban check                       validate the manifest
   urban gen [--check]               derive artifacts (migrations, worker-io)
   urban run                         materialize + serve the app
-  urban dev                         run (hot-reload not yet implemented)
+  urban dev                         run + watch sources, hot-reload on change
   urban deploy                      deploy models only, then exit
 
 Global flags:
@@ -137,6 +139,12 @@ async function cmdRun(f: Flags, mount?: Record<string, boolean>): Promise<number
   const info = app.inspect();
   console.log(`▲ ${info.name} — surfaces on :${info.httpPort ?? "n/a"} (Ctrl-C to stop)`);
   return -1; // keep the process alive; signal handlers stop it
+}
+
+async function cmdDev(f: Flags): Promise<number> {
+  const dev = await runDev({ root: f.root, manifestPath: f.manifest, port: f.port });
+  installSignalHandlers(() => dev.stop());
+  return -1; // keep the process alive; signal handlers stop the dev server
 }
 
 async function cmdDeploy(f: Flags): Promise<number> {
@@ -194,8 +202,7 @@ export async function main(argv: string[]): Promise<number> {
     case "run":
       return cmdRun(f);
     case "dev":
-      console.log("urban dev: hot-reload is not yet implemented; running once.");
-      return cmdRun(f);
+      return cmdDev(f);
     case "deploy":
       return cmdDeploy(f);
     default:

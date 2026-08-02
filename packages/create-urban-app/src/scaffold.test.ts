@@ -72,11 +72,23 @@ test("Node is the default host: no deno.json, README drops the Deno block", asyn
   assert.ok(!/if:deno/.test(readme), "conditional markers are stripped");
 });
 
+test("scaffolded package.json exposes gen and gen:check scripts", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-gen-"));
+  await scaffold({ name: "Gen App", dir });
+  const pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf8"));
+  assert.equal(pkg.scripts.gen, "urban gen");
+  assert.equal(pkg.scripts["gen:check"], "urban gen --check");
+  assert.equal(pkg.scripts.dev, "urban dev");
+});
+
 test("--deno keeps deno.json and the Deno block, with markers removed", async () => {
   const dir = await mkdtemp(join(tmpdir(), "urban-deno-"));
   const res = await scaffold({ name: "Deno App", dir, deno: true });
   assert.ok(res.files.includes("deno.json"), "deno.json in the file list");
   assert.ok(await exists(join(dir, "deno.json")), "deno.json on disk");
+  const denoCfg = JSON.parse(await readFile(join(dir, "deno.json"), "utf8"));
+  assert.ok(denoCfg.tasks.gen, "deno gen task present");
+  assert.ok(denoCfg.tasks["gen:check"], "deno gen:check task present");
   const readme = await readFile(join(dir, "README.md"), "utf8");
   assert.ok(/deno task check/.test(readme), "Deno usage block is kept");
   assert.ok(!/if:deno/.test(readme), "conditional markers are removed");

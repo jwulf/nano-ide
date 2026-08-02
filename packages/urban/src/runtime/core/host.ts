@@ -30,6 +30,11 @@ export interface HttpServer {
   stop(): Promise<void>;
 }
 
+/** A handle to an active filesystem watch; call close() to stop watching. */
+export interface WatchHandle {
+  close(): void;
+}
+
 /** A tiny synchronous SQLite handle — the subset the runtime needs. */
 export interface SqliteDb {
   /** Execute one or more statements with no result (DDL, PRAGMA, migrations). */
@@ -65,6 +70,13 @@ export interface HostContext {
   importModule(path: string): Promise<Record<string, unknown>>;
   /** Start an HTTP server. Routing is done by the caller inside `handler`. */
   serveHttp(port: number, handler: HttpHandler): Promise<HttpServer>;
+  /**
+   * Recursively watch the app root for file changes, invoking `onChange` with the
+   * changed path (app-root-relative when the runtime reports it that way). Optional:
+   * hosts that cannot watch omit it, and callers fall back to run-once. Returns a
+   * handle whose close() stops watching.
+   */
+  watch?(onChange: (path: string) => void): WatchHandle;
   /** Current wall-clock time in ms since epoch (seam for tests). */
   now(): number;
   /** Structured log sink. */

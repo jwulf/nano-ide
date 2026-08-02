@@ -47,6 +47,7 @@ export type {
   HttpServer,
   JobHandler,
   SqliteDb,
+  WatchHandle,
   WorkerSubscription,
 } from "./core/host.ts";
 export type { AppApi, Mounted, RuntimeContext } from "./core/context.ts";
@@ -97,5 +98,7 @@ export type {
   NanoSdkJobWorkerConfig,
 } from "./engine/nanosdk.ts";
 export type { EngineSdkClient } from "./engine/sdk.ts";
-export { runFromEnv } from "./run.ts";
+export { installSignalHandlers, runFromEnv } from "./run.ts";
 export type { RunOptions } from "./run.ts";
+export { runDev, shouldReload } from "./devserver.ts";
+export type { DevDeps, DevOptions, DevServer } from "./devserver.ts";

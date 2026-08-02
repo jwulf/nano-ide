@@ -2,6 +2,7 @@
 // (with deno.ts) allowed to touch a concrete runtime.
 
 import { readFile, readdir, stat } from "node:fs/promises";
+import { watch as fsWatch } from "node:fs";
 import { createServer } from "node:http";
 import { isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -12,12 +13,19 @@ import type {
   HttpRequest,
   HttpServer,
   SqliteDb,
+  WatchHandle,
 } from "../core/host.ts";
 
 export interface NodeHostOptions {
   /** Base directory relative paths resolve against. Default process.cwd(). */
   cwd?: string;
   log?: HostContext["log"];
+  /**
+   * When set, appended as a `?v=<nonce>` query to dynamic import URLs so a changed
+   * handler/worker module is re-evaluated instead of served from the ESM cache. The
+   * dev server bumps this on every reload; production leaves it unset.
+   */
+  importNonce?: string;
 }
 
 export function createNodeHost(opts: NodeHostOptions = {}): HostContext {
@@ -56,9 +64,23 @@ export function createNodeHost(opts: NodeHostOptions = {}): HostContext {
       const db = new DatabaseSync(abs(path));
       return wrapNodeSqlite(db);
     },
-    importModule: (p) => import(pathToFileURL(abs(p)).href) as Promise<Record<string, unknown>>,
+    importModule: (p) => {
+      const href =
+        pathToFileURL(abs(p)).href + (opts.importNonce ? `?v=${opts.importNonce}` : "");
+      return import(href) as Promise<Record<string, unknown>>;
+    },
     async serveHttp(port, handler) {
       return await startNodeServer(port, handler);
+    },
+    watch(onChange) {
+      // Recursive watch of the app root. `recursive` is supported on Linux since
+      // Node 20 (this package requires >=22.6). filename can be null on some events.
+      const w = fsWatch(cwd, { recursive: true }, (_event, filename) => {
+        if (filename) onChange(String(filename));
+      });
+      // A watcher error (e.g. the dir is removed) must not crash the dev server.
+      w.on("error", (err) => log("warn", "file watch error", { error: String(err) }));
+      return { close: () => w.close() } satisfies WatchHandle;
     },
     now: () => Date.now(),
     log,

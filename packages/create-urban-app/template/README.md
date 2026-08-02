@@ -26,7 +26,15 @@ You need a Nano engine reachable at `CAMUNDA_REST_ADDRESS` (default
 ```bash
 npm install
 npm run check      # validate the manifest
+npm run gen        # derive generated artifacts (migrations, worker-io types)
 npm start          # deploy models, provision the DB, start workers + surfaces
+```
+
+For a fast edit loop, use the dev server — it derives once, starts the app, then
+**hot-reloads** whenever you change a model, form, migration, type or worker:
+
+```bash
+npm run dev
 ```
 
 <!-- if:deno -->
@@ -34,7 +42,8 @@ Or run it on **Deno** (no install step):
 
 ```bash
 deno task check
-deno task start
+deno task gen
+deno task start    # or: deno task dev  (hot reload)
 ```
 
 <!-- /if:deno -->
@@ -44,6 +53,14 @@ Then trigger the demo:
 curl -X POST localhost:8090/hooks/greet -H 'content-type: application/json' \
   -d '{"who":"Adam"}'
 ```
+
+## Generated artifacts
+
+`urban gen` derives files under `nano-generated/` from your manifest and models — SQL
+migrations for your `types` and a `.d.ts` of worker input/output shapes. They are
+regenerated (and git-ignored), so don't edit them by hand; `npm run dev` reruns `gen` on
+every change. `npm run gen:check` reports whether the on-disk artifacts are stale versus
+your current sources without rewriting them.
 
 ## Extend it
 

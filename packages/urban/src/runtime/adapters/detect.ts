@@ -14,6 +14,8 @@ export function isDeno(): boolean {
 export interface SelectHostOptions {
   cwd?: string;
   log?: HostContext["log"];
+  /** Dev-only import-cache-busting nonce; forwarded to the chosen adapter. */
+  importNonce?: string;
 }
 
 /** Select and construct the host for the current runtime. */
