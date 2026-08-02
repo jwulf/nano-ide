@@ -18,12 +18,16 @@ interface DenoHttpServer {
   finished: Promise<void>;
   shutdown(): Promise<void>;
 }
+interface DenoFsWatcher extends AsyncIterable<{ kind: string; paths: string[] }> {
+  close(): void;
+}
 interface DenoGlobal {
   env: { get(name: string): string | undefined };
   cwd(): string;
   readTextFile(path: string): Promise<string>;
   readDir(path: string): AsyncIterable<{ name: string; isFile: boolean }>;
   stat(path: string): Promise<unknown>;
+  watchFs(paths: string | string[], options?: { recursive?: boolean }): DenoFsWatcher;
   serve(
     opts: { port: number; onListen?: (a: { port: number }) => void },
     handler: (req: Request) => Response | Promise<Response>,
@@ -34,6 +38,8 @@ declare const Deno: DenoGlobal;
 export interface DenoHostOptions {
   cwd?: string;
   log?: HostContext["log"];
+  /** See NodeHostOptions.importNonce — appended as `?v=<nonce>` to dynamic imports. */
+  importNonce?: string;
 }
 
 export function createDenoHost(opts: DenoHostOptions = {}): HostContext {
@@ -75,9 +81,38 @@ export function createDenoHost(opts: DenoHostOptions = {}): HostContext {
       const db = new DatabaseSync(abs(path));
       return wrapSqlite(db);
     },
-    importModule: (p) => import(pathToFileURL(abs(p)).href) as Promise<Record<string, unknown>>,
+    importModule: (p) => {
+      const href =
+        pathToFileURL(abs(p)).href + (opts.importNonce ? `?v=${opts.importNonce}` : "");
+      return import(href) as Promise<Record<string, unknown>>;
+    },
     async serveHttp(port, handler) {
       return startDenoServer(port, handler);
+    },
+    watch(onChange) {
+      const w = Deno.watchFs(cwd, { recursive: true });
+      let closed = false;
+      (async () => {
+        try {
+          for await (const ev of w) {
+            for (const p of ev.paths) onChange(p);
+          }
+        } catch (err) {
+          // Deno.watchFs throws when close() is called mid-await — expected on shutdown.
+          // Any other failure (permissions, path removed, …) silently disables hot reload,
+          // so surface it instead of swallowing it.
+          if (!closed) log("warn", "file watch error — hot reload may be disabled", {
+            error: String(err),
+          });
+        }
+      })();
+      return {
+        close: () => {
+          if (closed) return;
+          closed = true;
+          w.close();
+        },
+      };
     },
     now: () => Date.now(),
     log,
