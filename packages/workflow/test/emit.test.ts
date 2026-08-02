@@ -45,6 +45,141 @@ test("declarative emit: service tasks + derived types + message/subscription", (
   assert.match(xml, /<zeebe:subscription correlationKey="=prId" \/>/);
 });
 
+test("declarative emit: timer intermediate catch (after → timeDuration)", () => {
+  const flow = defineFlow("delayed", (w) => {
+    w.task("kickoff");
+    w.timer("cooldown", { after: "PT30M" });
+    w.task("resume");
+  });
+  const xml = toBpmn(flow);
+  assert.match(xml, /<bpmn:intermediateCatchEvent id="cooldown" name="cooldown">/);
+  assert.match(xml, /<bpmn:timerEventDefinition>\s*<bpmn:timeDuration>PT30M<\/bpmn:timeDuration>\s*<\/bpmn:timerEventDefinition>/);
+  // A timer catch is NOT a message: no message/subscription emitted for it.
+  assert.doesNotMatch(xml, /Msg_cooldown/);
+});
+
+test("declarative emit: timer intermediate catch (at → timeDate)", () => {
+  const flow = defineFlow("scheduled", (w) => {
+    w.timer("until", { at: "2026-01-01T09:00:00Z" });
+    w.task("newYear");
+  });
+  const xml = toBpmn(flow);
+  assert.match(xml, /<bpmn:intermediateCatchEvent id="until"/);
+  assert.match(xml, /<bpmn:timeDate>2026-01-01T09:00:00Z<\/bpmn:timeDate>/);
+});
+
+test("declarative emit: timer catch accepts a FEEL expression", () => {
+  const flow = defineFlow("feelwait", (w) => {
+    w.timer("wait", { after: "=duration(delay)" });
+    w.task("go");
+  });
+  assert.match(toBpmn(flow), /<bpmn:timeDuration>=duration\(delay\)<\/bpmn:timeDuration>/);
+});
+
+test("declarative emit: timer literals are trimmed before emission (validate == store)", () => {
+  const flow = defineFlow("trimmed", (w) => {
+    w.startOn({ cycle: " R/PT1H " });
+    w.task("poll");
+    w.timer("wait", { after: "  PT30M  " });
+    w.task("done");
+  });
+  const xml = toBpmn(flow);
+  assert.match(xml, /<bpmn:timeCycle>R\/PT1H<\/bpmn:timeCycle>/);
+  assert.match(xml, /<bpmn:timeDuration>PT30M<\/bpmn:timeDuration>/);
+  assert.doesNotMatch(xml, /<bpmn:timeCycle> /);
+  assert.doesNotMatch(xml, /<bpmn:timeDuration>  /);
+});
+
+test("declarative emit: startOn cycle → durable timer start (cron replacement)", () => {
+  const flow = defineFlow("nightly-report", (w) => {
+    w.startOn({ cycle: "R/PT24H" });
+    w.task("generate");
+    w.task("email");
+  });
+  const xml = toBpmn(flow);
+  assert.match(
+    xml,
+    /<bpmn:startEvent id="Start">[\s\S]*?<bpmn:timerEventDefinition>\s*<bpmn:timeCycle>R\/PT24H<\/bpmn:timeCycle>\s*<\/bpmn:timerEventDefinition>[\s\S]*?<\/bpmn:startEvent>/,
+  );
+  assert.match(xml, /<bpmn:outgoing>f_0<\/bpmn:outgoing>/);
+});
+
+test("declarative emit: startOn after → one-shot timer start; at → timeDate start", () => {
+  const delayed = defineFlow("delayed-start", (w) => {
+    w.startOn({ after: "PT10S" });
+    w.task("run");
+  });
+  assert.match(toBpmn(delayed), /<bpmn:startEvent[\s\S]*?<bpmn:timeDuration>PT10S<\/bpmn:timeDuration>/);
+
+  const dated = defineFlow("dated-start", (w) => {
+    w.startOn({ at: "2026-03-01T00:00:00Z" });
+    w.task("run");
+  });
+  assert.match(toBpmn(dated), /<bpmn:startEvent[\s\S]*?<bpmn:timeDate>2026-03-01T00:00:00Z<\/bpmn:timeDate>/);
+});
+
+test("declarative emit: a plain flow still emits a none start (no timer)", () => {
+  const flow = defineFlow("plain", (w) => {
+    w.task("only");
+  });
+  const xml = toBpmn(flow);
+  assert.match(xml, /<bpmn:startEvent id="Start"><bpmn:outgoing>f_0<\/bpmn:outgoing><\/bpmn:startEvent>/);
+  assert.doesNotMatch(xml, /timerEventDefinition/);
+});
+
+test("timer validation: rejects zero or both of after/at, and bad ISO", () => {
+  assert.throws(
+    () => defineFlow("x", (w) => w.timer("t", {} as { after: string })),
+    /exactly one of \{ after \}.*\{ at \}/,
+  );
+  assert.throws(
+    () => defineFlow("x", (w) => w.timer("t", { after: "PT1M", at: "2026-01-01T00:00:00Z" } as { after: string })),
+    /exactly one of \{ after \}/,
+  );
+  assert.throws(() => defineFlow("x", (w) => w.timer("t", { after: "1 minute" })), /ISO-8601 duration/);
+  assert.throws(() => defineFlow("x", (w) => w.timer("t", { at: "tomorrow" })), /ISO-8601 instant/);
+  // A timeDate is an absolute instant: a bare local datetime (no Z/offset) is ambiguous and rejected.
+  assert.throws(() => defineFlow("x", (w) => w.timer("t", { at: "2026-01-01T09:00:00" })), /ISO-8601 instant/);
+  assert.doesNotThrow(() => defineFlow("ok", (w) => { w.timer("t", { at: "2026-01-01T09:00:00+02:00" }); w.task("a"); }));
+});
+
+test("startOn validation: cycle format, once-only, first-statement, top-level", () => {
+  assert.throws(() => defineFlow("x", (w) => { w.startOn({ cycle: "every hour" }); w.task("a"); }), /repeating interval/);
+
+  assert.throws(
+    () => defineFlow("x", (w) => { w.task("a"); w.startOn({ cycle: "R/PT1H" }); }),
+    /must be the first statement/,
+  );
+
+  assert.throws(
+    () => defineFlow("x", (w) => { w.startOn({ cycle: "R/PT1H" }); w.startOn({ after: "PT1S" }); w.task("a"); }),
+    /only once/,
+  );
+
+  assert.throws(
+    () => defineFlow("x", (w) => { w.task("a"); w.loop((b) => { b.startOn({ cycle: "R/PT1H" }); b.break(); }); }),
+    /only valid at the top level/,
+  );
+
+  assert.throws(
+    () => defineFlow("x", (w) => { w.startOn({} as { cycle: string }); w.task("a"); }),
+    /exactly one of \{ cycle \}/,
+  );
+});
+
+test("timer catch: emitted XML round-trips through auto-layout with DI", async () => {
+  const flow = defineFlow("scheduler", (w) => {
+    w.startOn({ cycle: "R/PT1H" });
+    w.task("poll");
+    w.timer("backoff", { after: "PT5M" });
+    w.task("notify");
+  });
+  const laid = await declarativeToLayoutedBpmn(flow);
+  assert.match(laid, /bpmndi:BPMNDiagram/);
+  assert.match(laid, /<bpmn:timeCycle>R\/PT1H<\/bpmn:timeCycle>/);
+  assert.match(laid, /<bpmn:timeDuration>PT5M<\/bpmn:timeDuration>/);
+});
+
 test("declarative layout: auto-generates diagram interchange (DI) and preserves zeebe wiring", async () => {
   const flow = defineFlow("pr-review", (w) => {
     w.run("fetchDiff", async () => ({}));
