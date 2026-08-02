@@ -1,0 +1,41 @@
+// Compile-time regression guard for the defineFlow typing surface.
+//
+// This file is NOT a `*.test.ts` (so `node --test` ignores it); it is checked by
+// `tsc -p tsconfig.types.json` (see the package `typecheck` script). It must
+// COMPILE. If it stops compiling, a typing regression has been introduced.
+//
+// Regression it guards (the bug fixed alongside this file): the UNTYPED
+// `defineFlow(id, build)` overload used to default the builder to
+// `Record<string, never>`, which made `keyof C` === `string` and collapsed every
+// step's `job.variables` to `never` and every handler return to `void` — so no
+// untyped flow that RETURNS DATA could compile (including the README's own
+// examples). The builder's untyped default is now `object`, so every step falls
+// back to `JsonObject`.
+
+import { defineFlow, envelope } from "../src/index.js";
+
+// (A) Untyped flow whose handlers RETURN DATA — the exact shape that regressed.
+//     Under the old `Record<string, never>` default this failed with
+//     "'{ userId: string; }' is not assignable to 'void'".
+export const onboarding = defineFlow("onboarding", (w) => {
+  w.run("createAccount", async () => ({ userId: "u1" }));
+  w.signal("approved", { correlationKey: "userId" });
+  w.run("provision", async () => ({ ok: true }));
+  w.run("audit", async (job) => ({ seen: job.variables })); // untyped vars = JsonObject
+});
+
+// (B) Typed-contracts flow — `job.variables` and the return value are typed from
+//     the step's `in`/`out` envelopes. This must keep compiling: the fix loosens
+//     only the UNTYPED builder default, not the typed contract resolution.
+const ChargeIn = envelope("ChargeIn", { orderId: "string", total: "number" });
+const ChargeOut = envelope("ChargeOut", { ok: "boolean" });
+
+export const orders = defineFlow(
+  "orders",
+  { charge: { in: ChargeIn, out: ChargeOut } },
+  (w) =>
+    w.run("charge", async (job) => {
+      const total: number = job.variables.total; // typed from ChargeIn
+      return { ok: total > 0 }; // typed ChargeOut
+    }),
+);

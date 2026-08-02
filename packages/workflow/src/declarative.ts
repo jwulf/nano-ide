@@ -71,9 +71,20 @@ type TypedHandler<V, R> = (job: {
 }) => Promise<R | void> | R | void;
 
 /** A block: the callback that populates a nested body (a case, arm, or loop). */
-type Block<C extends FlowContracts> = (b: FlowBuilder<C>) => void;
+type Block<C extends object> = (b: FlowBuilder<C>) => void;
 
-export interface FlowBuilder<C extends FlowContracts = Record<string, never>> {
+/** The typed builder for a flow body.
+ *
+ * `C` is the flow's contracts map (step name → `{ in, out }` envelopes). The
+ * default is `object`, NOT `Record<string, never>`: with a `never`-valued record
+ * `keyof C` is `string`, so `VarsOf`/`ResultOf` route EVERY step name into
+ * `InPayload<never>`/`OutPayload<never>`, which distribute over `never` to
+ * `never` — typing an untyped flow's `job.variables` as `never` and forcing its
+ * handler return to `void` (so no untyped flow that returns data compiles). With
+ * `object`, `keyof C` is `never`, so every step falls back to the intended
+ * `JsonObject`. The public `defineFlow<C extends FlowContracts>` overload keeps
+ * the stricter contracts constraint; this is only the untyped-builder default. */
+export interface FlowBuilder<C extends object = object> {
   /**
    * A durable activity served by a worker THIS program hosts (a BPMN service
    * task; the handler runs in the in-process `Worker`). If `name` is a key in
@@ -186,7 +197,7 @@ function contractEnvelopes(ctx: BuilderCtx, name: string): { in?: Envelope; out?
 /** Build a FlowBuilder that appends its nodes to `out`, sharing the flow-wide
  *  `ctx` (contracts, handler registry, name set, loop nesting). Structural
  *  combinators recurse with a fresh `out` array for each nested body. */
-function makeBuilder<C extends FlowContracts>(
+function makeBuilder<C extends object>(
   id: string,
   out: FlowNode[],
   ctx: BuilderCtx,
