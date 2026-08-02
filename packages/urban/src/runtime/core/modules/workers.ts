@@ -5,6 +5,27 @@
 import type { AppApi, Mounted, RuntimeContext } from "../context.ts";
 import type { EngineJob, JobHandler, WorkerSubscription } from "../host.ts";
 import { workerJobType, type WorkerDecl } from "../manifest.ts";
+import { type DecisionEvaluator, type LlmRuntime, runLlmJob } from "./llm.ts";
+
+/** The subset of the engine SDK the LLM decision-rails need: evaluate a DMN decision,
+ *  whose `output` comes back as a JSON string (the orchestration-cluster contract). */
+interface DecisionCapableSdk {
+  evaluateDecision(input: {
+    decisionDefinitionId: string;
+    variables: Record<string, unknown>;
+  }): Promise<{ output?: unknown }>;
+}
+
+/** Adapt an engine SDK client into the LLM module's `DecisionEvaluator`, parsing the
+ *  decision's JSON-string `output` into the value fed back to the LLM job. */
+export function sdkDecisionEvaluator(sdk: unknown): DecisionEvaluator {
+  const client = sdk as DecisionCapableSdk;
+  return async (decisionId, variables) => {
+    const res = await client.evaluateDecision({ decisionDefinitionId: decisionId, variables });
+    const out = res?.output;
+    return typeof out === "string" ? JSON.parse(out) : out;
+  };
+}
 
 /** A handler as authored by an app: the job plus the injected app API. */
 export type AppJobHandler = (
@@ -59,12 +80,33 @@ export async function mountWorkers(ctx: RuntimeContext, app: AppApi): Promise<Wo
     const jobType = workerJobType(decl);
     if (!jobType) continue;
     if (!decl.handler) {
-      // llm-backed workers (schema `oneOf` handler|llm) are validated but not yet
-      // executed by the runtime. Skip with a clear warning rather than crashing.
-      ctx.host.log("warn", "skipping worker: llm-backed workers are not yet implemented", {
-        jobType,
-        llm: decl.llm,
+      // LLM-backed worker (schema `oneOf` handler|llm): synthesise a handler that runs
+      // the job through the bound LLM (and optional decision rails) instead of loading a
+      // handler module. A declared-but-unknown binding is a manifest error → fail loudly.
+      if (!decl.llm) {
+        ctx.host.log("warn", "skipping worker: neither a handler nor an llm binding declared", {
+          jobType,
+        });
+        continue;
+      }
+      const binding = (ctx.manifest.llm ?? {})[decl.llm];
+      if (!binding) {
+        throw new Error(
+          `worker "${jobType}" references unknown llm binding "${decl.llm}" ` +
+            `(no llm["${decl.llm}"] in the manifest)`,
+        );
+      }
+      const rt: LlmRuntime = {
+        env: (n) => app.env(n),
+        evaluateDecision: app.sdk ? sdkDecisionEvaluator(app.sdk) : undefined,
+      };
+      const wrapped: JobHandler = (job) => runLlmJob(job.variables, binding, rt);
+      const sub = await ctx.engine.registerWorker(jobType, wrapped, {
+        workerName: `${ctx.manifest.id}:${jobType}`,
       });
+      subs.push(sub);
+      jobTypes.push(jobType);
+      ctx.host.log("info", "llm worker registered", { jobType, llm: decl.llm });
       continue;
     }
     const mod = await loadModule(decl.handler);

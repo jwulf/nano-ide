@@ -21,6 +21,7 @@ export type {
   AppManifest,
   DataSource,
   DomainType,
+  LlmBinding,
   SurfaceDecl,
   TriggerDecl,
   TypeField,
@@ -67,7 +68,21 @@ export type { PagesDataSource, PagesDeps, PagesHandle, PagesOptions } from "./co
 export { mountActions, resolveActionHandler } from "./core/modules/actions.ts";
 export type { ActionHandler, ActionRequest, ActionResult, ActionsHandle } from "./core/modules/actions.ts";
 export type { AppJobHandler } from "./core/modules/workers.ts";
-export { resolveHandler } from "./core/modules/workers.ts";
+export { resolveHandler, sdkDecisionEvaluator } from "./core/modules/workers.ts";
+export {
+  buildMessages,
+  callLlm,
+  resolveProvider,
+  runLlmJob,
+} from "./core/modules/llm.ts";
+export type {
+  ChatMessage,
+  DecisionEvaluator,
+  EnvLookup,
+  LlmRuntime,
+  LlmVars,
+  ProviderConfig,
+} from "./core/modules/llm.ts";
 export { evalCorrelation } from "./core/modules/triggers.ts";
 
 // Adapters + engine + run entrypoint
