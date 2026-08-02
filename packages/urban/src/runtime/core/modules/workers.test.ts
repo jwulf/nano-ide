@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import type { AppApi, RuntimeContext } from "../context.ts";
 import type { EngineJob, JobHandler, WorkerSubscription } from "../host.ts";
 import type { AppManifest } from "../manifest.ts";
-import { mountWorkers, sdkDecisionEvaluator } from "./workers.ts";
+import { mountWorkers, sdkDecisionEvaluator, type AppJobHandler } from "./workers.ts";
 
 /** A tiny engine that records registrations and can deliver a job to a handler. */
 class MiniEngine {
@@ -155,4 +155,55 @@ test("sdkDecisionEvaluator throws with decision context on unparseable output", 
 test("sdkDecisionEvaluator throws a clear error when the SDK lacks evaluateDecision", async () => {
   const evaluate = sdkDecisionEvaluator({});
   await assert.rejects(evaluate("risk", {}), /does not support evaluateDecision.*"risk"/);
+});
+
+// ── AppJobHandler generics: optional In/Out type parameters ──────────────────────────────
+// These are primarily compile-time assertions (the suite is typechecked by `tsc --noEmit`),
+// with a runtime smoke that a typed handler still returns its output when delivered a job.
+test("AppJobHandler carries optional In/Out variable types", async () => {
+  // `In` is a plain interface — the `object` bound (not `Record<string, unknown>`) makes this
+  // work, since interfaces have no implicit index signature.
+  interface In {
+    prKey: string;
+    round: number;
+    summary?: string;
+  }
+  interface Out {
+    ok: boolean;
+  }
+
+  // In + Out: job.variables is typed as In, the return must be Out (or void).
+  const typed: AppJobHandler<In, Out> = async (job) => {
+    const key: string = job.variables.prKey; // typed access compiles
+    const n: number = job.variables.round;
+    return { ok: key.length > 0 && n >= 0 };
+  };
+
+  // In only: Out defaults to an open record, so any object may be returned.
+  const inOnly: AppJobHandler<In> = (job) => ({ echoed: job.variables.prKey });
+
+  // No parameters: fully open — the pre-generics behaviour.
+  const open: AppJobHandler = (job) => ({ count: Object.keys(job.variables).length });
+
+  // Returning nothing (void) is allowed under any parameterisation.
+  const voidReturn: AppJobHandler<In> = () => {};
+
+  const job: EngineJob<In> = {
+    jobKey: "1",
+    jobType: "pr.finalize",
+    variables: { prKey: "p1", round: 2 },
+  };
+  // The open handler defaults `In` to a record; interface-typed jobs aren't assignable to it,
+  // so hand it a plainly-typed job (the pre-generics shape).
+  const openJob: EngineJob = {
+    jobKey: "2",
+    jobType: "pr.finalize",
+    variables: { prKey: "p1", round: 2 },
+  };
+  const app = {} as AppApi;
+
+  assert.deepEqual(await typed(job, app), { ok: true });
+  assert.deepEqual(await inOnly(job, app), { echoed: "p1" });
+  assert.deepEqual(await open(openJob, app), { count: 2 });
+  assert.equal(await voidReturn(job, app), undefined);
 });

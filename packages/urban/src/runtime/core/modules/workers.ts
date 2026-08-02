@@ -42,11 +42,21 @@ export function sdkDecisionEvaluator(sdk: unknown): DecisionEvaluator {
   };
 }
 
-/** A handler as authored by an app: the job plus the injected app API. */
-export type AppJobHandler = (
-  job: EngineJob,
+/**
+ * A handler as authored by an app: the job plus the injected app API.
+ *
+ * Both type parameters are optional:
+ *   - `In`  types `job.variables` (the process variables the job carries).
+ *   - `Out` types the variables the handler returns to complete the job.
+ * Each defaults to an open `Record<string, unknown>`, so `AppJobHandler`,
+ * `AppJobHandler<In>`, and `AppJobHandler<In, Out>` are all valid. The `object` bound lets a
+ * plain `interface In {…}` be supplied (interfaces don't satisfy a `Record<string, unknown>`
+ * bound). Both parameters are erased at runtime — they only shape authoring-time types.
+ */
+export type AppJobHandler<In extends object = Record<string, unknown>, Out extends object = Record<string, unknown>> = (
+  job: EngineJob<In>,
   app: AppApi,
-) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
+) => Promise<Out | void> | Out | void;
 
 /**
  * Resolve a handler for `jobType` from a loaded module, in priority order:
