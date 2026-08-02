@@ -1,7 +1,14 @@
 name: Release
 
+# Gate publishing on a green CI run. Instead of firing on every push to main,
+# this workflow triggers when the "CI" workflow *completes* on main, and the
+# release job only runs when that CI run concluded successfully. This makes it
+# impossible to publish from main with failing CI. The filename stays
+# release.yml because the npm Trusted Publisher (OIDC) config is keyed to it.
 on:
-  push:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches: [main]
 
 permissions:
@@ -11,10 +18,15 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    # Only publish when the triggering CI run passed on main.
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
+          # Check out the exact commit CI validated, not the branch tip, so we
+          # never publish a commit that CI has not (yet) passed on.
+          ref: ${{ github.event.workflow_run.head_sha }}
       - uses: actions/setup-node@v5
         with:
           node-version: 22
