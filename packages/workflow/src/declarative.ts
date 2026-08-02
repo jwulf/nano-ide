@@ -228,11 +228,13 @@ function makeBuilder<C extends FlowContracts>(
         throw new Error(`timer("${name}") needs exactly one of { after } (a delay) or { at } (an instant)`);
       }
       if (hasAfter) {
-        assertTimerDuration(`timer("${name}") after`, opts.after as string);
-        out.push({ kind: "timer", name, after: opts.after as string });
+        const after = (opts.after as string).trim();
+        assertTimerDuration(`timer("${name}") after`, after);
+        out.push({ kind: "timer", name, after });
       } else {
-        assertTimerDate(`timer("${name}") at`, opts.at as string);
-        out.push({ kind: "timer", name, at: opts.at as string });
+        const at = (opts.at as string).trim();
+        assertTimerDate(`timer("${name}") at`, at);
+        out.push({ kind: "timer", name, at });
       }
       return b as unknown as FlowBuilder<C>;
     },
@@ -247,14 +249,17 @@ function makeBuilder<C extends FlowContracts>(
         throw new Error(`startOn() needs exactly one of { cycle }, { after }, or { at } in flow "${id}"`);
       }
       if (spec.cycle !== undefined) {
-        assertTimerCycle(`startOn cycle`, spec.cycle);
-        ctx.startTimer = { cycle: spec.cycle };
+        const cycle = spec.cycle.trim();
+        assertTimerCycle(`startOn cycle`, cycle);
+        ctx.startTimer = { cycle };
       } else if (spec.after !== undefined) {
-        assertTimerDuration(`startOn after`, spec.after);
-        ctx.startTimer = { after: spec.after };
+        const after = spec.after.trim();
+        assertTimerDuration(`startOn after`, after);
+        ctx.startTimer = { after };
       } else {
-        assertTimerDate(`startOn at`, spec.at as string);
-        ctx.startTimer = { at: spec.at as string };
+        const at = (spec.at as string).trim();
+        assertTimerDate(`startOn at`, at);
+        ctx.startTimer = { at };
       }
       return b as unknown as FlowBuilder<C>;
     },

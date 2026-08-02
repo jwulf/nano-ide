@@ -76,6 +76,20 @@ test("declarative emit: timer catch accepts a FEEL expression", () => {
   assert.match(toBpmn(flow), /<bpmn:timeDuration>=duration\(delay\)<\/bpmn:timeDuration>/);
 });
 
+test("declarative emit: timer literals are trimmed before emission (validate == store)", () => {
+  const flow = defineFlow("trimmed", (w) => {
+    w.startOn({ cycle: " R/PT1H " });
+    w.task("poll");
+    w.timer("wait", { after: "  PT30M  " });
+    w.task("done");
+  });
+  const xml = toBpmn(flow);
+  assert.match(xml, /<bpmn:timeCycle>R\/PT1H<\/bpmn:timeCycle>/);
+  assert.match(xml, /<bpmn:timeDuration>PT30M<\/bpmn:timeDuration>/);
+  assert.doesNotMatch(xml, /<bpmn:timeCycle> /);
+  assert.doesNotMatch(xml, /<bpmn:timeDuration>  /);
+});
+
 test("declarative emit: startOn cycle → durable timer start (cron replacement)", () => {
   const flow = defineFlow("nightly-report", (w) => {
     w.startOn({ cycle: "R/PT24H" });
