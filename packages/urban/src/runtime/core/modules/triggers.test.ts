@@ -121,6 +121,27 @@ test("runTriggerAction publishes a message, defaulting variables to the body", a
   ]);
 });
 
+test("runTriggerAction resolves a FEEL-string action.variables to an object", async () => {
+  const { app, calls } = fakeApp();
+  const res = await runTriggerAction(app, { start: "proc-2", variables: "= body.vars" }, {
+    body: { vars: { a: 1, b: "x" }, other: true },
+    headers: {},
+    query: {},
+  });
+  assert.equal(res.kind, "start");
+  assert.deepEqual(calls, [{ kind: "start", target: "proc-2", variables: { a: 1, b: "x" } }]);
+});
+
+test("runTriggerAction falls back to the body when a FEEL-string variables misses", async () => {
+  const { app, calls } = fakeApp();
+  await runTriggerAction(app, { message: "m", variables: "= body.nope" }, {
+    body: { k: 1 },
+    headers: {},
+    query: {},
+  });
+  assert.deepEqual(calls[0].variables, { k: 1 });
+});
+
 test("cron trigger fires its action on schedule and reschedules", async () => {
   const { app, calls } = fakeApp();
   const { ctx } = fakeCtx([
@@ -166,6 +187,16 @@ test("cron trigger with an invalid spec logs an error and does not schedule", ()
   assert.equal(sched.pending(), 0);
   assert.deepEqual(handle.describe?.(), { mounted: [], scheduled: [] });
   assert.ok(logs.some((l) => l.level === "error" && /invalid cron spec/.test(l.msg)));
+});
+
+test("cron trigger with no actionable action is not scheduled", () => {
+  const { app, logs } = fakeApp();
+  const { ctx } = fakeCtx([{ id: "noop", type: "cron", spec: "0 6 * * *" }]);
+  const sched = fakeScheduler(0);
+  const handle = mountTriggers(ctx, app, sched);
+  assert.equal(sched.pending(), 0);
+  assert.deepEqual(handle.describe?.(), { mounted: [], scheduled: [] });
+  assert.ok(logs.some((l) => l.level === "warn" && /no action\.start\/message/.test(l.msg)));
 });
 
 test("webhook trigger still routes and publishes", async () => {

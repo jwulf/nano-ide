@@ -21,12 +21,14 @@ export interface SchedulerDeps {
   now: () => number;
 }
 
-/** Evaluate a tiny correlation expression: `= body.a.b`, or a literal string. */
-export function evalCorrelation(
-  expr: string | undefined,
-  scope: { body: unknown; headers: Record<string, string>; query: Record<string, string> },
-): string | undefined {
-  if (!expr) return undefined;
+type Scope = { body: unknown; headers: Record<string, string>; query: Record<string, string> };
+
+/**
+ * Resolve a tiny FEEL-ish expression against the event scope: a `= body.a.b` path walk
+ * returns the raw value at that path (or `undefined` if any segment is missing); a literal
+ * (non-`=`) string is returned verbatim.
+ */
+export function resolveExpr(expr: string, scope: Scope): unknown {
   const trimmed = expr.trim();
   if (!trimmed.startsWith("=")) return trimmed; // literal
   const pathExpr = trimmed.slice(1).trim(); // e.g. "body.taskId"
@@ -38,7 +40,35 @@ export function evalCorrelation(
       return undefined;
     }
   }
+  return cur;
+}
+
+/** Evaluate a correlation expression to a string key: `= body.a.b`, or a literal string. */
+export function evalCorrelation(expr: string | undefined, scope: Scope): string | undefined {
+  if (!expr) return undefined;
+  const cur = resolveExpr(expr, scope);
   return cur == null ? undefined : String(cur);
+}
+
+/**
+ * Resolve `action.variables` to the record handed to the engine (schema: a FEEL string over
+ * the event body — `#/$defs/triggerAction.variables`). A `= body.<path>` expression must
+ * resolve to an object; a plain object literal is accepted for convenience; anything else
+ * (missing, or a non-object result) falls back to the raw event body when that is an object,
+ * else `{}`.
+ */
+export function resolveActionVariables(
+  expr: unknown,
+  scope: Scope,
+): Record<string, unknown> {
+  const asRecord = (v: unknown): Record<string, unknown> | undefined =>
+    v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+
+  if (typeof expr === "string") {
+    return asRecord(resolveExpr(expr, scope)) ?? asRecord(scope.body) ?? {};
+  }
+  // Back-compat: an inline object literal used directly as the variables.
+  return asRecord(expr) ?? asRecord(scope.body) ?? {};
 }
 
 async function verifyHmac(secret: string, body: string, signature: string): Promise<boolean> {
@@ -79,15 +109,10 @@ function headerRecord(req: HttpRequest): Record<string, string> {
 export async function runTriggerAction(
   app: AppApi,
   action: TriggerDecl["action"],
-  scope: { body: unknown; headers: Record<string, string>; query: Record<string, string> },
+  scope: Scope,
 ): Promise<{ kind: "start" | "message" | "none"; target?: string; correlationKey?: string }> {
   if (!action) return { kind: "none" };
-  const variables =
-    action.variables && typeof action.variables === "object" && !Array.isArray(action.variables)
-      ? (action.variables as Record<string, unknown>)
-      : scope.body && typeof scope.body === "object" && !Array.isArray(scope.body)
-      ? (scope.body as Record<string, unknown>)
-      : {};
+  const variables = resolveActionVariables(action.variables, scope);
 
   if (action.start) {
     await app.engine.createInstance({ processDefinitionId: action.start, variables });
@@ -138,6 +163,12 @@ export function mountTriggers(
       schedule = parseCron(spec);
     } catch (e) {
       app.log("error", `trigger "${trig.id}": invalid cron spec "${spec}": ${String(e)}`);
+      return;
+    }
+    if (!trig.action?.start && !trig.action?.message) {
+      // A timer that can never do anything is pure waste — don't arm it (unlike a webhook,
+      // which is request-driven and costs nothing while idle).
+      app.log("warn", `trigger "${trig.id}": cron trigger has no action.start/message; not scheduled`);
       return;
     }
     if (trig.onMissed && trig.onMissed !== "skip") {

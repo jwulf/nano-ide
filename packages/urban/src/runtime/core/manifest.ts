@@ -71,8 +71,12 @@ export interface TriggerDecl {
     message?: string;
     /** correlationKey (literal, or `= body.path`) for a message action. */
     correlationKey?: string;
-    /** variables for the started instance / published message (literal record or `= body.path`). */
-    variables?: unknown;
+    /**
+     * Variables for the started instance / published message. Per the manifest schema
+     * (`#/$defs/triggerAction.variables`) this is a FEEL string over the event body
+     * (e.g. `= body.payload`); an inline object literal is also accepted for convenience.
+     */
+    variables?: string | Record<string, unknown>;
   };
 }
 
