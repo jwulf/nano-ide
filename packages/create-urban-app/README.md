@@ -21,28 +21,26 @@ my-app/
   workers/greet.ts       # a job worker
   main.ts                # entrypoint that runs the app
   package.json           # npm run scripts
-  deno.json              # Deno tasks and import map
   .gitignore
   README.md
 ```
+
+Pass `--deno` to additionally emit a `deno.json` (Deno tasks + import map) and the
+Deno usage docs. The scaffold defaults to Node to keep the authoring experience
+simple; the Urban runtime itself is host-agnostic, so `--deno` is purely additive.
 
 ## Run it
 
 ```bash
 cd my-app
-
-# Node
 npm install
 npm start                # or: npx urban run
-
-# Deno
-deno task start
 ```
 
-Both `npm start` and `deno task start` run the app: they generate its
-`nano-generated/` artifacts and start it against a nano-bpm engine (set
-`CAMUNDA_REST_ADDRESS`, default `http://localhost:8080/v2`). The scaffolded
-`package.json` and `deno.json` also expose `check`, `dev` and `deploy` tasks.
+`npm start` generates the app's `nano-generated/` artifacts and starts it against a
+nano-bpm engine (set `CAMUNDA_REST_ADDRESS`, default `http://localhost:8080/v2`).
+The scaffolded `package.json` also exposes `check`, `dev` and `deploy` scripts. With
+`--deno`, the equivalent `deno task <name>` commands are available too.
 
 ## Options
 
@@ -51,6 +49,7 @@ Both `npm start` and `deno task start` run the app: they generate its
 | `--dir <path>` | target directory | `./<name>` (slugified) |
 | `--id <slug>` | app id in the manifest | derived from the name |
 | `--preset <full\|headless>` | `full` includes surfaces, triggers and forms; `headless` is workers-only | `full` |
+| `--deno` | also emit `deno.json` + Deno docs | Node only |
 
 ## Related packages
 

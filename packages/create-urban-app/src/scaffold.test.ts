@@ -60,3 +60,23 @@ test("names with quotes/backslashes/control chars stay valid JSON in the manifes
   const manifest = JSON.parse(await readFile(join(dir, "nano.app.json"), "utf8"));
   assert.equal(manifest.name, tricky);
 });
+
+test("Node is the default host: no deno.json, README drops the Deno block", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-node-"));
+  const res = await scaffold({ name: "Node App", dir });
+  assert.ok(!res.files.includes("deno.json"), "no deno.json in the file list");
+  assert.ok(!(await exists(join(dir, "deno.json"))), "no deno.json on disk");
+  const readme = await readFile(join(dir, "README.md"), "utf8");
+  assert.ok(!/deno task/.test(readme), "Deno usage block is stripped");
+  assert.ok(!/if:deno/.test(readme), "conditional markers are stripped");
+});
+
+test("--deno keeps deno.json and the Deno block, with markers removed", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-deno-"));
+  const res = await scaffold({ name: "Deno App", dir, deno: true });
+  assert.ok(res.files.includes("deno.json"), "deno.json in the file list");
+  assert.ok(await exists(join(dir, "deno.json")), "deno.json on disk");
+  const readme = await readFile(join(dir, "README.md"), "utf8");
+  assert.ok(/deno task check/.test(readme), "Deno usage block is kept");
+  assert.ok(!/if:deno/.test(readme), "conditional markers are removed");
+});

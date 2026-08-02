@@ -16,6 +16,12 @@ export interface ScaffoldOptions {
   id?: string;
   /** Preset: "full" (workers + surfaces + triggers) or "headless" (workers only). */
   preset?: "full" | "headless";
+  /**
+   * Also emit Deno host files (`deno.json`) and keep the Deno usage docs. Default false:
+   * the scaffold normalizes on Node to keep the authoring experience simple. The runtime
+   * stays host-agnostic, so `--deno` is purely additive.
+   */
+  deno?: boolean;
 }
 
 export interface ScaffoldResult {
@@ -53,6 +59,16 @@ function substitute(content: string, vars: Record<string, string>): string {
   return content.replace(/__([A-Z_]+)__/g, (m, key) => vars[key] ?? m);
 }
 
+/**
+ * Resolve `<!-- if:deno -->…<!-- /if:deno -->` blocks in template text. When `deno` is on,
+ * only the marker lines are stripped (the body stays); when off, the whole block goes. Lets
+ * one README serve both the Node-default and `--deno` scaffolds without a second template.
+ */
+function applyConditionals(content: string, on: { deno: boolean }): string {
+  const block = /^[ \t]*<!-- if:deno -->[ \t]*\r?\n([\s\S]*?)^[ \t]*<!-- \/if:deno -->[ \t]*\r?\n?/gm;
+  return content.replace(block, (_m, body: string) => (on.deno ? body : ""));
+}
+
 /** Rename a template filename: `_gitignore` → `.gitignore` (npm strips dotfiles from packs). */
 function finalName(name: string): string {
   return name === "_gitignore" ? ".gitignore" : name;
@@ -62,6 +78,7 @@ export async function scaffold(opts: ScaffoldOptions): Promise<ScaffoldResult> {
   const id = opts.id ?? slugify(opts.name);
   const preset = opts.preset ?? "full";
   const headless = preset === "headless";
+  const deno = opts.deno ?? false;
   // JSON-escape the name so it stays valid inside the quoted JSON placeholders
   // (e.g. nano.app.json "name") for arbitrary input (quotes, backslashes, control chars).
   const vars = { APP_ID: id, APP_NAME: JSON.stringify(opts.name).slice(1, -1) };
@@ -76,10 +93,12 @@ export async function scaffold(opts: ScaffoldOptions): Promise<ScaffoldResult> {
     const destRel = parts.join("/");
     // headless = workers only: no human surfaces, so skip the form assets.
     if (headless && destRel.startsWith("forms/")) continue;
+    // Node is the default host; Deno host files are opt-in via `--deno`.
+    if (!deno && destRel === "deno.json") continue;
     const dest = join(opts.dir, destRel);
     await mkdir(dirname(dest), { recursive: true });
     const raw = await readFile(src, "utf8");
-    let content = substitute(raw, vars);
+    let content = applyConditionals(substitute(raw, vars), { deno });
     if (headless && destRel === "nano.app.json") content = toHeadlessManifest(content);
     await writeFile(dest, content);
     written.push(destRel);

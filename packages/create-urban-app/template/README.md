@@ -11,19 +11,17 @@ nano.app.json         the manifest — the whole app, declared
 processes/*.bpmn      BPMN process models
 forms/*.form          form-js user task forms
 db/migrations/*.sql   datasource schema (SQLite by default)
-workers/*.ts          service-task handlers (Node + Deno)
+workers/*.ts          service-task handlers (host-agnostic TypeScript)
 main.ts               entrypoint (calls the Urban runtime)
 ```
 
-The manifest is the contract; the runtime is the interpreter; the host (Node or Deno) is
-interchangeable. You never eject.
+The manifest is the contract; the runtime is the interpreter; the host runs on **Node**
+by default (the runtime is host-agnostic — Deno is supported too). You never eject.
 
 ## Run it
 
 You need a Nano engine reachable at `CAMUNDA_REST_ADDRESS` (default
 `http://localhost:8080/v2`).
-
-**Node**
 
 ```bash
 npm install
@@ -31,13 +29,15 @@ npm run check      # validate the manifest
 npm start          # deploy models, provision the DB, start workers + surfaces
 ```
 
-**Deno**
+<!-- if:deno -->
+Or run it on **Deno** (no install step):
 
 ```bash
 deno task check
 deno task start
 ```
 
+<!-- /if:deno -->
 Then trigger the demo:
 
 ```bash
