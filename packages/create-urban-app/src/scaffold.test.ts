@@ -101,3 +101,68 @@ test("CLI tolerates a `--` end-of-options delimiter (npm create injects it)", as
   assert.equal(code, 0, "does not error on `--`");
   assert.ok(await exists(join(dir, "deno.json")), "--deno after `--` still applied");
 });
+
+test("code-first style scaffolds a defineFlow app (no processes/, custom main.ts)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-code-"));
+  const res = await scaffold({ name: "Code App", dir, style: "code" });
+  assert.equal(res.id, "code-app");
+
+  // Code-first source layout: workflows/ + scripts/, no authored BPMN or worker map.
+  assert.ok(res.files.includes("workflows/greet.ts"), "has a defineFlow workflow");
+  assert.ok(res.files.includes("scripts/greet.ts"), "has a start script");
+  assert.ok(!res.files.some((f) => f.startsWith("processes/")), "no processes/*.bpmn");
+  assert.ok(!(await exists(join(dir, "processes"))), "no processes dir");
+  assert.ok(!(await exists(join(dir, "workers"))), "no workers dir");
+
+  const flow = await readFile(join(dir, "workflows/greet.ts"), "utf8");
+  assert.match(flow, /defineFlow\(/, "workflow uses defineFlow");
+
+  const manifest = JSON.parse(await readFile(join(dir, "nano.app.json"), "utf8"));
+  assert.equal(manifest.id, "code-app");
+  assert.equal(manifest.name, "Code App");
+  assert.equal(manifest.models, undefined, "code-first declares no file models");
+  assert.equal(manifest.workers, undefined, "code-first hosts workers in main.ts");
+
+  // Code-first runs its custom entrypoint, not `urban run`.
+  const pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf8"));
+  assert.equal(pkg.scripts.start, "node --experimental-strip-types main.ts");
+  assert.equal(pkg.scripts.greet, "node --experimental-strip-types scripts/greet.ts");
+  assert.equal(pkg.scripts.check, "urban check", "still validates via the urban CLI");
+
+  const mainTs = await readFile(join(dir, "main.ts"), "utf8");
+  assert.match(mainTs, /WorkflowClient/, "main deploys via WorkflowClient");
+  assert.match(mainTs, /new Worker\(/, "main hosts an in-process Worker");
+});
+
+test("--code-first flag selects the code-first template", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-cf-flag-"));
+  const code = await main(["CF App", "--dir", dir, "--code-first"]);
+  assert.equal(code, 0);
+  assert.ok(await exists(join(dir, "workflows/greet.ts")), "code-first workflow scaffolded");
+  assert.ok(!(await exists(join(dir, "processes"))), "no processes dir");
+});
+
+test("--style code is equivalent, and --style rejects unknown values", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-style-"));
+  const code = await main(["Styled App", "--dir", dir, "--style", "code"]);
+  assert.equal(code, 0);
+  assert.ok(await exists(join(dir, "workflows/greet.ts")), "--style code scaffolds code-first");
+
+  await assert.rejects(
+    () => main(["Bad Style", "--dir", dir, "--style", "graph"]),
+    /--style must be "model" or "code"/,
+  );
+});
+
+test("--code-first --deno keeps deno.json with node-run start/dev/greet tasks", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-cf-deno-"));
+  const res = await scaffold({ name: "CF Deno", dir, style: "code", deno: true });
+  assert.ok(res.files.includes("deno.json"), "deno.json emitted");
+  const denoCfg = JSON.parse(await readFile(join(dir, "deno.json"), "utf8"));
+  assert.equal(denoCfg.tasks.start, "deno run -A main.ts");
+  assert.equal(denoCfg.tasks.greet, "deno run -A scripts/greet.ts");
+  assert.ok(denoCfg.tasks.check, "deno check task present");
+  const readme = await readFile(join(dir, "README.md"), "utf8");
+  assert.ok(/deno task/.test(readme), "Deno block kept");
+  assert.ok(!/if:deno/.test(readme), "conditional markers removed");
+});

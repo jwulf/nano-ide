@@ -1,0 +1,21 @@
+{
+  "name": "__APP_ID__",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "__APP_NAME__ — a code-first Urban app.",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "check": "urban check",
+    "gen": "urban gen",
+    "gen:check": "urban gen --check",
+    "start": "node --experimental-strip-types main.ts",
+    "dev": "node --watch --experimental-strip-types main.ts",
+    "greet": "node --experimental-strip-types scripts/greet.ts"
+  },
+  "dependencies": {
+    "@nanobpm/urban": "^0.15.0"
+  }
+}

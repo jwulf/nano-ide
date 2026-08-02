@@ -44,6 +44,7 @@ interface Flags {
   check: boolean;
   write: boolean;
   deno: boolean;
+  style?: "model" | "code";
   help: boolean;
   version: boolean;
   _: string[];
@@ -63,6 +64,12 @@ function parse(argv: string[]): Flags {
     else if (a === "--check") f.check = true;
     else if (a === "--write") f.write = true;
     else if (a === "--deno") f.deno = true;
+    else if (a === "--code-first") f.style = "code";
+    else if (a === "--style") {
+      const v = need(++i, a);
+      if (v !== "model" && v !== "code") throw new Error(`flag --style requires "model" or "code" (got "${v}")`);
+      f.style = v;
+    }
     else if (a === "--") continue; // tolerate a bare "--" some runners inject (not an option terminator here)
     else if (a === "--root") f.root = need(++i, a);
     else if (a === "--manifest") f.manifest = need(++i, a);
@@ -82,7 +89,8 @@ function parse(argv: string[]): Flags {
 const USAGE = `urban — build and run Urban apps (nano.app.json)
 
 Usage:
-  urban new <name> [--root <path>] [--deno]    scaffold a new Urban app
+  urban new <name> [--root <path>] [--deno] [--style model|code]    scaffold a new Urban app
+                                    (--code-first is shorthand for --style code)
   urban check                       validate the manifest
   urban gen [--check]               derive artifacts (migrations, worker-io)
   urban stubs [--write]             scaffold write-once handler stubs from the model
@@ -197,14 +205,15 @@ async function cmdDeploy(f: Flags): Promise<number> {
 async function cmdNew(f: Flags): Promise<number> {
   const name = f._[1];
   if (!name) {
-    console.error("usage: urban new <name> [--root <path>] [--deno]");
+    console.error("usage: urban new <name> [--root <path>] [--deno] [--style model|code] (or --code-first)");
     return 1;
   }
   const dir = f.root !== "." ? f.root : `./${slugify(name)}`;
-  const res = await scaffold({ name, dir, deno: f.deno });
+  const res = await scaffold({ name, dir, deno: f.deno, style: f.style });
   console.log(`✔ scaffolded "${res.id}" in ${res.dir} (${res.files.length} files)`);
   console.log(`  cd ${res.dir}`);
   console.log(`  npm install && npm start`);
+  if (f.style === "code") console.log(`  npm run greet -- Adam   # start a code-first instance`);
   if (f.deno) console.log(`  # or on Deno: deno task start`);
   return 0;
 }

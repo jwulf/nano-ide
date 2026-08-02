@@ -17,6 +17,14 @@ export interface ScaffoldOptions {
   /** Preset: "full" (workers + surfaces + triggers) or "headless" (workers only). */
   preset?: "full" | "headless";
   /**
+   * Authoring style: "model" (default) scaffolds a model-first app whose process
+   * is an authored `processes/*.bpmn`, run by `urban run`. "code" scaffolds a
+   * code-first app whose process is authored in TypeScript with `defineFlow`
+   * (`workflows/*.ts`); `@nanobpm/urban` derives the executable model, and a
+   * custom `main.ts` deploys it and hosts the in-process worker.
+   */
+  style?: "model" | "code";
+  /**
    * Also emit Deno host files (`deno.json`) and keep the Deno usage docs. Default false:
    * the scaffold normalizes on Node to keep the authoring experience simple. The runtime
    * stays host-agnostic, so `--deno` is purely additive.
@@ -38,8 +46,9 @@ export function slugify(s: string): string {
     .replace(/-{2,}/g, "-") || "urban-app";
 }
 
-function templateRoot(): string {
-  return join(dirname(fileURLToPath(import.meta.url)), "..", "template");
+function templateRoot(style: "model" | "code"): string {
+  const dir = style === "code" ? "template-code-first" : "template";
+  return join(dirname(fileURLToPath(import.meta.url)), "..", dir);
 }
 
 async function listFiles(root: string): Promise<string[]> {
@@ -79,10 +88,11 @@ export async function scaffold(opts: ScaffoldOptions): Promise<ScaffoldResult> {
   const preset = opts.preset ?? "full";
   const headless = preset === "headless";
   const deno = opts.deno ?? false;
+  const style = opts.style ?? "model";
   // JSON-escape the name so it stays valid inside the quoted JSON placeholders
   // (e.g. nano.app.json "name") for arbitrary input (quotes, backslashes, control chars).
   const vars = { APP_ID: id, APP_NAME: JSON.stringify(opts.name).slice(1, -1) };
-  const root = templateRoot();
+  const root = templateRoot(style);
   const files = await listFiles(root);
   const written: string[] = [];
 

@@ -1,0 +1,14 @@
+{
+  "tasks": {
+    "check": "deno run -A npm:@nanobpm/urban@^0.15.0 check",
+    "gen": "deno run -A npm:@nanobpm/urban@^0.15.0 gen",
+    "gen:check": "deno run -A npm:@nanobpm/urban@^0.15.0 gen --check",
+    "start": "deno run -A main.ts",
+    "dev": "deno run -A --watch main.ts",
+    "greet": "deno run -A scripts/greet.ts"
+  },
+  "imports": {
+    "@nanobpm/urban": "npm:@nanobpm/urban@^0.15.0"
+  },
+  "nodeModulesDir": "auto"
+}
