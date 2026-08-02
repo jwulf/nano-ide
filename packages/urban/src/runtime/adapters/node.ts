@@ -2,7 +2,7 @@
 // (with deno.ts) allowed to touch a concrete runtime.
 
 import { readFile, readdir, stat } from "node:fs/promises";
-import { watch as fsWatch } from "node:fs";
+import { watch as fsWatch, type FSWatcher } from "node:fs";
 import { createServer } from "node:http";
 import { isAbsolute, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -80,7 +80,7 @@ export function createNodeHost(opts: NodeHostOptions = {}): HostContext {
       // This package requires Node >=22.6, so the recursive path is available on all three;
       // the try/catch only trips on an unusual platform, where we degrade honestly to a
       // non-recursive root watch (and warn) rather than silently miss nested changes.
-      let w;
+      let w: FSWatcher;
       try {
         w = fsWatch(cwd, { recursive: true }, onFsEvent);
       } catch (err) {
