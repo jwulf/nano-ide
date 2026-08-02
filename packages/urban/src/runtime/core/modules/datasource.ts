@@ -6,7 +6,7 @@
 import type { RuntimeContext } from "../context.ts";
 import type { HostContext, SqliteDb } from "../host.ts";
 import type { AppManifest, DataSource, DomainType } from "../manifest.ts";
-import { makeGateway, Table, type DataSource as SourceGateway } from "./gateway.ts";
+import { makeGateway, Table, type DataSource as GatewayDataSource } from "./gateway.ts";
 
 function sqlitePathFromUrl(url: string): string {
   // Accept "file:./x.db", "file:x.db", "sqlite:./x.db" or a bare path.
@@ -91,7 +91,7 @@ export interface ProvisionedSource {
   readonly driver: string;
   readonly db: SqliteDb;
   /** The record-oriented gateway over this source — the RAD `Table<T>` surface (ADR 0055). */
-  readonly source: SourceGateway;
+  readonly source: GatewayDataSource;
   readonly migrationsApplied: string[];
   close(): void;
 }
@@ -128,7 +128,7 @@ export class DataLayer {
 
   /** The record-oriented `DataSource` gateway for a source (the default when omitted) — the
    * raw-SQL + `Table<T>` surface app handlers bind to (ADR 0055). */
-  open(sourceName?: string): SourceGateway {
+  open(sourceName?: string): GatewayDataSource {
     return this.source(sourceName).source;
   }
 

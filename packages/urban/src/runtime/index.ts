@@ -55,7 +55,7 @@ export type { ProvisionedSource } from "./core/modules/datasource.ts";
 export { makeGateway, Table } from "./core/modules/gateway.ts";
 export type {
   ColumnMeta,
-  DataSource as SourceGateway,
+  DataSource as GatewayDataSource,
   ExecResult,
   ForeignKeyMeta,
   Row,
