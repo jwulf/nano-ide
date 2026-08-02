@@ -72,6 +72,52 @@ test("stop() cancels a pending debounced reload", async () => {
   assert.deepEqual(stops, ["a0"], "the running app was stopped exactly once");
 });
 
+test("stop() during an in-flight reload does not start a replacement app", async () => {
+  const starts: string[] = [];
+  const stops: string[] = [];
+  let clock = 1;
+  const hosts: ReturnType<typeof fakeHost>[] = [];
+  // Gate the boot app's stop() so we can flip shutdown mid-reload, in the window
+  // between the old app being stopped and the new one starting.
+  let releaseStop!: () => void;
+  const stopGate = new Promise<void>((r) => (releaseStop = r));
+
+  const deps: DevDeps = {
+    makeHost: () => {
+      const h = fakeHost();
+      hosts.push(h);
+      return h.host;
+    },
+    startApp: async () => {
+      const id = `a${starts.length}`;
+      starts.push(id);
+      if (id === "a0") {
+        return {
+          ...fakeApp(stops, id),
+          async stop() {
+            await stopGate; // block the first reload inside app.stop()
+            stops.push(id);
+          },
+        } as UrbanApp;
+      }
+      return fakeApp(stops, id);
+    },
+    regenerate: async () => ({ count: 0 }),
+    now: () => clock++,
+  };
+
+  const dev = await runDev({ debounceMs: 5, log: () => {} }, deps);
+  hosts[0].fire("workers/x.ts"); // triggers a reload; it will block inside app.stop()
+  await delay(20);
+  const stopping = dev.stop(); // flips `stopped` while the reload is parked in app.stop()
+  releaseStop(); // let the old app finish stopping; reload must now bail, not start a0's replacement
+  await stopping;
+
+  assert.deepEqual(starts, ["a0"], "no replacement app started during teardown");
+  assert.deepEqual(stops, ["a0"], "the running app was stopped exactly once");
+  assert.equal(hosts[0].closed(), true, "watcher closed");
+});
+
 // A minimal fake host: runDev only calls host.watch on it.
 function fakeHost(): { host: HostContext; fire: (p: string) => void; closed: () => boolean } {
   let cb: ((p: string) => void) | undefined;

@@ -111,6 +111,7 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
   let reloading = false;
   let queued = false;
   let stopped = false;
+  let appRunning = true;
   let inFlight: Promise<void> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -128,7 +129,12 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
       const nextHost = await prepareHost();
       if (stopped) return; // shutdown began mid-prepare: leave the running app to stop()
       await app.stop();
+      appRunning = false;
+      // Re-check after the async stop: if shutdown began while we were tearing the old
+      // app down, don't start a replacement just to have stop() immediately kill it.
+      if (stopped) return;
       app = await d.startApp(nextHost, { manifestPath: manifestFile, port: opts.port });
+      appRunning = true;
       host = nextHost;
       log("✔ reloaded");
     } catch (err) {
@@ -173,7 +179,7 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
       }
       watcher?.close();
       await inFlight?.catch(() => {});
-      await app.stop();
+      if (appRunning) await app.stop();
     },
   };
 }
