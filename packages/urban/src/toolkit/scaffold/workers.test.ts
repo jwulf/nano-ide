@@ -40,6 +40,7 @@ test("slugifyTaskType makes a filesystem-safe slug", () => {
 
 test("typed in+out stub imports both symbols and parameterises the handler", () => {
   const stub = renderWorkerStub("pr.finalize", true, true);
+  assert.match(stub, /import type \{ AppJobHandler \} from "@nanobpm\/urban\/worker";/);
   assert.match(stub, /import type \{ WorkerInputs, WorkerOutputs \} from "\.\.\/\.\.\/nano-generated\/worker-io\.d\.ts";/);
   assert.match(stub, /AppJobHandler<WorkerInputs\["pr\.finalize"\], WorkerOutputs\["pr\.finalize"\]>/);
   assert.match(stub, /export default handler;/);

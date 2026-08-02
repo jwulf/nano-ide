@@ -94,7 +94,7 @@ export function renderWorkerStub(
     `// Handler stub for the \`${taskType}\` service task, scaffolded from the model (ADR 0056).\n` +
     `// This file is yours to edit — \`urban stubs\` will never overwrite it. Implement the body\n` +
     `// below (use \`app.data.table(...)\` for state) and delete the throw.\n` +
-    `import type { AppJobHandler } from "@nanobpm/urban";\n` +
+    `import type { AppJobHandler } from "@nanobpm/urban/worker";\n` +
     generatedImport +
     `\n` +
     `const handler: AppJobHandler${generic} = async (job, app) => {\n` +

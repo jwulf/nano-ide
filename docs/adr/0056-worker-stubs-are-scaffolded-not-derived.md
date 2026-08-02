@@ -52,7 +52,7 @@ A stub matches a real hand-authored worker exactly (cf.
 silently acking. It carries the **types** from the model:
 
 ```ts
-import type { AppJobHandler } from "@nanobpm/urban";
+import type { AppJobHandler } from "@nanobpm/urban/worker";
 import type { WorkerInputs, WorkerOutputs } from "../../nano-generated/worker-io.d.ts";
 
 const handler: AppJobHandler<WorkerInputs["pr.finalize"], WorkerOutputs["pr.finalize"]> =
@@ -75,6 +75,19 @@ the deriver's property keys.
 
 > Prerequisite: the generic `AppJobHandler<In, Out>` ships in `@nanobpm/urban`
 > ≥ 0.14.0 (PR #71). Generated stubs typecheck against that version.
+
+Stubs import `AppJobHandler` from the runtime-free `@nanobpm/urban/worker` subpath
+(≥ 0.16.0) rather than the package barrel: the barrel re-exports the Node/Deno host
+adapters, so its type graph transitively references `node:*` (needing `@types/node`
+or `skipLibCheck`), whereas `/worker` re-exports only the `core/` authoring types,
+which the ADR 0052 purity invariant keeps free of urban's own `node:*` imports.
+
+The handler's type surface also reaches the SDK via `AppApi.sdk` (`app.sdk` is the
+full `@nanobpm/nano-sdk` client, by design). That SDK is kept node-free by the
+`@nanobpm/nano-sdk` ≥ 1.2.2 floor, which pulls `@camunda8/orchestration-cluster-api`
+≥ 10.0.0-alpha.20 — whose public types no longer reference `node:worker_threads`.
+Together (adapter-free `/worker` surface + node-free SDK floor) a scaffolded stub
+typechecks on Node or Deno with no `@types/node` and no `skipLibCheck`.
 
 ### What is skipped (never stubbed)
 
