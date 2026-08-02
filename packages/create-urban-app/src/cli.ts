@@ -26,7 +26,7 @@ function parse(argv: string[]): Parsed {
     const a = argv[i];
     if (a === "-h" || a === "--help") out.help = true;
     else if (a === "--deno") out.deno = true;
-    else if (a === "--") continue; // end-of-options delimiter: npm create/init may inject it
+    else if (a === "--") continue; // tolerate a bare "--" some runners inject (not an option terminator here)
     else if (a === "--dir") out.dir = need(++i, a);
     else if (a === "--id") out.id = need(++i, a);
     else if (a === "--preset") {
@@ -47,7 +47,7 @@ const USAGE = `create-urban-app — scaffold a runnable Urban app
 
 Usage:
   npm create urban-app@latest <name> [--dir <path>] [--id <slug>] [--preset full|headless] [--deno]
-  deno run -A npm:create-urban-app <name> --deno
+  deno run -A npm:create-urban-app <name> [--deno]
 
 Scaffolds a Node app by default. Pass --deno to also emit a deno.json and Deno docs;
 the Urban runtime is host-agnostic, so --deno is purely additive.
