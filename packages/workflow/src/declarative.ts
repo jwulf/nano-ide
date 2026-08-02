@@ -44,9 +44,10 @@ import type {
   StepContract,
   StepHandler,
   SwitchCase,
+  TimerStart,
 } from "./types.js";
 import type { Envelope, EnvelopeField } from "./envelope.js";
-import { assertIdent, assertJobType, escapeXml, jobType, messageName } from "./xml.js";
+import { assertIdent, assertJobType, assertTimerCycle, assertTimerDate, assertTimerDuration, escapeXml, jobType, messageName } from "./xml.js";
 
 // --- Authoring surface -------------------------------------------------------
 
@@ -101,6 +102,26 @@ export interface FlowBuilder<C extends FlowContracts = Record<string, never>> {
    */
   signal<K extends string>(name: K, opts: { correlationKey: string }): FlowBuilder<C>;
   /**
+   * A durable wait for a point in time (a BPMN timer intermediate catch event).
+   * Pass exactly one of `{ after }` — an ISO-8601 delay (`PT1M30S`, `P1DT6H`) or
+   * FEEL `=`-expression measured from when the token arrives — or `{ at }` — an
+   * absolute ISO-8601 instant (or FEEL expression). The engine holds the token
+   * durably until the timer fires, then continues. Use it for in-flow delays and
+   * scheduled continuations (e.g. "wait 24h, then re-poll").
+   */
+  timer<K extends string>(name: K, opts: { after: string } | { at: string }): FlowBuilder<C>;
+  /**
+   * Make this flow's start event a durable TIMER start rather than an explicit
+   * `client.start(...)`. Must be the first statement, at the top level. Pass
+   * exactly one of `{ cycle }` — a recurring ISO-8601 interval (`R/PT1H`,
+   * `R5/PT30M`) the engine re-fires each period — `{ after }` — a one-shot delay
+   * from deployment — or `{ at }` — a one-shot absolute instant. A `cycle` start
+   * is the model-native, durable, single-fire-per-cluster replacement for an
+   * app-side cron: the schedule lives in the deployable model, and the engine
+   * (not each app replica) owns firing it exactly once.
+   */
+  startOn(spec: { cycle: string } | { after: string } | { at: string }): FlowBuilder<C>;
+  /**
    * A multi-way exclusive choice (a BPMN exclusive gateway). `subject` is a FEEL
    * expression (usually a variable name); each case routes when `subject` equals
    * the case value. An optional `default` case is the unconditional fallback.
@@ -132,6 +153,8 @@ interface BuilderCtx {
   handlers: Record<string, StepHandler>;
   seen: Set<string>;
   loopDepth: number;
+  /** Set by `startOn()` (root builder only); lifted onto the flow. */
+  startTimer?: TimerStart;
 }
 
 /** Ids the emitter generates for structural nodes / flows / messages. A step
@@ -163,7 +186,12 @@ function contractEnvelopes(ctx: BuilderCtx, name: string): { in?: Envelope; out?
 /** Build a FlowBuilder that appends its nodes to `out`, sharing the flow-wide
  *  `ctx` (contracts, handler registry, name set, loop nesting). Structural
  *  combinators recurse with a fresh `out` array for each nested body. */
-function makeBuilder<C extends FlowContracts>(id: string, out: FlowNode[], ctx: BuilderCtx): FlowBuilder<C> {
+function makeBuilder<C extends FlowContracts>(
+  id: string,
+  out: FlowNode[],
+  ctx: BuilderCtx,
+  isRoot = false,
+): FlowBuilder<C> {
   const child = (fn: Block<C>, inLoop: boolean): FlowNode[] => {
     const body: FlowNode[] = [];
     const depth = inLoop ? ctx.loopDepth + 1 : ctx.loopDepth;
@@ -190,6 +218,34 @@ function makeBuilder<C extends FlowContracts>(id: string, out: FlowNode[], ctx: 
       if (!opts || !opts.correlationKey) throw new Error(`signal("${name}") needs { correlationKey }`);
       assertIdent("correlationKey", opts.correlationKey);
       out.push({ kind: "signal", name, correlationKey: opts.correlationKey, payload: ctx.contracts[name]?.in });
+      return b as unknown as FlowBuilder<C>;
+    },
+    timer(name: string, opts: { after?: string; at?: string }): FlowBuilder<C> {
+      claimName(ctx, id, name);
+      const hasAfter = typeof opts?.after === "string";
+      const hasAt = typeof opts?.at === "string";
+      if (hasAfter === hasAt) {
+        throw new Error(`timer("${name}") needs exactly one of { after } (a delay) or { at } (an instant)`);
+      }
+      if (hasAfter) assertTimerDuration(`timer("${name}") after`, opts.after as string);
+      else assertTimerDate(`timer("${name}") at`, opts.at as string);
+      out.push({ kind: "timer", name, after: hasAfter ? opts.after : undefined, at: hasAt ? opts.at : undefined });
+      return b as unknown as FlowBuilder<C>;
+    },
+    startOn(spec: { cycle?: string; after?: string; at?: string }): FlowBuilder<C> {
+      if (!isRoot) {
+        throw new Error(`startOn() is only valid at the top level of flow "${id}" (not inside switch/branch/loop)`);
+      }
+      if (out.length !== 0) throw new Error(`startOn() must be the first statement in flow "${id}"`);
+      if (ctx.startTimer) throw new Error(`startOn() may be called only once in flow "${id}"`);
+      const set = (["cycle", "after", "at"] as const).filter((k) => typeof spec?.[k] === "string");
+      if (set.length !== 1) {
+        throw new Error(`startOn() needs exactly one of { cycle }, { after }, or { at } in flow "${id}"`);
+      }
+      if (spec.cycle !== undefined) assertTimerCycle(`startOn cycle`, spec.cycle);
+      else if (spec.after !== undefined) assertTimerDuration(`startOn after`, spec.after);
+      else assertTimerDate(`startOn at`, spec.at as string);
+      ctx.startTimer = { cycle: spec.cycle, after: spec.after, at: spec.at };
       return b as unknown as FlowBuilder<C>;
     },
     switch(subject: string, cases: Record<string, Block<C>> & { default?: Block<C> }): FlowBuilder<C> {
@@ -263,9 +319,11 @@ export function defineFlow(
   const steps: FlowNode[] = [];
   const handlers: Record<string, StepHandler> = {};
   const ctx: BuilderCtx = { contracts, handlers, seen: new Set(), loopDepth: 0 };
-  build(makeBuilder<FlowContracts>(id, steps, ctx));
+  build(makeBuilder<FlowContracts>(id, steps, ctx, true));
   if (steps.length === 0) throw new Error(`flow "${id}" declared no steps`);
-  return { kind: "declarative", id, steps, handlers };
+  const flow: DeclarativeFlow = { kind: "declarative", id, steps, handlers };
+  if (ctx.startTimer) flow.startTimer = ctx.startTimer;
+  return flow;
 }
 
 // --- Tree walkers ------------------------------------------------------------
@@ -404,6 +462,24 @@ class Compiler {
     });
   }
 
+  private addTimerCatchEvent(node: { name: string; after?: string; at?: string }): void {
+    const id = node.name;
+    const body =
+      node.after !== undefined
+        ? `        <bpmn:timeDuration>${escapeXml(node.after)}</bpmn:timeDuration>\n`
+        : `        <bpmn:timeDate>${escapeXml(node.at as string)}</bpmn:timeDate>\n`;
+    this.nodes.push({
+      id,
+      render: (inc, outg) =>
+        `    <bpmn:intermediateCatchEvent id="${escapeXml(id)}" name="${escapeXml(id)}">\n` +
+        incomingOutgoing(inc, outg) +
+        `      <bpmn:timerEventDefinition>\n` +
+        body +
+        `      </bpmn:timerEventDefinition>\n` +
+        `    </bpmn:intermediateCatchEvent>`,
+    });
+  }
+
   private addGateway(id: string, name?: string): RenderNode {
     const gwNode: RenderNode = {
       id,
@@ -439,6 +515,11 @@ class Compiler {
         this.addCatchEvent(node);
         this.connect(incoming, node.name);
         this.recordEnvelope(node.payload);
+        return [this.newEdge(node.name)];
+      }
+      case "timer": {
+        this.addTimerCatchEvent(node);
+        this.connect(incoming, node.name);
         return [this.newEdge(node.name)];
       }
       case "switch": {
@@ -494,11 +575,32 @@ class Compiler {
     }
   }
 
+  /** Render the Start event — a plain none start, or a timer start when the
+   *  flow declared `startOn(...)`. */
+  private renderStart(outg: string[]): string {
+    const t = this.flow.startTimer;
+    if (!t) return `    <bpmn:startEvent id="Start">${outgoingOnly(outg)}</bpmn:startEvent>`;
+    const body =
+      t.cycle !== undefined
+        ? `<bpmn:timeCycle>${escapeXml(t.cycle)}</bpmn:timeCycle>`
+        : t.after !== undefined
+          ? `<bpmn:timeDuration>${escapeXml(t.after)}</bpmn:timeDuration>`
+          : `<bpmn:timeDate>${escapeXml(t.at as string)}</bpmn:timeDate>`;
+    return (
+      `    <bpmn:startEvent id="Start">\n` +
+      `      ${outgoingOnly(outg)}\n` +
+      `      <bpmn:timerEventDefinition>\n` +
+      `        ${body}\n` +
+      `      </bpmn:timerEventDefinition>\n` +
+      `    </bpmn:startEvent>`
+    );
+  }
+
   compile(): string {
     // Start → top-level sequence → End.
     this.nodes.push({
       id: "Start",
-      render: (_inc, outg) => `    <bpmn:startEvent id="Start">${outgoingOnly(outg)}</bpmn:startEvent>`,
+      render: (_inc, outg) => this.renderStart(outg),
     });
     const s0 = this.newEdge("Start");
     const finalDanglers = this.emitList(this.flow.steps, [s0], null);

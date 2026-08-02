@@ -41,6 +41,7 @@ export {
 } from "@nanobpm/workflow";
 export type {
   FlowBuilder,
+  TimerStart,
   Envelope,
   EnvelopeType,
   EnvelopeField,

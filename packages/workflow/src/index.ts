@@ -73,6 +73,7 @@ export type {
   DeclarativeStep,
   FlowNode,
   SwitchCase,
+  TimerStart,
   NodeEnvelopes,
   StepContract,
   FlowContracts,
