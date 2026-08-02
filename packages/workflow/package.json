@@ -28,7 +28,7 @@
   },
   "sideEffects": false,
   "dependencies": {
-    "@nanobpm/nano-sdk": "^1.2.0"
+    "@nanobpm/nano-sdk": "^1.2.3"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
