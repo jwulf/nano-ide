@@ -149,6 +149,48 @@ test("import nonce is unique per reload even within the same millisecond", async
   assert.equal(new Set(nonces).size, 3, "every import nonce is distinct");
 });
 
+test("a change during an in-flight reload doesn't detach stop() from it", async () => {
+  // Regression: schedule() used to overwrite `inFlight` with reload()'s already-resolved
+  // no-op promise when a reload was already running, so stop() wouldn't await the real
+  // reload and could tear down while it started a replacement app (a leak).
+  const starts: string[] = [];
+  const stops: string[] = [];
+  const hosts: ReturnType<typeof fakeHost>[] = [];
+  let clock = 1;
+  // Gate a1's start so reload #1 parks *past* the shutdown checks, inside startApp.
+  let releaseStart!: () => void;
+  const startGate = new Promise<void>((r) => (releaseStart = r));
+
+  const deps: DevDeps = {
+    makeHost: () => {
+      const h = fakeHost();
+      hosts.push(h);
+      return h.host;
+    },
+    startApp: async () => {
+      const id = `a${starts.length}`;
+      starts.push(id);
+      if (id === "a1") await startGate; // park reload #1 inside startApp
+      return fakeApp(stops, id);
+    },
+    regenerate: async () => ({ count: 0 }),
+    now: () => clock++,
+  };
+
+  const dev = await runDev({ debounceMs: 5, log: () => {} }, deps);
+  hosts[0].fire("workers/a.ts"); // reload #1: stops a0, then parks starting a1
+  await delay(20);
+  hosts[0].fire("workers/b.ts"); // a second change lands while reload #1 is in flight
+  await delay(20);
+
+  const stopping = dev.stop(); // must await the real reload #1, not a stale resolved promise
+  releaseStart(); // let reload #1 finish starting a1
+  await stopping;
+
+  assert.deepEqual(starts, ["a0", "a1"], "reload #1 started its replacement app");
+  assert.deepEqual(stops, ["a0", "a1"], "stop() awaited reload #1 and stopped a1 (no leak)");
+});
+
 // A minimal fake host: runDev only calls host.watch on it.
 function fakeHost(): { host: HostContext; fire: (p: string) => void; closed: () => boolean } {
   let cb: ((p: string) => void) | undefined;

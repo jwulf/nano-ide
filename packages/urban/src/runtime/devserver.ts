@@ -120,12 +120,6 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const reload = async (): Promise<void> => {
-    if (stopped) return;
-    if (reloading) {
-      queued = true;
-      return;
-    }
-    reloading = true;
     try {
       log("↻ change detected — reloading…");
       // Regenerate + rebuild the host BEFORE stopping the running app, so a bad edit
@@ -153,12 +147,25 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
     }
   };
 
+  // Owns the single-flight guard and `inFlight` bookkeeping: only an *actually running*
+  // reload is tracked in `inFlight`, so stop() always awaits the real in-flight reload
+  // (never an already-resolved no-op promise) before final teardown.
+  const trigger = (): void => {
+    if (stopped) return;
+    if (reloading) {
+      queued = true; // the active reload's finally re-schedules the next cycle
+      return;
+    }
+    reloading = true;
+    inFlight = reload();
+  };
+
   const schedule = (): void => {
     if (stopped) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = undefined;
-      inFlight = reload();
+      trigger();
     }, debounceMs);
   };
 
