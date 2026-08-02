@@ -65,8 +65,10 @@ function isIsoCycle(v: string): boolean {
   return /^R\d*$/.test(repeat) && isIsoDuration(interval);
 }
 
-/** An ISO-8601 date-time instant (a `timeDate`). */
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?$/;
+/** An ISO-8601 date-time instant (a `timeDate`). A `timeDate` is an absolute
+ *  instant, so a zone designator (`Z` or an explicit `±HH:MM` offset) is
+ *  required — a bare local datetime like `2026-01-01T09:00:00` is ambiguous. */
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 /** A FEEL expression body (a leading `=`, non-empty). */
 function isFeel(v: string): boolean {

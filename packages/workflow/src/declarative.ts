@@ -227,9 +227,13 @@ function makeBuilder<C extends FlowContracts>(
       if (hasAfter === hasAt) {
         throw new Error(`timer("${name}") needs exactly one of { after } (a delay) or { at } (an instant)`);
       }
-      if (hasAfter) assertTimerDuration(`timer("${name}") after`, opts.after as string);
-      else assertTimerDate(`timer("${name}") at`, opts.at as string);
-      out.push({ kind: "timer", name, after: hasAfter ? opts.after : undefined, at: hasAt ? opts.at : undefined });
+      if (hasAfter) {
+        assertTimerDuration(`timer("${name}") after`, opts.after as string);
+        out.push({ kind: "timer", name, after: opts.after as string });
+      } else {
+        assertTimerDate(`timer("${name}") at`, opts.at as string);
+        out.push({ kind: "timer", name, at: opts.at as string });
+      }
       return b as unknown as FlowBuilder<C>;
     },
     startOn(spec: { cycle?: string; after?: string; at?: string }): FlowBuilder<C> {
@@ -242,10 +246,16 @@ function makeBuilder<C extends FlowContracts>(
       if (set.length !== 1) {
         throw new Error(`startOn() needs exactly one of { cycle }, { after }, or { at } in flow "${id}"`);
       }
-      if (spec.cycle !== undefined) assertTimerCycle(`startOn cycle`, spec.cycle);
-      else if (spec.after !== undefined) assertTimerDuration(`startOn after`, spec.after);
-      else assertTimerDate(`startOn at`, spec.at as string);
-      ctx.startTimer = { cycle: spec.cycle, after: spec.after, at: spec.at };
+      if (spec.cycle !== undefined) {
+        assertTimerCycle(`startOn cycle`, spec.cycle);
+        ctx.startTimer = { cycle: spec.cycle };
+      } else if (spec.after !== undefined) {
+        assertTimerDuration(`startOn after`, spec.after);
+        ctx.startTimer = { after: spec.after };
+      } else {
+        assertTimerDate(`startOn at`, spec.at as string);
+        ctx.startTimer = { at: spec.at as string };
+      }
       return b as unknown as FlowBuilder<C>;
     },
     switch(subject: string, cases: Record<string, Block<C>> & { default?: Block<C> }): FlowBuilder<C> {

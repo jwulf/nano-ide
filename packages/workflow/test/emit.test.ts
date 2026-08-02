@@ -124,6 +124,9 @@ test("timer validation: rejects zero or both of after/at, and bad ISO", () => {
   );
   assert.throws(() => defineFlow("x", (w) => w.timer("t", { after: "1 minute" })), /ISO-8601 duration/);
   assert.throws(() => defineFlow("x", (w) => w.timer("t", { at: "tomorrow" })), /ISO-8601 instant/);
+  // A timeDate is an absolute instant: a bare local datetime (no Z/offset) is ambiguous and rejected.
+  assert.throws(() => defineFlow("x", (w) => w.timer("t", { at: "2026-01-01T09:00:00" })), /ISO-8601 instant/);
+  assert.doesNotThrow(() => defineFlow("ok", (w) => { w.timer("t", { at: "2026-01-01T09:00:00+02:00" }); w.task("a"); }));
 });
 
 test("startOn validation: cycle format, once-only, first-statement, top-level", () => {

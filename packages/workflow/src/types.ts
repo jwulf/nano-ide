@@ -53,26 +53,33 @@ export type FlowNode =
   | { kind: "run"; name: string; envelopes?: NodeEnvelopes }
   | { kind: "task"; name: string; envelopes?: NodeEnvelopes; jobType?: string }
   | { kind: "signal"; name: string; correlationKey: string; payload?: Envelope }
-  | { kind: "timer"; name: string; after?: string; at?: string }
+  | ({ kind: "timer"; name: string } & TimerAt)
   | { kind: "switch"; subject: string; cases: SwitchCase[]; default?: FlowNode[] }
   | { kind: "branch"; condition: string; then: FlowNode[]; else?: FlowNode[] }
   | { kind: "loop"; body: FlowNode[] }
   | { kind: "break" }
   | { kind: "continue" };
 
+/** A timer intermediate-catch definition: exactly one of `after` (an ISO-8601
+ *  delay or FEEL expression) or `at` (an absolute instant or FEEL expression).
+ *  Encoded as an XOR so downstream consumers can rely on exactly-one. */
+export type TimerAt =
+  | { after: string; at?: never }
+  | { at: string; after?: never };
+
 /** A flow's start-timer: the plain none start event becomes a durable timer
- *  start the engine fires on schedule. Exactly one field is set:
+ *  start the engine fires on schedule. Exactly one of:
  *  - `cycle` — a recurring ISO-8601 interval (`R/PT1H`, `R5/PT30M`) or bare
  *    duration; the engine re-fires on each period. This is the model-native,
  *    durable, single-fire-per-cluster replacement for an app-side cron.
  *  - `after` — a one-shot ISO-8601 delay (`PT10S`) measured from deployment.
  *  - `at`    — a one-shot absolute instant (an ISO-8601 date-time, or a FEEL
- *    `=` expression). */
-export interface TimerStart {
-  cycle?: string;
-  after?: string;
-  at?: string;
-}
+ *    `=` expression).
+ *  Encoded as an XOR so the exactly-one invariant holds at the type level. */
+export type TimerStart =
+  | { cycle: string; after?: never; at?: never }
+  | { after: string; cycle?: never; at?: never }
+  | { at: string; cycle?: never; after?: never };
 
 /** One case of a `switch`: routed when `subject = value` (FEEL equality). */
 export interface SwitchCase {
