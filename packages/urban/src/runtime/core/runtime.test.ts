@@ -18,6 +18,7 @@ class FakeEngine implements EngineClient {
   deployed = 0;
   workers = new Map<string, JobHandler>();
   messages: { name: string; correlationKey?: string; variables?: Record<string, unknown> }[] = [];
+  canceledInstances: string[] = [];
   completedTasks: { key: string; variables?: Record<string, unknown> }[] = [];
   userTasks = [{ userTaskKey: "ut-1", elementId: "approve", variables: {} }];
 
@@ -27,6 +28,9 @@ class FakeEngine implements EngineClient {
   }
   async createInstance() {
     return { processInstanceKey: "pi-1" };
+  }
+  async cancelInstance(input: { processInstanceKey: string }) {
+    this.canceledInstances.push(input.processInstanceKey);
   }
   async publishMessage(input: { name: string; correlationKey?: string; variables?: Record<string, unknown> }) {
     this.messages.push(input);

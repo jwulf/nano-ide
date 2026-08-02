@@ -5,6 +5,7 @@
 
 import type { AppApi, RuntimeContext } from "../context.ts";
 import { html, json, normalizeRoutePath, type Route } from "../router.ts";
+import { mountPages } from "./pages.ts";
 
 /** Escape HTML-significant characters before embedding a value in markup. */
 function escapeHtml(s: string): string {
@@ -96,6 +97,13 @@ export function mountSurfaces(ctx: RuntimeContext, app: AppApi): SurfacesHandle 
 <body style="font:14px system-ui;margin:2rem"><h1>Chat</h1>
 <p>Chat surface mount point (agent: <code>${escapeHtml(chat.agent ?? "?")}</code>). LLM wiring pending.</p>`),
     });
+  }
+
+  // The pages surface (the schema-driven page runtime) mounts its own routes.
+  const pages = mountPages(ctx, app);
+  if (pages.routes.length > 0) {
+    routes.push(...pages.routes);
+    enabled.push("pages@/");
   }
 
   ctx.host.log("info", "surfaces mounted", { enabled });

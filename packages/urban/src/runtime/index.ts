@@ -61,6 +61,8 @@ export type {
   Row,
   TableMeta,
 } from "./core/modules/gateway.ts";
+export { createPagesRoutes, mountPages } from "./core/modules/pages.ts";
+export type { PagesDataSource, PagesDeps, PagesHandle, PagesOptions } from "./core/modules/pages.ts";
 export type { AppJobHandler } from "./core/modules/workers.ts";
 export { resolveHandler } from "./core/modules/workers.ts";
 export { evalCorrelation } from "./core/modules/triggers.ts";

@@ -53,6 +53,10 @@ function fakeSdkClient(overrides: Partial<NanoSdkClient> = {}): NanoSdkClient & 
       calls.push("createProcessInstance");
       return { processInstanceKey: 99, variables: input.variables };
     },
+    async cancelProcessInstance(input) {
+      calls.push("cancelProcessInstance");
+      return { ...input };
+    },
     async publishMessage(input) {
       calls.push("publishMessage");
       return { key: 1, ...input };
@@ -129,6 +133,20 @@ test("createInstance throws when the SDK response omits the instance key", async
     () => engine.createInstance({ processDefinitionId: "p" }),
     /missing processInstanceKey/,
   );
+});
+
+test("cancelInstance routes through the SDK", async () => {
+  let seen: { processInstanceKey: string | number } | undefined;
+  const client = fakeSdkClient({
+    cancelProcessInstance: async (input) => {
+      seen = input;
+      return {};
+    },
+  });
+  const engine = new SdkEngineClient(client);
+  await engine.cancelInstance({ processInstanceKey: "pi-7" });
+  assert.deepEqual(seen, { processInstanceKey: "pi-7" });
+  assert.ok(client.calls.includes("cancelProcessInstance") || seen !== undefined);
 });
 
 test("publishMessage defaults correlationKey/variables", async () => {
