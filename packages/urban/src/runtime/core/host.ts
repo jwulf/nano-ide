@@ -105,6 +105,8 @@ export interface EngineClient {
     variables?: Record<string, unknown>;
     awaitCompletion?: boolean;
   }): Promise<{ processInstanceKey: string; variables?: Record<string, unknown> }>;
+  /** Cancel a running process instance (the pages surface's row-cancel action). */
+  cancelInstance(input: { processInstanceKey: string }): Promise<void>;
   /** Publish a message for correlation. */
   publishMessage(input: {
     name: string;

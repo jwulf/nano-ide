@@ -44,6 +44,14 @@ export interface SurfaceDecl {
   enabled?: boolean;
   path?: string;
   agent?: string;
+  /** pages surface: directory of `*.page.json` (relative to app root). Default `pages`. */
+  pagesDir?: string;
+  /** pages surface: the page served at `/`. Default `home`. */
+  homePage?: string;
+  /** pages surface: max rows a `dataGrid` fetch returns. Default 200. */
+  rowLimit?: number;
+  /** pages surface: the injected default datasource name. Default `app`. */
+  sourceName?: string;
 }
 
 export interface AppManifest {

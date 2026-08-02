@@ -68,7 +68,8 @@ export interface DataSource {
   table<T extends object = Row>(name: string, pk?: string): Table<T>;
 }
 
-function quoteIdent(name: string): string {
+/** Double-quote a SQL identifier (table/column), escaping embedded quotes. */
+export function quoteIdent(name: string): string {
   return `"${name.replaceAll('"', '""')}"`;
 }
 

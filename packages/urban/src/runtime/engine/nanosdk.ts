@@ -79,6 +79,10 @@ export interface NanoSdkClient {
     },
     options?: unknown,
   ): Promise<Record<string, unknown>>;
+  cancelProcessInstance(
+    input: { processInstanceKey: string | number },
+    options?: unknown,
+  ): Promise<unknown>;
   publishMessage(
     input: { name: string; correlationKey?: string; variables?: Record<string, unknown> },
     options?: unknown,
@@ -148,6 +152,10 @@ export class SdkEngineClient implements EngineClient {
       processInstanceKey: requireProcessInstanceKey(key),
       variables: (body.variables as Record<string, unknown> | undefined) ?? undefined,
     };
+  }
+
+  async cancelInstance(input: { processInstanceKey: string }): Promise<void> {
+    await this.client.cancelProcessInstance({ processInstanceKey: input.processInstanceKey });
   }
 
   async publishMessage(input: {
