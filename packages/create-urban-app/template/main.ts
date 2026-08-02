@@ -1,9 +1,7 @@
 // Entrypoint for __APP_NAME__. Runs the Urban runtime against a Nano engine.
 //
 // Configure the engine address with CAMUNDA_REST_ADDRESS (default http://localhost:8080/v2).
-// Run with:
-//   Node:  npm start          (or: npx urban run)
-//   Deno:  deno task start     (or: deno run -A npm:@nanobpm/urban run)
+// Run with: npm start          (or: npx urban run)
 
 import { runFromEnv } from "@nanobpm/urban";
 

@@ -153,17 +153,15 @@ async function cmdDeploy(f: Flags): Promise<number> {
 async function cmdNew(f: Flags): Promise<number> {
   const name = f._[1];
   if (!name) {
-    console.error("usage: urban new <name> [--root <path>]");
+    console.error("usage: urban new <name> [--root <path>] [--deno]");
     return 1;
   }
   const dir = f.root !== "." ? f.root : `./${slugify(name)}`;
   const res = await scaffold({ name, dir, deno: f.deno });
   console.log(`✔ scaffolded "${res.id}" in ${res.dir} (${res.files.length} files)`);
-  console.log(
-    f.deno
-      ? `  cd ${res.dir} && (npm install && npm start) || deno task start`
-      : `  cd ${res.dir} && npm install && npm start`,
-  );
+  console.log(`  cd ${res.dir}`);
+  console.log(`  npm install && npm start`);
+  if (f.deno) console.log(`  # or on Deno: deno task start`);
   return 0;
 }
 
