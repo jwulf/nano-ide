@@ -40,6 +40,38 @@ test("shouldReload ignores generated output, deps, VCS and db churn", () => {
   }
 });
 
+test("shouldReload honours a custom manifest filename", () => {
+  assert.equal(shouldReload("config/app.json", "config/app.json"), true, "custom manifest reloads");
+  assert.equal(shouldReload("app.config.json", "app.config.json"), true, "by basename too");
+  // A .json that is NOT the configured manifest is not a source file.
+  assert.equal(shouldReload("tsconfig.json"), false, "unrelated json ignored");
+  assert.equal(shouldReload("config/app.json"), false, "custom manifest ignored under default");
+});
+
+test("stop() cancels a pending debounced reload", async () => {
+  const starts: string[] = [];
+  const stops: string[] = [];
+  let clock = 1;
+  let watch!: ReturnType<typeof fakeHost>;
+  const deps: DevDeps = {
+    makeHost: () => ((watch = fakeHost()), watch.host),
+    startApp: async () => {
+      const id = `a${starts.length}`;
+      starts.push(id);
+      return fakeApp(stops, id);
+    },
+    regenerate: async () => ({ count: 0 }),
+    now: () => clock++,
+  };
+  const dev = await runDev({ debounceMs: 50, log: () => {} }, deps);
+  watch.fire("workers/x.ts"); // schedules a reload 50ms out
+  await dev.stop(); // stop before the debounce fires
+  await delay(80);
+  assert.equal(starts.length, 1, "pending reload was cancelled by stop()");
+  assert.equal(watch.closed(), true, "watcher closed");
+  assert.deepEqual(stops, ["a0"], "the running app was stopped exactly once");
+});
+
 // A minimal fake host: runDev only calls host.watch on it.
 function fakeHost(): { host: HostContext; fire: (p: string) => void; closed: () => boolean } {
   let cb: ((p: string) => void) | undefined;

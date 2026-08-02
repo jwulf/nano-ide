@@ -22,9 +22,12 @@ const SOURCE_EXT = [".bpmn", ".dmn", ".form", ".ts", ".js", ".mjs", ".sql"] as c
 // watching it would loop forever), dependencies, VCS, and build output.
 const IGNORE_SEGMENTS = ["nano-generated", "node_modules", ".git", "dist"] as const;
 
-/** True when a changed path should trigger a dev reload. Pure, so it is unit-tested. */
-export function shouldReload(rawPath: string): boolean {
-  const p = rawPath.replace(/\\/g, "/").replace(/^\.\//, "");
+/** True when a changed path should trigger a dev reload. Pure, so it is unit-tested.
+ *  `manifestFile` (the app's configured manifest, default nano.app.json) always triggers,
+ *  so `urban dev --manifest other.json` reloads on edits to that file too. */
+export function shouldReload(rawPath: string, manifestFile = "nano.app.json"): boolean {
+  const norm = (s: string) => s.replace(/\\/g, "/").replace(/^\.\//, "");
+  const p = norm(rawPath);
   if (p === "") return false;
   for (const seg of IGNORE_SEGMENTS) {
     if (p === seg || p.startsWith(`${seg}/`) || p.includes(`/${seg}/`)) return false;
@@ -32,8 +35,9 @@ export function shouldReload(rawPath: string): boolean {
   // Ignore SQLite database files and their WAL/SHM/journal sidecars — they change on every
   // write and would otherwise wedge the server in a reload loop.
   if (/\.(db|sqlite|sqlite3)(-wal|-shm|-journal)?$/i.test(p)) return false;
+  const mf = norm(manifestFile);
   const base = p.slice(p.lastIndexOf("/") + 1);
-  if (base === "nano.app.json") return true;
+  if (p === mf || base === mf.slice(mf.lastIndexOf("/") + 1)) return true;
   return SOURCE_EXT.some((e) => p.toLowerCase().endsWith(e));
 }
 
@@ -106,9 +110,12 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
 
   let reloading = false;
   let queued = false;
+  let stopped = false;
+  let inFlight: Promise<void> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const reload = async (): Promise<void> => {
+    if (stopped) return;
     if (reloading) {
       queued = true;
       return;
@@ -119,6 +126,7 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
       // Regenerate + rebuild the host BEFORE stopping the running app, so a bad edit
       // throws here and the current app keeps serving untouched.
       const nextHost = await prepareHost();
+      if (stopped) return; // shutdown began mid-prepare: leave the running app to stop()
       await app.stop();
       app = await d.startApp(nextHost, { manifestPath: manifestFile, port: opts.port });
       host = nextHost;
@@ -128,7 +136,7 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
       log(`✖ reload failed: ${String((err as Error)?.message ?? err)}`);
     } finally {
       reloading = false;
-      if (queued) {
+      if (queued && !stopped) {
         queued = false;
         schedule();
       }
@@ -136,17 +144,18 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
   };
 
   const schedule = (): void => {
+    if (stopped) return;
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = undefined;
-      void reload();
+      inFlight = reload();
     }, debounceMs);
   };
 
   let watcher: WatchHandle | undefined;
   if (host.watch) {
     watcher = host.watch((path) => {
-      if (shouldReload(path)) schedule();
+      if (shouldReload(path, manifestFile)) schedule();
     });
   } else {
     log("⚠ file watching is not supported on this host — running once (no hot reload)");
@@ -154,8 +163,16 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
 
   return {
     async stop() {
-      if (timer) clearTimeout(timer);
+      // Order matters: flag first so a queued/in-flight reload won't start a new app, cancel
+      // any pending debounce, stop watching, then let any in-flight reload settle before the
+      // final teardown so we stop exactly the app that is (or ends up) current.
+      stopped = true;
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
       watcher?.close();
+      await inFlight?.catch(() => {});
       await app.stop();
     },
   };
