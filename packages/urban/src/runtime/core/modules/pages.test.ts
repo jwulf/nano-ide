@@ -152,3 +152,32 @@ test("POST /app/actions/message publishes, 400 on missing fields", async () => {
   const noKey = await router(req("POST", "/app/actions/message", { body: { name: "m" } }));
   assert.equal(noKey.status, 400);
 });
+
+test("GET /app/data quotes table/column identifiers in the emitted SQL", async () => {
+  const seen: string[] = [];
+  const db = fakeDb({
+    query: async (sql: string) => {
+      seen.push(sql);
+      if (/PRAGMA table_info/i.test(sql)) {
+        return [{ name: "id" }, { name: "status" }, { name: "total" }];
+      }
+      return [{ id: 1 }];
+    },
+  });
+  const routes = createPagesRoutes({ pagesDir: "pages", homePage: "home", sourceName: "app" }, {
+    db,
+    engine: fakeEngine().engine,
+    readPage: async () => "{}",
+  });
+  const router = makeRouter(routes);
+  const res = await router(req("GET", "/app/data/app/orders", {
+    query: "where=status:new&order=total:desc",
+  }));
+  assert.equal(res.status, 200);
+  const pragma = seen.find((s) => /PRAGMA table_info/i.test(s))!;
+  assert.match(pragma, /table_info\("orders"\)/);
+  const select = seen.find((s) => /^SELECT/.test(s))!;
+  assert.match(select, /FROM "orders"/);
+  assert.match(select, /WHERE "status" = \?/);
+  assert.match(select, /ORDER BY "total" DESC/);
+});

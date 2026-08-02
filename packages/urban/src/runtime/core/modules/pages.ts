@@ -18,6 +18,7 @@
 import type { AppApi, RuntimeContext } from "../context.ts";
 import type { EngineClient } from "../host.ts";
 import { html, json, type Route } from "../router.ts";
+import { quoteIdent } from "./gateway.ts";
 
 /** The subset of the datasource gateway the page runtime needs. */
 export interface PagesDataSource {
@@ -87,7 +88,7 @@ export function createPagesRoutes(opts: PagesOptions, deps: PagesDeps): Route[] 
     const cached = tableColumns.get(table);
     if (cached) return cached;
     const p = db
-      .query(`PRAGMA table_info(${table})`)
+      .query(`PRAGMA table_info(${quoteIdent(table)})`)
       .then((rows) => new Set(rows.map((r) => String(r.name))))
       .catch((err) => {
         tableColumns.delete(table);
@@ -171,10 +172,10 @@ export function createPagesRoutes(opts: PagesOptions, deps: PagesDeps): Route[] 
         if (!columns.has(field)) return json({ error: `unknown column "${field}"` }, 400);
         if (rest.startsWith("in:")) {
           const values = rest.slice(3).split(",");
-          clauses.push(`${field} IN (${values.map(() => "?").join(", ")})`);
+          clauses.push(`${quoteIdent(field)} IN (${values.map(() => "?").join(", ")})`);
           for (const v of values) params.push(v);
         } else {
-          clauses.push(`${field} = ?`);
+          clauses.push(`${quoteIdent(field)} = ?`);
           params.push(rest);
         }
       }
@@ -185,11 +186,11 @@ export function createPagesRoutes(opts: PagesOptions, deps: PagesDeps): Route[] 
         const field = colon > 0 ? orderRaw.slice(0, colon) : orderRaw;
         const dir = colon > 0 && orderRaw.slice(colon + 1).toLowerCase() === "desc" ? "DESC" : "ASC";
         if (!columns.has(field)) return json({ error: `unknown column "${field}"` }, 400);
-        orderSql = ` ORDER BY ${field} ${dir}`;
+        orderSql = ` ORDER BY ${quoteIdent(field)} ${dir}`;
       }
       const whereSql = clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "";
       const rows = await db.query(
-        `SELECT * FROM ${table}${whereSql}${orderSql} LIMIT ${rowLimit}`,
+        `SELECT * FROM ${quoteIdent(table)}${whereSql}${orderSql} LIMIT ${rowLimit}`,
         params,
       );
       return json({ rows });
