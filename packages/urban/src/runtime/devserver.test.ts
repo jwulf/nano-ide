@@ -118,6 +118,37 @@ test("stop() during an in-flight reload does not start a replacement app", async
   assert.equal(hosts[0].closed(), true, "watcher closed");
 });
 
+test("import nonce is unique per reload even within the same millisecond", async () => {
+  const starts: string[] = [];
+  const stops: string[] = [];
+  const nonces: string[] = [];
+  const hosts: ReturnType<typeof fakeHost>[] = [];
+  const deps: DevDeps = {
+    makeHost: (nonce) => {
+      nonces.push(nonce);
+      const h = fakeHost();
+      hosts.push(h);
+      return h.host;
+    },
+    startApp: async () => {
+      const id = `a${starts.length}`;
+      starts.push(id);
+      return fakeApp(stops, id);
+    },
+    regenerate: async () => ({ count: 0 }),
+    now: () => 42, // frozen clock: nonce uniqueness must come from the reload counter
+  };
+  const dev = await runDev({ debounceMs: 1, log: () => {} }, deps);
+  // The watcher is registered on the boot host only; fire both changes through it.
+  hosts[0].fire("workers/a.ts");
+  await delay(15);
+  hosts[0].fire("workers/b.ts");
+  await delay(15);
+  await dev.stop();
+  assert.equal(nonces.length, 3, "boot + two reloads built three hosts");
+  assert.equal(new Set(nonces).size, 3, "every import nonce is distinct");
+});
+
 // A minimal fake host: runDev only calls host.watch on it.
 function fakeHost(): { host: HostContext; fire: (p: string) => void; closed: () => boolean } {
   let cb: ((p: string) => void) | undefined;

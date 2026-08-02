@@ -89,6 +89,10 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
   const log = opts.log ?? ((m: string) => console.log(m));
   const d: DevDeps = { ...defaultDeps(root), ...deps };
 
+  // Monotonic reload counter, mixed into the import nonce so it is unique per reload even when
+  // two reloads land in the same millisecond (d.now() can repeat).
+  let reloadSeq = 0;
+
   const startCycle = async (): Promise<{ host: HostContext; app: UrbanApp }> => {
     const host = await prepareHost();
     const app = await d.startApp(host, { manifestPath: manifestFile, port: opts.port });
@@ -99,7 +103,7 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
   // that does NOT touch the running app, so it can run *before* a reload tears the old app
   // down — most bad edits (invalid manifest/model) fail here, leaving the app serving.
   const prepareHost = async (): Promise<HostContext> => {
-    const nonce = String(d.now());
+    const nonce = `${d.now()}-${reloadSeq++}`;
     const { count } = await d.regenerate(root, manifestFile);
     if (count > 0) log(`  derived ${count} artifact(s)`);
     return d.makeHost(nonce);
