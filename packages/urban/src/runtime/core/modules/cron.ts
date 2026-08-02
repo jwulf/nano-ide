@@ -39,8 +39,12 @@ function parseField(field: string, min: number, max: number, names?: string[]): 
     const slash = part.indexOf("/");
     if (slash >= 0) {
       range = part.slice(0, slash);
-      step = Number(part.slice(slash + 1));
-      if (!Number.isInteger(step) || step <= 0) throw new Error(`cron: bad step in "${part}"`);
+      if (range === "") throw new Error(`cron: missing range before "/" in "${part}"`);
+      const stepText = part.slice(slash + 1);
+      step = Number(stepText);
+      if (stepText === "" || !Number.isInteger(step) || step <= 0) {
+        throw new Error(`cron: bad step in "${part}"`);
+      }
     }
     let lo: number;
     let hi: number;

@@ -199,6 +199,16 @@ test("cron trigger with no actionable action is not scheduled", () => {
   assert.ok(logs.some((l) => l.level === "warn" && /no action\.start\/message/.test(l.msg)));
 });
 
+test("cron trigger with an impossible spec warns and is not reported as scheduled", () => {
+  const { app, logs } = fakeApp();
+  const { ctx } = fakeCtx([{ id: "feb30", type: "cron", spec: "0 0 30 2 *", action: { start: "p" } }]);
+  const sched = fakeScheduler(Date.parse("2026-01-01T00:00:00Z"));
+  const handle = mountTriggers(ctx, app, sched);
+  assert.equal(sched.pending(), 0);
+  assert.deepEqual(handle.describe?.(), { mounted: [], scheduled: [] });
+  assert.ok(logs.some((l) => l.level === "warn" && /never fires/.test(l.msg)));
+});
+
 test("webhook trigger still routes and publishes", async () => {
   const { app, calls } = fakeApp();
   const { ctx } = fakeCtx([

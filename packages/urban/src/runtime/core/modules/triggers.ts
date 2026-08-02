@@ -177,15 +177,18 @@ export function mountTriggers(
       app.log("warn", `trigger "${trig.id}": onMissed="${trig.onMissed}" not supported without ` +
         `durable trigger state; scheduling forward as "skip"`);
     }
+    // Probe the first fire before recording the trigger as scheduled, so an impossible spec
+    // (e.g. Feb 30) is reported honestly and never shows up in describe()/startup logs.
+    if (!nextCronFire(schedule, new Date(sched.now()))) {
+      app.log("warn", `trigger "${trig.id}": cron spec "${spec}" never fires; not scheduled`);
+      return;
+    }
     scheduled.push(`${trig.id}@${spec}`);
 
     const arm = (): void => {
       if (stopped) return;
       const next = nextCronFire(schedule, new Date(sched.now()));
-      if (!next) {
-        app.log("warn", `trigger "${trig.id}": cron spec "${spec}" never fires; not scheduled`);
-        return;
-      }
+      if (!next) return; // spec became unsatisfiable (defensive; the probe above already vetted it)
       const delay = Math.max(0, next.getTime() - sched.now());
       // Declare `handle` before arming so the callback can reference it even if a scheduler
       // double invokes it synchronously (avoids a TDZ ReferenceError on `timers.delete`).

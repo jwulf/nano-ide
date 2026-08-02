@@ -11,6 +11,8 @@ test("parseCron rejects malformed specs", () => {
   assert.throws(() => parseCron("* 24 * * *"), /out of range/);
   assert.throws(() => parseCron("* * 0 * *"), /out of range/);
   assert.throws(() => parseCron("*/0 * * * *"), /bad step/);
+  assert.throws(() => parseCron("/5 * * * *"), /missing range before/);
+  assert.throws(() => parseCron("*/ * * * *"), /bad step/);
   assert.throws(() => parseCron("5-3 * * * *"), /out of range/);
   assert.throws(() => parseCron("1,,2 * * * *"), /empty term/);
 });
