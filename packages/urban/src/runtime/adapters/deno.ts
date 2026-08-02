@@ -97,8 +97,13 @@ export function createDenoHost(opts: DenoHostOptions = {}): HostContext {
           for await (const ev of w) {
             for (const p of ev.paths) onChange(p);
           }
-        } catch {
-          /* the iterator throws when close() is called mid-await; ignore */
+        } catch (err) {
+          // Deno.watchFs throws when close() is called mid-await — expected on shutdown.
+          // Any other failure (permissions, path removed, …) silently disables hot reload,
+          // so surface it instead of swallowing it.
+          if (!closed) log("warn", "file watch error — hot reload may be disabled", {
+            error: String(err),
+          });
         }
       })();
       return {

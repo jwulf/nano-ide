@@ -110,7 +110,6 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
   };
 
   let { host, app } = await startCycle();
-  log("▲ dev server ready — watching for changes (Ctrl-C to stop)");
 
   let reloading = false;
   let queued = false;
@@ -174,8 +173,12 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
     watcher = host.watch((path) => {
       if (shouldReload(path, manifestFile)) schedule();
     });
+    log("▲ dev server ready — watching for changes (Ctrl-C to stop)");
   } else {
-    log("⚠ file watching is not supported on this host — running once (no hot reload)");
+    log(
+      "▲ dev server ready — file watching is not supported on this host; running once " +
+        "(no hot reload, Ctrl-C to stop)",
+    );
   }
 
   return {
