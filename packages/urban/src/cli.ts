@@ -40,13 +40,14 @@ interface Flags {
   manifest: string;
   port?: number;
   check: boolean;
+  deno: boolean;
   help: boolean;
   version: boolean;
   _: string[];
 }
 
 function parse(argv: string[]): Flags {
-  const f: Flags = { root: ".", manifest: "nano.app.json", check: false, help: false, version: false, _: [] };
+  const f: Flags = { root: ".", manifest: "nano.app.json", check: false, deno: false, help: false, version: false, _: [] };
   const need = (i: number, flag: string): string => {
     const v = argv[i];
     if (v === undefined || v.startsWith("-")) throw new Error(`flag ${flag} requires a value`);
@@ -57,6 +58,8 @@ function parse(argv: string[]): Flags {
     if (a === "-h" || a === "--help") f.help = true;
     else if (a === "-v" || a === "--version") f.version = true;
     else if (a === "--check") f.check = true;
+    else if (a === "--deno") f.deno = true;
+    else if (a === "--") continue; // tolerate a bare "--" some runners inject (not an option terminator here)
     else if (a === "--root") f.root = need(++i, a);
     else if (a === "--manifest") f.manifest = need(++i, a);
     else if (a === "--port") {
@@ -75,7 +78,7 @@ function parse(argv: string[]): Flags {
 const USAGE = `urban — build and run Urban apps (nano.app.json)
 
 Usage:
-  urban new <name> [--root <path>]    scaffold a new Urban app
+  urban new <name> [--root <path>] [--deno]    scaffold a new Urban app
   urban check                       validate the manifest
   urban gen [--check]               derive artifacts (migrations, worker-io)
   urban run                         materialize + serve the app
@@ -151,13 +154,15 @@ async function cmdDeploy(f: Flags): Promise<number> {
 async function cmdNew(f: Flags): Promise<number> {
   const name = f._[1];
   if (!name) {
-    console.error("usage: urban new <name> [--root <path>]");
+    console.error("usage: urban new <name> [--root <path>] [--deno]");
     return 1;
   }
   const dir = f.root !== "." ? f.root : `./${slugify(name)}`;
-  const res = await scaffold({ name, dir });
+  const res = await scaffold({ name, dir, deno: f.deno });
   console.log(`✔ scaffolded "${res.id}" in ${res.dir} (${res.files.length} files)`);
-  console.log(`  cd ${res.dir} && (npm install && npm start) || deno task start`);
+  console.log(`  cd ${res.dir}`);
+  console.log(`  npm install && npm start`);
+  if (f.deno) console.log(`  # or on Deno: deno task start`);
   return 0;
 }
 

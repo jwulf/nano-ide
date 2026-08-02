@@ -10,6 +10,7 @@ interface Parsed {
   dir?: string;
   id?: string;
   preset?: "full" | "headless";
+  deno?: boolean;
   help?: boolean;
 }
 
@@ -24,6 +25,8 @@ function parse(argv: string[]): Parsed {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "-h" || a === "--help") out.help = true;
+    else if (a === "--deno") out.deno = true;
+    else if (a === "--") continue; // tolerate a bare "--" some runners inject (not an option terminator here)
     else if (a === "--dir") out.dir = need(++i, a);
     else if (a === "--id") out.id = need(++i, a);
     else if (a === "--preset") {
@@ -43,10 +46,11 @@ function parse(argv: string[]): Parsed {
 const USAGE = `create-urban-app — scaffold a runnable Urban app
 
 Usage:
-  npm create urban-app@latest <name> [--dir <path>] [--id <slug>] [--preset full|headless]
-  deno run -A npm:create-urban-app <name>
+  npm create urban-app@latest <name> [--dir <path>] [--id <slug>] [--preset full|headless] [--deno]
+  deno run -A npm:create-urban-app <name> [--deno]
 
-The scaffolded app runs on both Node and Deno via @nanobpm/urban.
+Scaffolds a Node app by default. Pass --deno to also emit a deno.json and Deno docs;
+the Urban runtime is host-agnostic, so --deno is purely additive.
 `;
 
 export async function main(argv: string[]): Promise<number> {
@@ -61,12 +65,17 @@ export async function main(argv: string[]): Promise<number> {
     dir,
     id: opts.id,
     preset: opts.preset ?? "full",
+    deno: opts.deno ?? false,
   });
   console.log(`✔ Scaffolded "${res.id}" in ${res.dir} (${res.files.length} files)`);
   console.log(`\nNext steps:`);
   console.log(`  cd ${dir}`);
-  console.log(`  # Node:  npm install && npm run check && npm start`);
-  console.log(`  # Deno:  deno task check && deno task start`);
+  if (opts.deno) {
+    console.log(`  # Node:  npm install && npm run check && npm start`);
+    console.log(`  # Deno:  deno task check && deno task start`);
+  } else {
+    console.log(`  npm install && npm run check && npm start`);
+  }
   return 0;
 }
 
