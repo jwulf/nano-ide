@@ -47,11 +47,16 @@ export function sdkDecisionEvaluator(sdk: unknown): DecisionEvaluator {
  *
  * Both type parameters are optional:
  *   - `In`  types `job.variables` (the process variables the job carries).
- *   - `Out` types the variables the handler returns to complete the job.
+ *   - `Out` types the completion **variables map** the handler returns to the engine.
  * Each defaults to an open `Record<string, unknown>`, so `AppJobHandler`,
- * `AppJobHandler<In>`, and `AppJobHandler<In, Out>` are all valid. The `object` bound lets a
- * plain `interface In {…}` be supplied (interfaces don't satisfy a `Record<string, unknown>`
- * bound). Both parameters are erased at runtime — they only shape authoring-time types.
+ * `AppJobHandler<In>`, and `AppJobHandler<In, Out>` are all valid.
+ *
+ * The bound is `extends object` (not `Record<string, unknown>`) so a plain `interface In {…}`
+ * / `interface Out {…}` can be supplied — interfaces have no implicit index signature and so
+ * don't satisfy a `Record` bound. The looser bound means `Out` is not *forced* to be a plain
+ * variables map at the type level; authors are expected to return a JSON-object of completion
+ * variables (not a `Date`, `Map`, array, etc.), which is what the engine sends on job
+ * completion. Both parameters are erased at runtime — they only shape authoring-time types.
  */
 export type AppJobHandler<In extends object = Record<string, unknown>, Out extends object = Record<string, unknown>> = (
   job: EngineJob<In>,

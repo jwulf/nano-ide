@@ -179,7 +179,8 @@ test("AppJobHandler carries optional In/Out variable types", async () => {
     return { ok: key.length > 0 && n >= 0 };
   };
 
-  // In only: Out defaults to an open record, so any object may be returned.
+  // In only: Out defaults to an open variables map, so any plain object of completion
+  // variables may be returned.
   const inOnly: AppJobHandler<In> = (job) => ({ echoed: job.variables.prKey });
 
   // No parameters: fully open — the pre-generics behaviour.
