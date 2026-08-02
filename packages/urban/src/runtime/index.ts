@@ -52,6 +52,15 @@ export type { AppApi, Mounted, RuntimeContext } from "./core/context.ts";
 // Data layer
 export { DataLayer, TypeRepo } from "./core/modules/datasource.ts";
 export type { ProvisionedSource } from "./core/modules/datasource.ts";
+export { makeGateway, Table } from "./core/modules/gateway.ts";
+export type {
+  ColumnMeta,
+  DataSource as SourceGateway,
+  ExecResult,
+  ForeignKeyMeta,
+  Row,
+  TableMeta,
+} from "./core/modules/gateway.ts";
 export type { AppJobHandler } from "./core/modules/workers.ts";
 export { resolveHandler } from "./core/modules/workers.ts";
 export { evalCorrelation } from "./core/modules/triggers.ts";
