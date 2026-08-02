@@ -47,7 +47,12 @@ export function resolveExpr(expr: string, scope: Scope): unknown {
 export function evalCorrelation(expr: string | undefined, scope: Scope): string | undefined {
   if (!expr) return undefined;
   const cur = resolveExpr(expr, scope);
-  return cur == null ? undefined : String(cur);
+  // A correlation key must be scalar; a non-scalar (object/array) is not a usable key —
+  // return undefined rather than forcing a "[object Object]" string.
+  if (typeof cur === "string" || typeof cur === "number" || typeof cur === "boolean") {
+    return String(cur);
+  }
+  return undefined;
 }
 
 /**

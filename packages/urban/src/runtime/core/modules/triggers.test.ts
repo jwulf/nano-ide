@@ -103,6 +103,14 @@ test("resolveExpr ignores inherited (prototype-chain) properties", () => {
   assert.equal(evalCorrelation("= body.__proto__", scope), undefined);
 });
 
+test("evalCorrelation returns undefined for a non-scalar result", () => {
+  const scope = { body: { obj: { a: 1 }, arr: [1, 2], n: 7, flag: false }, headers: {}, query: {} };
+  assert.equal(evalCorrelation("= body.obj", scope), undefined);
+  assert.equal(evalCorrelation("= body.arr", scope), undefined);
+  assert.equal(evalCorrelation("= body.n", scope), "7");
+  assert.equal(evalCorrelation("= body.flag", scope), "false");
+});
+
 test("runTriggerAction starts a process with action.variables", async () => {
   const { app, calls } = fakeApp();
   const res = await runTriggerAction(app, { start: "proc-1", variables: { a: 1 } }, {
