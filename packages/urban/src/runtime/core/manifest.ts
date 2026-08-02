@@ -55,7 +55,25 @@ export interface TriggerDecl {
   type: string;
   path?: string;
   auth?: string;
-  action?: { message?: string; correlationKey?: string };
+  /** cron: the 5-field crontab spec (UTC), e.g. "0 6 * * *". */
+  spec?: string;
+  /** cron catch-up policy for fires missed while the app was down. Default "skip". */
+  onMissed?: "skip" | "once" | "all";
+  /** Source-kind-specific settings (e.g. file `{ pollMs }`). */
+  config?: Record<string, unknown>;
+  /** Name of a connections[] entry supplying this source's credentials. */
+  connection?: string;
+  /** Maps the event to one engine call: start a process OR publish a message (ADR 0025 §1). */
+  action?: {
+    /** Process id/name to start. */
+    start?: string;
+    /** messageName to publish as a CorrelateMessage. */
+    message?: string;
+    /** correlationKey (literal, or `= body.path`) for a message action. */
+    correlationKey?: string;
+    /** variables for the started instance / published message (literal record or `= body.path`). */
+    variables?: unknown;
+  };
 }
 
 export interface SurfaceDecl {

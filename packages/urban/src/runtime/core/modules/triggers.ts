@@ -3,15 +3,22 @@
 // message to the engine for correlation. HMAC verification uses Web Crypto (global in both
 // Node 18+ and Deno), so this stays runtime-agnostic.
 
-import type { AppApi, RuntimeContext } from "../context.ts";
+import type { AppApi, Mounted, RuntimeContext } from "../context.ts";
 import type { HttpRequest } from "../host.ts";
 import { json, normalizeRoutePath, type Route } from "../router.ts";
 import type { TriggerDecl } from "../manifest.ts";
+import { nextCronFire, parseCron } from "./cron.ts";
 
-export interface TriggersHandle {
-  readonly name: string;
+export interface TriggersHandle extends Mounted {
   routes: Route[];
-  describe(): Record<string, unknown>;
+}
+
+/** Injectable timer + clock seam so cron scheduling is deterministic under test. */
+export interface SchedulerDeps {
+  setTimer: (fn: () => void, delayMs: number) => unknown;
+  clearTimer: (handle: unknown) => void;
+  /** Current wall-clock time in ms since epoch. */
+  now: () => number;
 }
 
 /** Evaluate a tiny correlation expression: `= body.a.b`, or a literal string. */
@@ -64,13 +71,118 @@ function headerRecord(req: HttpRequest): Record<string, string> {
   return out;
 }
 
-/** Mount webhook triggers and return their routes. */
-export function mountTriggers(ctx: RuntimeContext, app: AppApi): TriggersHandle {
+/**
+ * Fire a trigger's action against the engine: start a process or publish a message
+ * (ADR 0025 §1). `scope` supplies the event body/headers/query for FEEL-ish resolution
+ * of `correlationKey`/`variables`; cron passes an empty body. Returns what was done.
+ */
+export async function runTriggerAction(
+  app: AppApi,
+  action: TriggerDecl["action"],
+  scope: { body: unknown; headers: Record<string, string>; query: Record<string, string> },
+): Promise<{ kind: "start" | "message" | "none"; target?: string; correlationKey?: string }> {
+  if (!action) return { kind: "none" };
+  const variables =
+    action.variables && typeof action.variables === "object" && !Array.isArray(action.variables)
+      ? (action.variables as Record<string, unknown>)
+      : scope.body && typeof scope.body === "object" && !Array.isArray(scope.body)
+      ? (scope.body as Record<string, unknown>)
+      : {};
+
+  if (action.start) {
+    await app.engine.createInstance({ processDefinitionId: action.start, variables });
+    return { kind: "start", target: action.start };
+  }
+  if (action.message) {
+    const correlationKey = evalCorrelation(action.correlationKey, scope);
+    await app.engine.publishMessage({ name: action.message, correlationKey, variables });
+    return { kind: "message", target: action.message, correlationKey };
+  }
+  return { kind: "none" };
+}
+
+const emptyScope = { body: {}, headers: {} as Record<string, string>, query: {} as Record<string, string> };
+
+/** Default (live) scheduler seam, backed by the global timer functions. */
+function defaultScheduler(): SchedulerDeps {
+  return {
+    setTimer: (fn, ms) => globalThis.setTimeout(fn, ms),
+    clearTimer: (h) => globalThis.clearTimeout(h as ReturnType<typeof setTimeout>),
+    now: () => Date.now(),
+  };
+}
+
+/** Mount webhook + cron triggers. Webhooks contribute HTTP routes; cron triggers arm
+ *  background timers that fire their action on schedule. `stop()` clears every timer. */
+export function mountTriggers(
+  ctx: RuntimeContext,
+  app: AppApi,
+  sched: SchedulerDeps = defaultScheduler(),
+): TriggersHandle {
   const routes: Route[] = [];
   const mounted: string[] = [];
+  const scheduled: string[] = [];
   const seenDeliveries = new Set<string>();
+  const timers = new Set<unknown>();
+  let stopped = false;
+
+  // Arm a cron trigger: compute the next UTC fire, sleep until it, fire the action, repeat.
+  const armCron = (trig: TriggerDecl): void => {
+    const spec = trig.spec;
+    if (!spec) {
+      ctx.host.log("warn", `trigger "${trig.id}": cron trigger has no spec, skipped`);
+      return;
+    }
+    let schedule;
+    try {
+      schedule = parseCron(spec);
+    } catch (e) {
+      app.log("error", `trigger "${trig.id}": invalid cron spec "${spec}": ${String(e)}`);
+      return;
+    }
+    if (trig.onMissed && trig.onMissed !== "skip") {
+      // once/all catch-up needs a durable last-fire timestamp the runtime does not persist;
+      // without it, honour the safe default (skip) and say so rather than silently dropping.
+      app.log("warn", `trigger "${trig.id}": onMissed="${trig.onMissed}" not supported without ` +
+        `durable trigger state; scheduling forward as "skip"`);
+    }
+    scheduled.push(`${trig.id}@${spec}`);
+
+    const arm = (): void => {
+      if (stopped) return;
+      const next = nextCronFire(schedule, new Date(sched.now()));
+      if (!next) {
+        app.log("warn", `trigger "${trig.id}": cron spec "${spec}" never fires; not scheduled`);
+        return;
+      }
+      const delay = Math.max(0, next.getTime() - sched.now());
+      const handle = sched.setTimer(() => {
+        timers.delete(handle);
+        if (stopped) return;
+        void (async () => {
+          try {
+            const res = await runTriggerAction(app, trig.action, {
+              ...emptyScope,
+              body: { firedAt: next.toISOString() },
+            });
+            app.log("info", `trigger "${trig.id}" fired`, { firedAt: next.toISOString(), ...res });
+          } catch (err) {
+            app.log("error", `trigger "${trig.id}": action failed`, { error: String(err) });
+          } finally {
+            arm(); // reschedule regardless of success (at-least-once, idempotent handlers)
+          }
+        })();
+      }, delay);
+      timers.add(handle);
+    };
+    arm();
+  };
 
   for (const trig of (ctx.manifest.triggers ?? []) as TriggerDecl[]) {
+    if (trig.type === "cron") {
+      armCron(trig);
+      continue;
+    }
     if (trig.type !== "webhook") {
       ctx.host.log("warn", `trigger "${trig.id}": type "${trig.type}" not implemented, skipped`);
       continue;
@@ -117,27 +229,30 @@ export function mountTriggers(ctx: RuntimeContext, app: AppApi): TriggersHandle 
           return json({ error: "body must be JSON" }, 400);
         }
 
-        const message = trig.action?.message;
-        if (!message) {
-          app.log("warn", `trigger "${trig.id}": no action.message; nothing published`);
+        if (!trig.action?.message && !trig.action?.start) {
+          app.log("warn", `trigger "${trig.id}": no action.message/start; nothing published`);
           return json({ ok: true, published: false });
         }
-        const correlationKey = evalCorrelation(trig.action?.correlationKey, {
+        const res = await runTriggerAction(app, trig.action, {
           body,
           headers,
           query: Object.fromEntries(req.query),
         });
-        await app.engine.publishMessage({
-          name: message,
-          correlationKey,
-          variables: (body && typeof body === "object" ? (body as Record<string, unknown>) : {}),
-        });
-        app.log("info", `trigger "${trig.id}" published`, { message, correlationKey });
-        return json({ ok: true, published: true, message, correlationKey });
+        app.log("info", `trigger "${trig.id}" published`, { ...res });
+        return json({ ok: true, published: true, ...res });
       },
     });
   }
 
-  ctx.host.log("info", "triggers mounted", { mounted });
-  return { name: "triggers", routes, describe: () => ({ mounted }) };
+  ctx.host.log("info", "triggers mounted", { mounted, scheduled });
+  return {
+    name: "triggers",
+    routes,
+    describe: () => ({ mounted, scheduled }),
+    async stop() {
+      stopped = true;
+      for (const h of timers) sched.clearTimer(h);
+      timers.clear();
+    },
+  };
 }
