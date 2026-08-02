@@ -82,7 +82,12 @@ export function mountActions(ctx: RuntimeContext, app: AppApi): ActionsHandle {
     const key = joinRoot(path);
     let pending = moduleCache.get(key);
     if (!pending) {
-      pending = ctx.host.importModule(key);
+      // Evict the entry if the import rejects, so a transient failure doesn't
+      // permanently wedge the route (a cached rejected Promise would reject forever).
+      pending = ctx.host.importModule(key).catch((err) => {
+        moduleCache.delete(key);
+        throw err;
+      });
       moduleCache.set(key, pending);
     }
     return pending;
@@ -99,9 +104,10 @@ export function mountActions(ctx: RuntimeContext, app: AppApi): ActionsHandle {
     const prefix = decl.prefix === true;
     // The router's prefix match is a raw `startsWith`, so a prefix route needs a trailing
     // slash to stay boundary-safe (otherwise "/hooks" would also match "/hooks2"). Exact
-    // routes keep the normalized (trailing-slash-stripped) path.
+    // routes keep the normalized (trailing-slash-stripped) path. Guard the root case so a
+    // prefix path of "/" doesn't become "//" (which would never match).
     const base = normalizeRoutePath(decl.path, decl.path);
-    const path = prefix ? `${base}/` : base;
+    const path = prefix ? (base.endsWith("/") ? base : `${base}/`) : base;
 
     routes.push({
       method,

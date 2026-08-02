@@ -192,3 +192,39 @@ test("a manifest path without a leading slash is normalized to match", async () 
   const res = await router(req("POST", "/app/actions/go", { body: "{}" }));
   assert.equal(res.status, 200);
 });
+
+test("a rejected import is evicted from the cache so a later load can succeed", async () => {
+  let attempt = 0;
+  const imported: string[] = [];
+  const ctx = {
+    root: "/app",
+    manifest: { schemaVersion: 1, id: "t", name: "T", actions: [{ path: "/a", module: "m.ts" }] },
+    host: {
+      importModule: (path: string) => {
+        imported.push(path);
+        attempt += 1;
+        if (attempt === 1) return Promise.reject(new Error("transient"));
+        return Promise.resolve({ default: () => ({ body: "ok" }) });
+      },
+      log: () => {},
+    },
+  } as unknown as import("../context.ts").RuntimeContext;
+  const router = makeRouter(mountActions(ctx, {} as import("../context.ts").AppApi).routes) as unknown as (
+    r: HttpRequest,
+  ) => Promise<{ status?: number; body?: string }>;
+  const first = await router(req("POST", "/a", { body: "{}" }));
+  assert.equal(first.status, 500); // transient failure surfaces
+  const second = await router(req("POST", "/a", { body: "{}" }));
+  assert.equal(second.status, 200); // retry re-imports and succeeds (cache was evicted)
+  assert.deepEqual(imported, ["/app/m.ts", "/app/m.ts"]);
+});
+
+test("a prefix route at the root path does not become //", async () => {
+  const { router } = build(
+    [{ path: "/", prefix: true, module: "m.ts" }],
+    { "/app/m.ts": { default: () => ({ body: "root" }) } },
+  );
+  const res = await router(req("POST", "/anything/at/all", { body: "{}" }));
+  assert.equal(res.status, 200);
+  assert.equal(JSON.parse(res.body!), "root");
+});
