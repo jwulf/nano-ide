@@ -57,6 +57,22 @@ async function expandPattern(root: string, io: GenIO, pattern: string): Promise<
     .sort();
 }
 
+/** Read + resolve the app's process models from the manifest's `models.processes` patterns. */
+export async function readModels(
+  root: string,
+  io: GenIO,
+  manifest: { models?: { processes?: string[] } },
+): Promise<ModelSource[]> {
+  const procPatterns = manifest.models?.processes ?? [];
+  const models: ModelSource[] = [];
+  for (const pat of procPatterns) {
+    for (const rel of await expandPattern(root, io, pat)) {
+      models.push({ path: rel, xml: await io.readText(join(root, rel)) });
+    }
+  }
+  return models;
+}
+
 /** Collect all artifacts a run would produce, without touching disk beyond reads. */
 export async function collectArtifacts(opts: GenOptions): Promise<DerivedArtifact[]> {
   const { root, io } = opts;
@@ -73,13 +89,7 @@ export async function collectArtifacts(opts: GenOptions): Promise<DerivedArtifac
   }
 
   // 2. models → worker I/O index
-  const procPatterns = manifest.models?.processes ?? [];
-  const models: ModelSource[] = [];
-  for (const pat of procPatterns) {
-    for (const rel of await expandPattern(root, io, pat)) {
-      models.push({ path: rel, xml: await io.readText(join(root, rel)) });
-    }
-  }
+  const models = await readModels(root, io, manifest);
   if (models.length > 0) {
     const declaredTypeIds = Object.keys(manifest.types ?? {});
     artifacts.push(...deriveWorkerBindings(models, declaredTypeIds));

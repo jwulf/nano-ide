@@ -19,7 +19,7 @@ import {
   selectHost,
 } from "./runtime/index.ts";
 import { scaffold, slugify } from "create-urban-app";
-import { createNodeGenIO, runGen } from "./toolkit/index.ts";
+import { createNodeGenIO, runGen, scaffoldWorkers } from "./toolkit/index.ts";
 import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
 
@@ -42,6 +42,7 @@ interface Flags {
   manifest: string;
   port?: number;
   check: boolean;
+  write: boolean;
   deno: boolean;
   help: boolean;
   version: boolean;
@@ -49,7 +50,7 @@ interface Flags {
 }
 
 function parse(argv: string[]): Flags {
-  const f: Flags = { root: ".", manifest: "nano.app.json", check: false, deno: false, help: false, version: false, _: [] };
+  const f: Flags = { root: ".", manifest: "nano.app.json", check: false, write: false, deno: false, help: false, version: false, _: [] };
   const need = (i: number, flag: string): string => {
     const v = argv[i];
     if (v === undefined || v.startsWith("-")) throw new Error(`flag ${flag} requires a value`);
@@ -60,6 +61,7 @@ function parse(argv: string[]): Flags {
     if (a === "-h" || a === "--help") f.help = true;
     else if (a === "-v" || a === "--version") f.version = true;
     else if (a === "--check") f.check = true;
+    else if (a === "--write") f.write = true;
     else if (a === "--deno") f.deno = true;
     else if (a === "--") continue; // tolerate a bare "--" some runners inject (not an option terminator here)
     else if (a === "--root") f.root = need(++i, a);
@@ -83,6 +85,7 @@ Usage:
   urban new <name> [--root <path>] [--deno]    scaffold a new Urban app
   urban check                       validate the manifest
   urban gen [--check]               derive artifacts (migrations, worker-io)
+  urban stubs [--write]             scaffold write-once handler stubs from the model
   urban run                         materialize + serve the app
   urban dev                         run + watch sources, hot-reload on change
   urban deploy                      deploy models only, then exit
@@ -126,6 +129,38 @@ async function cmdGen(f: Flags): Promise<number> {
   }
   console.log(`✔ generated ${res.artifacts.length} artifact(s):`);
   for (const a of res.artifacts) console.log(`  • ${a.path}`);
+  return 0;
+}
+
+async function cmdStubs(f: Flags): Promise<number> {
+  const io = createNodeGenIO();
+  const run = await scaffoldWorkers({ root: f.root, io, manifestFile: f.manifest, write: f.write });
+
+  const created = run.outcomes.filter((o) => o.status === "created");
+  const would = run.outcomes.filter((o) => o.status === "would-create");
+  const kept = run.outcomes.filter((o) => o.status === "kept");
+  const typing = (o: { typedIn: boolean; typedOut: boolean }) =>
+    o.typedIn || o.typedOut ? ` (typed${o.typedIn ? " in" : ""}${o.typedOut ? " out" : ""})` : "";
+
+  if (run.write) {
+    console.log(`✔ scaffolded ${created.length} worker stub(s):`);
+    for (const o of created) console.log(`  + ${o.handlerPath}${typing(o)}`);
+    if (run.manifestPatched) {
+      console.log(`✔ wired ${run.wired.length} worker(s) into ${f.manifest}`);
+    }
+  } else {
+    if (would.length === 0) {
+      console.log(`✔ no new worker stubs to scaffold`);
+    } else {
+      console.log(`Would scaffold ${would.length} worker stub(s) — run with --write to apply:`);
+      for (const o of would) console.log(`  + ${o.handlerPath}${typing(o)}`);
+    }
+  }
+  for (const o of kept) console.log(`  = ${o.handlerPath} (kept — already exists)`);
+  if (run.skipped.length > 0) {
+    console.log(`  skipped ${run.skipped.length}: ` +
+      run.skipped.map((s) => `${s.taskType} (${s.reason})`).join(", "));
+  }
   return 0;
 }
 
@@ -199,6 +234,8 @@ export async function main(argv: string[]): Promise<number> {
       return cmdCheck(f);
     case "gen":
       return cmdGen(f);
+    case "stubs":
+      return cmdStubs(f);
     case "run":
       return cmdRun(f);
     case "dev":
