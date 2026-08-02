@@ -83,13 +83,17 @@ export interface HostContext {
   log(level: "info" | "warn" | "error", msg: string, fields?: Record<string, unknown>): void;
 }
 
-/** A job handed to a worker handler, plus the ack/fail callbacks. */
-export interface EngineJob {
+/** A job handed to a worker handler, plus the ack/fail callbacks. `In` types the process
+ *  variables carried on the job; it defaults to an open record when a handler doesn't
+ *  declare a concrete input shape. The `object` bound (rather than `Record<string, unknown>`)
+ *  lets plain `interface` shapes be used as `In` — interfaces lack the implicit index
+ *  signature that a `Record` bound would demand. */
+export interface EngineJob<In extends object = Record<string, unknown>> {
   jobKey: string;
   jobType: string;
   processInstanceKey?: string;
   elementId?: string;
-  variables: Record<string, unknown>;
+  variables: In;
 }
 
 export type JobHandler = (
