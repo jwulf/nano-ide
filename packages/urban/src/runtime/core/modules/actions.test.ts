@@ -1,0 +1,191 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import type { AppApi, RuntimeContext } from "../context.ts";
+import type { HttpRequest } from "../host.ts";
+import { makeRouter } from "../router.ts";
+import { mountActions, resolveActionHandler, type ActionHandler } from "./actions.ts";
+
+function req(method: string, path: string, opts: { query?: string; body?: string } = {}): HttpRequest {
+  return {
+    method,
+    path,
+    query: new URLSearchParams(opts.query ?? ""),
+    headers: new Headers(),
+    text: () => Promise.resolve(opts.body ?? ""),
+  };
+}
+
+interface Built {
+  router: (r: HttpRequest) => Promise<{ status?: number; body?: string }>;
+  imported: string[];
+  logs: Array<{ level: string; msg: string }>;
+}
+
+function build(
+  actions: RuntimeContext["manifest"]["actions"],
+  modules: Record<string, Record<string, unknown>>,
+  app: AppApi = {} as AppApi,
+): Built {
+  const imported: string[] = [];
+  const logs: Array<{ level: string; msg: string }> = [];
+  const ctx = {
+    root: "/app",
+    manifest: { schemaVersion: 1, id: "t", name: "T", actions } as RuntimeContext["manifest"],
+    host: {
+      importModule: (path: string) => {
+        imported.push(path);
+        const mod = modules[path];
+        if (!mod) return Promise.reject(new Error(`no module at ${path}`));
+        return Promise.resolve(mod);
+      },
+      log: (level: string, msg: string) => logs.push({ level, msg }),
+    },
+  } as unknown as RuntimeContext;
+  const handle = mountActions(ctx, app);
+  const router = makeRouter(handle.routes) as unknown as Built["router"];
+  return { router, imported, logs };
+}
+
+test("resolveActionHandler prefers default, then handler", () => {
+  const fn = () => ({});
+  assert.equal(resolveActionHandler({ default: fn }), fn);
+  assert.equal(resolveActionHandler({ handler: fn }), fn);
+  assert.equal(resolveActionHandler({ default: fn, handler: () => ({}) }), fn);
+  assert.equal(resolveActionHandler({ nope: fn }), undefined);
+});
+
+test("routes an action to its handler with parsed body + injected app", async () => {
+  const seen: unknown[] = [];
+  const app = { id: "myApp" } as unknown as AppApi;
+  const handler: ActionHandler = (input, a) => {
+    seen.push({ body: input.body, method: input.req.method, app: a });
+    return { status: 201, body: { ok: true } };
+  };
+  const { router } = build(
+    [{ path: "/app/actions/cancel", module: "actions/cancel.ts" }],
+    { "/app/actions/cancel.ts": { default: handler } },
+    app,
+  );
+  const res = await router(req("POST", "/app/actions/cancel", { body: JSON.stringify({ key: "k1" }) }));
+  assert.equal(res.status, 201);
+  assert.deepEqual(JSON.parse(res.body!), { ok: true });
+  assert.deepEqual(seen, [{ body: { key: "k1" }, method: "POST", app }]);
+});
+
+test("empty body parses to {} and a void return is 204", async () => {
+  const bodies: unknown[] = [];
+  const { router } = build(
+    [{ path: "/app/actions/ping", module: "m.ts" }],
+    { "/app/m.ts": { default: (i: { body: unknown }) => { bodies.push(i.body); } } },
+  );
+  const res = await router(req("POST", "/app/actions/ping"));
+  assert.equal(res.status, 204);
+  assert.equal(res.body, undefined);
+  assert.deepEqual(bodies, [{}]);
+});
+
+test("invalid JSON body is rejected with 400 before the handler runs", async () => {
+  let called = false;
+  const { router, imported } = build(
+    [{ path: "/a", module: "m.ts" }],
+    { "/app/m.ts": { default: () => { called = true; } } },
+  );
+  const res = await router(req("POST", "/a", { body: "{not json" }));
+  assert.equal(res.status, 400);
+  assert.match(res.body!, /must be JSON/);
+  assert.equal(called, false);
+  assert.deepEqual(imported, []); // module not even loaded
+});
+
+test("a thrown handler error becomes a 500 with the message", async () => {
+  const { router } = build(
+    [{ path: "/a", module: "m.ts" }],
+    { "/app/m.ts": { default: () => { throw new Error("boom"); } } },
+  );
+  const res = await router(req("POST", "/a", { body: "{}" }));
+  assert.equal(res.status, 500);
+  assert.match(res.body!, /boom/);
+});
+
+test("a module that fails to load yields a 500", async () => {
+  const { router, logs } = build([{ path: "/a", module: "missing.ts" }], {});
+  const res = await router(req("POST", "/a", { body: "{}" }));
+  assert.equal(res.status, 500);
+  assert.match(res.body!, /failed to load/);
+  assert.ok(logs.some((l) => l.level === "error"));
+});
+
+test("a module with no default/handler export yields a 500", async () => {
+  const { router } = build(
+    [{ path: "/a", module: "m.ts" }],
+    { "/app/m.ts": { notAHandler: () => ({}) } },
+  );
+  const res = await router(req("POST", "/a", { body: "{}" }));
+  assert.equal(res.status, 500);
+  assert.match(res.body!, /no default function/);
+});
+
+test("the module is imported once and cached across requests", async () => {
+  const { router, imported } = build(
+    [{ path: "/a", module: "m.ts" }],
+    { "/app/m.ts": { default: () => ({ body: 1 }) } },
+  );
+  await router(req("POST", "/a", { body: "{}" }));
+  await router(req("POST", "/a", { body: "{}" }));
+  assert.deepEqual(imported, ["/app/m.ts"]);
+});
+
+test("method defaults to POST; a GET does not match", async () => {
+  const { router } = build(
+    [{ path: "/a", module: "m.ts" }],
+    { "/app/m.ts": { default: () => ({ body: "ok" }) } },
+  );
+  const res = await router(req("GET", "/a"));
+  assert.equal(res.status, 404);
+});
+
+test("a custom method is honored", async () => {
+  const { router } = build(
+    [{ path: "/a", method: "PUT", module: "m.ts" }],
+    { "/app/m.ts": { default: () => ({ body: "ok" }) } },
+  );
+  assert.equal((await router(req("PUT", "/a", { body: "{}" }))).status, 200);
+  assert.equal((await router(req("POST", "/a", { body: "{}" }))).status, 404);
+});
+
+test("prefix routes match by path prefix", async () => {
+  const { router } = build(
+    [{ path: "/hooks/", prefix: true, module: "m.ts" }],
+    { "/app/m.ts": { default: () => ({ body: "hooked" }) } },
+  );
+  const res = await router(req("POST", "/hooks/github", { body: "{}" }));
+  assert.equal(res.status, 200);
+  assert.equal(JSON.parse(res.body!), "hooked");
+});
+
+test("an absolute module path is used as-is (not joined to root)", async () => {
+  const { router, imported } = build(
+    [{ path: "/a", module: "/abs/m.ts" }],
+    { "/abs/m.ts": { default: () => ({ body: 1 }) } },
+  );
+  await router(req("POST", "/a", { body: "{}" }));
+  assert.deepEqual(imported, ["/abs/m.ts"]);
+});
+
+test("declarations missing path or module are skipped with a warning", () => {
+  const { router, logs } = build(
+    [{ path: "/a" } as unknown as { path: string; module: string }],
+    {},
+  );
+  void router;
+  assert.ok(logs.some((l) => l.level === "warn"));
+});
+
+test("a manifest path without a leading slash is normalized to match", async () => {
+  const { router } = build(
+    [{ path: "app/actions/go", module: "m.ts" }],
+    { "/app/m.ts": { default: () => ({ body: "ok" }) } },
+  );
+  const res = await router(req("POST", "/app/actions/go", { body: "{}" }));
+  assert.equal(res.status, 200);
+});

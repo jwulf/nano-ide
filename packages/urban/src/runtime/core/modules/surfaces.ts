@@ -5,6 +5,7 @@
 
 import type { AppApi, RuntimeContext } from "../context.ts";
 import { html, json, normalizeRoutePath, type Route } from "../router.ts";
+import { mountActions } from "./actions.ts";
 import { mountPages } from "./pages.ts";
 
 /** Escape HTML-significant characters before embedding a value in markup. */
@@ -97,6 +98,15 @@ export function mountSurfaces(ctx: RuntimeContext, app: AppApi): SurfacesHandle 
 <body style="font:14px system-ui;margin:2rem"><h1>Chat</h1>
 <p>Chat surface mount point (agent: <code>${escapeHtml(chat.agent ?? "?")}</code>). LLM wiring pending.</p>`),
     });
+  }
+
+  // App-authored action overrides mount BEFORE the generic pages routes so an exact
+  // override (e.g. /app/actions/cancel) shadows the generic action; the router is
+  // first-match-wins.
+  const actions = mountActions(ctx, app);
+  if (actions.routes.length > 0) {
+    routes.push(...actions.routes);
+    enabled.push(`actions(${actions.routes.length})`);
   }
 
   // The pages surface (the schema-driven page runtime) mounts its own routes.

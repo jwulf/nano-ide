@@ -17,6 +17,7 @@ export {
   workerJobType,
 } from "./core/manifest.ts";
 export type {
+  ActionDecl,
   AppManifest,
   DataSource,
   DomainType,
@@ -63,6 +64,8 @@ export type {
 } from "./core/modules/gateway.ts";
 export { createPagesRoutes, mountPages } from "./core/modules/pages.ts";
 export type { PagesDataSource, PagesDeps, PagesHandle, PagesOptions } from "./core/modules/pages.ts";
+export { mountActions, resolveActionHandler } from "./core/modules/actions.ts";
+export type { ActionHandler, ActionRequest, ActionResult, ActionsHandle } from "./core/modules/actions.ts";
 export type { AppJobHandler } from "./core/modules/workers.ts";
 export { resolveHandler } from "./core/modules/workers.ts";
 export { evalCorrelation } from "./core/modules/triggers.ts";
