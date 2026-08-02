@@ -78,7 +78,7 @@ console.log(app.inspect());              // { app, name, httpPort, ... }
 
 `runFromEnv` reads the engine address and transport from the environment, starts
 the app (validate → deploy → provision datasources → start workers → serve
-surfaces and webhook triggers), and installs SIGINT/SIGTERM handlers for a
+surfaces and webhook + cron triggers), and installs SIGINT/SIGTERM handlers for a
 graceful shutdown. For full control, assemble the pieces yourself:
 
 ```ts
@@ -140,6 +140,37 @@ wiring; `WorkflowClient` deploys and starts, `Worker` hosts your `run` steps.
 `deploy` emits an auto-generated diagram (DI) so the deployed model is
 inspectable in a modeller/Operate — `@nanobpm/urban` bundles `bpmn-auto-layout`
 so this works out of the box.
+
+### Triggers — the inbound I/O edge
+
+Declare `triggers[]` in the app manifest to turn outside events into engine
+calls (start a process or publish a message). Two source kinds are built in:
+
+- **`webhook`** — mounts an HTTP `POST` route (`/hooks/<id>` by default), with
+  optional `hmac:<connection>` signature verification and delivery-id
+  idempotency.
+- **`cron`** — arms a background timer from a 5-field crontab `spec` (evaluated
+  in **UTC**), firing its `action` on schedule and rescheduling itself.
+
+```jsonc
+{
+  "triggers": [
+    { "id": "nightly", "type": "cron", "spec": "0 6 * * *",
+      "action": { "start": "daily-report" } },
+    { "id": "gh", "type": "webhook", "auth": "hmac:github",
+      "action": { "message": "pr-opened", "correlationKey": "= body.number" } }
+  ]
+}
+```
+
+Cron scheduling is **app-side**: per-replica, in-memory, and it stops when the
+process stops — glue for invoking handlers on a clock, not a durable clustered
+scheduler. It therefore only honours `onMissed: "skip"` (the default); a declared
+`"once"`/`"all"` catch-up needs a persisted last-fire the runtime does not keep,
+so it warns and degrades to `skip`. For **durable, clustered** scheduling that
+survives restarts, model a timer **start**/**intermediate** event instead with
+`w.startOn(...)` / `w.timer(...)` from [`@nanobpm/workflow`](../workflow) — the
+engine owns those.
 
 ## Related packages
 

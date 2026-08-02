@@ -180,7 +180,8 @@ export async function createUrbanApp(opts: CreateUrbanAppOptions): Promise<Urban
         if (flags.triggers) {
           const t = mountTriggers(ctx, api);
           routes.push(...t.routes);
-          describe.triggers = t.describe();
+          mounted.push(t);
+          describe.triggers = t.describe?.();
         }
         if (security) describe.security = security.describe();
         if (data) describe.data = data.describe();
