@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createNodeHost } from "../../adapters/node.ts";
-import { makeGateway, type DataSource } from "./gateway.ts";
+import { makeGateway, Table, type DataSource } from "./gateway.ts";
 
 interface Order {
   id: number;
@@ -122,6 +122,35 @@ test("schema introspects columns/pk and excludes internal tables", async () => {
     assert.equal(idCol?.primaryKey, true);
     const statusCol = orders.columns.find((c) => c.name === "status");
     assert.equal(statusCol?.notNull, true);
+  });
+});
+
+test("query rejects (not throws synchronously) on invalid SQL", async () => {
+  await withGateway(async (src) => {
+    await assert.rejects(src.query("SELECT * FROM does_not_exist"));
+    await assert.rejects(src.exec("INSERT INTO does_not_exist (x) VALUES (1)"));
+  });
+});
+
+test("Table.insert throws when the driver reports no lastInsertId", async () => {
+  const fake: DataSource = {
+    query: async () => [],
+    exec: async () => ({ changed: 1 }),
+    tx: async (fn) => fn(fake),
+    schema: async () => [],
+    table: (name, pk) => new Table(fake, name, pk),
+  };
+  const t = fake.table("orders");
+  await assert.rejects(t.insert({ status: "x" } as Record<string, unknown>), /no lastInsertId/);
+});
+
+test("Table.all ignores a non-finite limit", async () => {
+  await withGateway(async (src) => {
+    const orders = src.table<Order>("orders");
+    await orders.insert({ status: "a", total: 1 });
+    await orders.insert({ status: "b", total: 2 });
+    assert.equal((await orders.all(Number.NaN)).length, 2);
+    assert.equal((await orders.all(Number.POSITIVE_INFINITY)).length, 2);
   });
 });
 

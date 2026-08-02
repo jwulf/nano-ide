@@ -112,7 +112,12 @@ export class Table<T extends object = Row> {
       `INSERT INTO ${quoteIdent(this.name)} (${cols}) VALUES (${ph})`,
       keys.map((k) => (row as Row)[k]),
     );
-    return r.lastInsertId ?? 0;
+    if (r.lastInsertId == null) {
+      // The driver reported no rowid — treat as a failed/ambiguous insert rather than
+      // silently returning 0, which a caller could mistake for a real primary key.
+      throw new Error(`Table(${this.name}).insert: driver reported no lastInsertId`);
+    }
+    return r.lastInsertId;
   }
 
   /** Fetch the row with the given primary key, or `undefined`. */
@@ -126,7 +131,10 @@ export class Table<T extends object = Row> {
 
   /** Every row (optionally capped at `limit`). */
   async all(limit?: number): Promise<T[]> {
-    const lim = typeof limit === "number" ? ` LIMIT ${Math.max(0, Math.floor(limit))}` : "";
+    const lim =
+      typeof limit === "number" && Number.isFinite(limit)
+        ? ` LIMIT ${Math.max(0, Math.floor(limit))}`
+        : "";
     return (await this.#src.query(`SELECT * FROM ${quoteIdent(this.name)}${lim}`)) as T[];
   }
 
@@ -189,13 +197,13 @@ class SqliteGateway implements DataSource {
     this.#db = db;
   }
 
-  query(sql: string, params: unknown[] = []): Promise<Row[]> {
-    return Promise.resolve(this.#db.all<Row>(sql, params));
+  async query(sql: string, params: unknown[] = []): Promise<Row[]> {
+    return this.#db.all<Row>(sql, params);
   }
 
-  exec(sql: string, params: unknown[] = []): Promise<ExecResult> {
+  async exec(sql: string, params: unknown[] = []): Promise<ExecResult> {
     const r = this.#db.run(sql, params);
-    return Promise.resolve({ changed: Number(r.changes), lastInsertId: r.lastInsertRowid });
+    return { changed: Number(r.changes), lastInsertId: r.lastInsertRowid };
   }
 
   async tx<T>(fn: (t: DataSource) => Promise<T>): Promise<T> {
@@ -210,7 +218,7 @@ class SqliteGateway implements DataSource {
     }
   }
 
-  schema(): Promise<TableMeta[]> {
+  async schema(): Promise<TableMeta[]> {
     // Exclude SQLite internals (`sqlite_%`) and Nano's own bookkeeping tables (`_urban_%` /
     // `_nano_%`, e.g. the migrations ledger): neither is a user/domain table, so they must
     // never surface in the domain model, DB Manager, or forms.
@@ -251,7 +259,7 @@ class SqliteGateway implements DataSource {
         })),
       });
     }
-    return Promise.resolve(out);
+    return out;
   }
 
   table<T extends object = Row>(name: string, pk = "id"): Table<T> {
