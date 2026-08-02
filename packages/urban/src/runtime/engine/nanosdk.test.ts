@@ -277,6 +277,31 @@ test("close stops every worker and closes the SDK client", async () => {
   assert.equal(client.closed, 1);
 });
 
+test("close drains the REST-fallback worker via the SDK's stopAllWorkers", async () => {
+  let stopAllCalls = 0;
+  const client = fakeSdkClient({
+    async stopAllWorkers() {
+      stopAllCalls++;
+    },
+  });
+  const engine = new SdkEngineClient(client);
+  await engine.registerWorker("a", async () => ({}));
+  await engine.close();
+  // The SDK may start a REST-fallback worker whose handle we never receive;
+  // close() must reach it through the client's stopAllWorkers().
+  assert.equal(stopAllCalls, 1, "close awaits client.stopAllWorkers exactly once");
+  assert.equal(client.closed, 1);
+});
+
+test("close tolerates a client without stopAllWorkers", async () => {
+  const client = fakeSdkClient();
+  delete (client as { stopAllWorkers?: unknown }).stopAllWorkers;
+  const engine = new SdkEngineClient(client);
+  await engine.registerWorker("a", async () => ({}));
+  await engine.close();
+  assert.equal(client.closed, 1);
+});
+
 test("exposes the underlying nano-sdk client as .sdk", () => {
   const client = fakeSdkClient();
   const engine = new SdkEngineClient(client);
