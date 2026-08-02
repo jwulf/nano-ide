@@ -49,7 +49,8 @@ export interface NanoSdkJobWorkerConfig {
   jobTimeoutMs?: number;
   pollTimeoutMs?: number;
   fetchVariables?: string[];
-  /** Start polling immediately. This adapter sets it false and starts explicitly. */
+  /** Start polling immediately (the SDK default). The adapter leaves this unset so the
+   * SDK owns the start lifecycle after its async Nano/Falcon transport detection. */
   autoStart?: boolean;
 }
 
@@ -97,6 +98,10 @@ export interface NanoSdkClient {
     options?: unknown,
   ): Promise<unknown>;
   createJobWorker(cfg: NanoSdkJobWorkerConfig): NanoSdkJobWorker;
+  /** Stop every worker created on this client. Used on teardown to also drain a
+   * REST-fallback worker, whose handle the `createJobWorker` proxy starts internally
+   * and does not hand back. Optional: not every injected client implements it. */
+  stopAllWorkers?(): void | Promise<void>;
   close?(): void | Promise<void>;
 }
 
@@ -210,9 +215,6 @@ export class SdkEngineClient implements EngineClient {
       workerName: options?.workerName ?? `urban:${jobType}`,
       maxParallelJobs: options?.maxParallelJobs ?? 8,
       fetchVariables: options?.fetchVariables,
-      // Own the poll lifecycle here rather than leaving it to the SDK's auto-start
-      // default, so nothing polls until `start()` is called below.
-      autoStart: false,
       jobHandler: async (job) => {
         const rawKey = job.jobKey;
         if (rawKey == null || rawKey === "") {
@@ -244,7 +246,11 @@ export class SdkEngineClient implements EngineClient {
         }
       },
     });
-    await worker.start();
+    // The nano-sdk job worker owns its own start lifecycle: `createJobWorker` runs
+    // async Nano/Falcon detection and, once the transport is bound, starts polling
+    // itself (Falcon) or hands off to an auto-started REST worker. Calling `start()`
+    // here would race that detection and dereference a still-null transport, so we
+    // don't — the worker autostarts.
     this.workers.add(worker);
 
     return {
@@ -269,6 +275,13 @@ export class SdkEngineClient implements EngineClient {
   async close(): Promise<void> {
     for (const w of this.workers) await this.stopWorker(w);
     this.workers.clear();
+    try {
+      // Also drain any REST-fallback worker the SDK started internally (its handle is
+      // not the one we hold), which `stopWorker` above cannot reach.
+      await this.client.stopAllWorkers?.();
+    } catch {
+      /* no workers running / already stopped */
+    }
     try {
       await this.client.close?.();
     } catch {

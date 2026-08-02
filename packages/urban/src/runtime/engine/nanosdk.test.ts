@@ -81,6 +81,9 @@ function fakeSdkClient(overrides: Partial<NanoSdkClient> = {}): NanoSdkClient & 
           rec.stopped++;
         },
       };
+      // The real nano-sdk starts the worker itself after async transport detection
+      // (autoStart defaults on). Model that here so the adapter must NOT call start().
+      if (cfg.autoStart !== false) worker.start();
       return worker;
     },
     close() {
@@ -198,7 +201,7 @@ test("completeUserTask routes through the SDK", async () => {
   assert.deepEqual(seen, { userTaskKey: "utk", variables: { done: true } });
 });
 
-test("registerWorker creates a worker (autoStart false), starts it, and dispatches + completes", async () => {
+test("registerWorker creates a worker the SDK auto-starts, and dispatches + completes", async () => {
   const client = fakeSdkClient();
   const engine = new SdkEngineClient(client);
   const handled: Record<string, unknown>[] = [];
@@ -212,7 +215,9 @@ test("registerWorker creates a worker (autoStart false), starts it, and dispatch
   );
   assert.equal(sub.jobType, "svc");
   const rec = client.workers[0];
-  assert.equal(rec.cfg.autoStart, false);
+  // The adapter must not force autoStart off or call start() itself (that races the
+  // SDK's async transport detection); the SDK owns the start lifecycle.
+  assert.equal(rec.cfg.autoStart, undefined);
   assert.equal(rec.cfg.workerName, "urban:svc");
   assert.equal(rec.cfg.maxParallelJobs, 4);
   assert.equal(rec.started, 1);
@@ -269,6 +274,31 @@ test("close stops every worker and closes the SDK client", async () => {
   await engine.close();
   assert.equal(client.workers[0].stopped, 1);
   assert.equal(client.workers[1].stopped, 1);
+  assert.equal(client.closed, 1);
+});
+
+test("close drains the REST-fallback worker via the SDK's stopAllWorkers", async () => {
+  let stopAllCalls = 0;
+  const client = fakeSdkClient({
+    async stopAllWorkers() {
+      stopAllCalls++;
+    },
+  });
+  const engine = new SdkEngineClient(client);
+  await engine.registerWorker("a", async () => ({}));
+  await engine.close();
+  // The SDK may start a REST-fallback worker whose handle we never receive;
+  // close() must reach it through the client's stopAllWorkers().
+  assert.equal(stopAllCalls, 1, "close awaits client.stopAllWorkers exactly once");
+  assert.equal(client.closed, 1);
+});
+
+test("close tolerates a client without stopAllWorkers", async () => {
+  const client = fakeSdkClient();
+  delete (client as { stopAllWorkers?: unknown }).stopAllWorkers;
+  const engine = new SdkEngineClient(client);
+  await engine.registerWorker("a", async () => ({}));
+  await engine.close();
   assert.equal(client.closed, 1);
 });
 
