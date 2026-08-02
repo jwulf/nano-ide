@@ -29,6 +29,14 @@ test("unknown top-level keys are rejected (additionalProperties:false)", () => {
   assert.ok(issues.some((i) => i.path === "bogus"));
 });
 
+test("an `actions` array is an accepted top-level key (ADR 0055 §3)", () => {
+  const issues = collectManifestIssues({
+    ...valid,
+    actions: [{ path: "/app/actions/cancel", module: "actions/cancel.ts" }],
+  });
+  assert.deepEqual(issues, []);
+});
+
 test("bad schemaVersion and bad slug id are reported", () => {
   const issues = collectManifestIssues({ ...valid, schemaVersion: 2, id: "Not A Slug" });
   assert.ok(issues.some((i) => i.path === "schemaVersion"));

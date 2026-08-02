@@ -54,6 +54,23 @@ export interface SurfaceDecl {
   sourceName?: string;
 }
 
+/**
+ * An app-authored action handler override (ADR 0055 phase 3). Each declaration binds a
+ * route to a handler module (default-exports an `ActionHandler`), letting an app wrap the
+ * generic pages start/cancel/message actions with business logic. Mounted before the
+ * generic pages action routes, so an exact override shadows the generic one.
+ */
+export interface ActionDecl {
+  /** Route path to serve, e.g. "/app/actions/cancel" or "/app/actions/start/convergence-loop". */
+  path: string;
+  /** Handler module path relative to the app root; default-exports an `ActionHandler`. */
+  module: string;
+  /** HTTP method to match. Default "POST". */
+  method?: string;
+  /** Match `path` as a prefix rather than exactly. Default false. */
+  prefix?: boolean;
+}
+
 export interface AppManifest {
   $schema?: string;
   schemaVersion: 1;
@@ -67,6 +84,7 @@ export interface AppManifest {
   triggers?: TriggerDecl[];
   connections?: Record<string, { type: string; [k: string]: unknown }>;
   surfaces?: Record<string, SurfaceDecl>;
+  actions?: ActionDecl[];
   workers?: WorkerDecl[];
   llm?: Record<string, unknown>;
   security?: Record<string, unknown>;
