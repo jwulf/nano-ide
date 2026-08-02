@@ -6,6 +6,7 @@
 import type { RuntimeContext } from "../context.ts";
 import type { HostContext, SqliteDb } from "../host.ts";
 import type { AppManifest, DataSource, DomainType } from "../manifest.ts";
+import { makeGateway, Table, type DataSource as GatewayDataSource } from "./gateway.ts";
 
 function sqlitePathFromUrl(url: string): string {
   // Accept "file:./x.db", "file:x.db", "sqlite:./x.db" or a bare path.
@@ -89,6 +90,8 @@ export interface ProvisionedSource {
   readonly name: string;
   readonly driver: string;
   readonly db: SqliteDb;
+  /** The record-oriented gateway over this source — the RAD `Table<T>` surface (ADR 0055). */
+  readonly source: GatewayDataSource;
   readonly migrationsApplied: string[];
   close(): void;
 }
@@ -121,6 +124,22 @@ export class DataLayer {
     const def = this.types[typeName];
     if (!def) throw new Error(`no such type "${typeName}"`);
     return new TypeRepo(this.source(sourceName).db, typeName, def);
+  }
+
+  /** The record-oriented `DataSource` gateway for a source (the default when omitted) — the
+   * raw-SQL + `Table<T>` surface app handlers bind to (ADR 0055). */
+  open(sourceName?: string): GatewayDataSource {
+    return this.source(sourceName).source;
+  }
+
+  /** A typed `Table<T>` gateway over one table on a source (the default when omitted). `pk` is
+   * the primary-key column (default "id"). */
+  table<T extends object = Record<string, unknown>>(
+    name: string,
+    pk?: string,
+    sourceName?: string,
+  ): Table<T> {
+    return this.open(sourceName).table<T>(name, pk);
   }
 
   describe(): Record<string, unknown> {
@@ -198,6 +217,7 @@ async function provisionSqlite(
     name,
     driver: "sqlite",
     db,
+    source: makeGateway(db),
     migrationsApplied,
     close: () => db.close(),
   };

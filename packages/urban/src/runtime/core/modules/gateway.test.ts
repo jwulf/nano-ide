@@ -1,0 +1,164 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createNodeHost } from "../../adapters/node.ts";
+import { makeGateway, Table, type DataSource } from "./gateway.ts";
+
+interface Order {
+  id: number;
+  status: string;
+  total: number;
+}
+
+async function withGateway(fn: (src: DataSource) => Promise<void>): Promise<void> {
+  const dir = await mkdtemp(join(tmpdir(), "urban-gateway-"));
+  const host = createNodeHost({ cwd: dir, log: () => {} });
+  const db = host.openSqlite(join(dir, "test.db"));
+  db.exec(
+    "CREATE TABLE orders (id INTEGER PRIMARY KEY, status TEXT NOT NULL, total INTEGER NOT NULL DEFAULT 0)",
+  );
+  try {
+    await fn(makeGateway(db));
+  } finally {
+    db.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+test("Table insert/get returns the row by primary key", async () => {
+  await withGateway(async (src) => {
+    const orders = src.table<Order>("orders");
+    const id = await orders.insert({ status: "new", total: 10 });
+    const row = await orders.get(id);
+    assert.equal(row?.status, "new");
+    assert.equal(row?.total, 10);
+    assert.equal(Number(row?.id), Number(id));
+  });
+});
+
+test("Table update patches and returns rows changed", async () => {
+  await withGateway(async (src) => {
+    const orders = src.table<Order>("orders");
+    const id = await orders.insert({ status: "new", total: 10 });
+    const changed = await orders.update(id, { status: "shipped" });
+    assert.equal(changed, 1);
+    assert.equal((await orders.get(id))?.status, "shipped");
+  });
+});
+
+test("Table find/findOne filter by equality", async () => {
+  await withGateway(async (src) => {
+    const orders = src.table<Order>("orders");
+    await orders.insert({ status: "new", total: 1 });
+    await orders.insert({ status: "new", total: 2 });
+    await orders.insert({ status: "done", total: 3 });
+    const news = await orders.find({ status: "new" });
+    assert.equal(news.length, 2);
+    const one = await orders.findOne({ status: "done" });
+    assert.equal(one?.total, 3);
+    assert.equal(await orders.findOne({ status: "missing" }), undefined);
+  });
+});
+
+test("Table count respects the filter", async () => {
+  await withGateway(async (src) => {
+    const orders = src.table<Order>("orders");
+    await orders.insert({ status: "new", total: 1 });
+    await orders.insert({ status: "done", total: 2 });
+    assert.equal(await orders.count(), 2);
+    assert.equal(await orders.count({ status: "new" }), 1);
+  });
+});
+
+test("Table all lists rows and honours limit", async () => {
+  await withGateway(async (src) => {
+    const orders = src.table<Order>("orders");
+    await orders.insert({ status: "a", total: 1 });
+    await orders.insert({ status: "b", total: 2 });
+    assert.equal((await orders.all()).length, 2);
+    assert.equal((await orders.all(1)).length, 1);
+  });
+});
+
+test("Table delete removes the row", async () => {
+  await withGateway(async (src) => {
+    const orders = src.table<Order>("orders");
+    const id = await orders.insert({ status: "new", total: 1 });
+    assert.equal(await orders.delete(id), 1);
+    assert.equal(await orders.get(id), undefined);
+  });
+});
+
+test("tx commits on success and rolls back on throw", async () => {
+  await withGateway(async (src) => {
+    const orders = src.table<Order>("orders");
+    await src.tx(async (t) => {
+      await t.exec("INSERT INTO orders (status, total) VALUES (?, ?)", ["tx", 5]);
+    });
+    assert.equal(await orders.count({ status: "tx" }), 1);
+
+    await assert.rejects(
+      src.tx(async (t) => {
+        await t.exec("INSERT INTO orders (status, total) VALUES (?, ?)", ["bad", 9]);
+        throw new Error("boom");
+      }),
+      /boom/,
+    );
+    assert.equal(await orders.count({ status: "bad" }), 0);
+  });
+});
+
+test("schema introspects columns/pk and excludes internal tables", async () => {
+  await withGateway(async (src) => {
+    await src.exec("CREATE TABLE _urban_migrations (id TEXT PRIMARY KEY)");
+    await src.exec("CREATE TABLE _nano_ledger (id TEXT PRIMARY KEY)");
+    const meta = await src.schema();
+    const names = meta.map((t) => t.name);
+    assert.deepEqual(names, ["orders"]);
+    const orders = meta[0];
+    const idCol = orders.columns.find((c) => c.name === "id");
+    assert.equal(idCol?.primaryKey, true);
+    const statusCol = orders.columns.find((c) => c.name === "status");
+    assert.equal(statusCol?.notNull, true);
+  });
+});
+
+test("query rejects (not throws synchronously) on invalid SQL", async () => {
+  await withGateway(async (src) => {
+    await assert.rejects(src.query("SELECT * FROM does_not_exist"));
+    await assert.rejects(src.exec("INSERT INTO does_not_exist (x) VALUES (1)"));
+  });
+});
+
+test("Table.insert throws when the driver reports no lastInsertId", async () => {
+  const fake: DataSource = {
+    query: async () => [],
+    exec: async () => ({ changed: 1 }),
+    tx: async (fn) => fn(fake),
+    schema: async () => [],
+    table: (name, pk) => new Table(fake, name, pk),
+  };
+  const t = fake.table("orders");
+  await assert.rejects(t.insert({ status: "x" } as Record<string, unknown>), /no lastInsertId/);
+});
+
+test("Table.all ignores a non-finite limit", async () => {
+  await withGateway(async (src) => {
+    const orders = src.table<Order>("orders");
+    await orders.insert({ status: "a", total: 1 });
+    await orders.insert({ status: "b", total: 2 });
+    assert.equal((await orders.all(Number.NaN)).length, 2);
+    assert.equal((await orders.all(Number.POSITIVE_INFINITY)).length, 2);
+  });
+});
+
+test("query/exec run raw parameterised SQL", async () => {
+  await withGateway(async (src) => {
+    const r = await src.exec("INSERT INTO orders (status, total) VALUES (?, ?)", ["raw", 42]);
+    assert.equal(r.changed, 1);
+    const rows = await src.query("SELECT total FROM orders WHERE status = ?", ["raw"]);
+    assert.equal(Number((rows[0] as { total: number }).total), 42);
+  });
+});
