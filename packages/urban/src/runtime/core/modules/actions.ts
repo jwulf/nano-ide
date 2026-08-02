@@ -95,9 +95,13 @@ export function mountActions(ctx: RuntimeContext, app: AppApi): ActionsHandle {
       });
       continue;
     }
-    const path = normalizeRoutePath(decl.path, decl.path);
     const method = (decl.method ?? "POST").toUpperCase();
     const prefix = decl.prefix === true;
+    // The router's prefix match is a raw `startsWith`, so a prefix route needs a trailing
+    // slash to stay boundary-safe (otherwise "/hooks" would also match "/hooks2"). Exact
+    // routes keep the normalized (trailing-slash-stripped) path.
+    const base = normalizeRoutePath(decl.path, decl.path);
+    const path = prefix ? `${base}/` : base;
 
     routes.push({
       method,

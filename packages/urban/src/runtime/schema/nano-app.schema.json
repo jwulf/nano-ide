@@ -52,6 +52,11 @@
       "additionalProperties": { "$ref": "#/$defs/connection" }
     },
     "surfaces": { "$ref": "#/$defs/surfaces" },
+    "actions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/action" },
+      "description": "App-authored action handler overrides (ADR 0055 §3): each binds an HTTP route to a handler module that wraps the generic pages start/cancel/message actions with business logic, injected with the app's runtime API."
+    },
     "workers": {
       "type": "array",
       "items": { "$ref": "#/$defs/worker" },
@@ -364,6 +369,33 @@
         "outputType": {
           "$ref": "#/$defs/slug",
           "description": "Declared domain type this worker writes as its result (ADR 0033 §3). A component's `zeebe:taskDefinition:type` binds to this worker via `taskType`; declaring `outputType` types the process variables its output mappings write, so downstream FEEL autocompletes on the result's fields."
+        }
+      }
+    },
+    "action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "module"],
+      "description": "An app-authored action handler override (ADR 0055 §3): binds a route to a handler module (default-exports an ActionHandler). Mounted before the generic pages action routes, so an exact override shadows the generic one.",
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Route path to serve, e.g. '/app/actions/cancel' or '/app/actions/start/convergence-loop'."
+        },
+        "module": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Handler module path relative to the app root; default-exports (or names `handler`) an ActionHandler."
+        },
+        "method": {
+          "type": "string",
+          "minLength": 1,
+          "description": "HTTP method to match. Default 'POST'."
+        },
+        "prefix": {
+          "type": "boolean",
+          "description": "Match `path` as a prefix rather than exactly. Default false."
         }
       }
     },

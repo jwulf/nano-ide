@@ -153,14 +153,17 @@ test("a custom method is honored", async () => {
   assert.equal((await router(req("POST", "/a", { body: "{}" }))).status, 404);
 });
 
-test("prefix routes match by path prefix", async () => {
+test("prefix routes match by path prefix and stay boundary-safe", async () => {
   const { router } = build(
-    [{ path: "/hooks/", prefix: true, module: "m.ts" }],
+    // declared without a trailing slash — the mount adds one so it can't over-match
+    [{ path: "/hooks", prefix: true, module: "m.ts" }],
     { "/app/m.ts": { default: () => ({ body: "hooked" }) } },
   );
-  const res = await router(req("POST", "/hooks/github", { body: "{}" }));
-  assert.equal(res.status, 200);
-  assert.equal(JSON.parse(res.body!), "hooked");
+  const hit = await router(req("POST", "/hooks/github", { body: "{}" }));
+  assert.equal(hit.status, 200);
+  assert.equal(JSON.parse(hit.body!), "hooked");
+  // "/hooks2" must NOT match "/hooks" (raw startsWith would have over-matched)
+  assert.equal((await router(req("POST", "/hooks2", { body: "{}" }))).status, 404);
 });
 
 test("an absolute module path is used as-is (not joined to root)", async () => {
