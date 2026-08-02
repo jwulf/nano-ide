@@ -60,7 +60,8 @@ const IDENT = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export function createPagesRoutes(opts: PagesOptions, deps: PagesDeps): Route[] {
   const pagesDir = opts.pagesDir ?? "pages";
   const homePage = opts.homePage ?? "home";
-  const rowLimit = Math.max(0, Math.floor(Number(opts.rowLimit) || 200));
+  const rowLimitRaw = opts.rowLimit ?? 200;
+  const rowLimit = Number.isFinite(rowLimitRaw) ? Math.max(0, Math.floor(rowLimitRaw)) : 200;
   const sourceName = opts.sourceName ?? "app";
   const { db, engine, readPage } = deps;
 
@@ -189,11 +190,15 @@ export function createPagesRoutes(opts: PagesOptions, deps: PagesDeps): Route[] 
         orderSql = ` ORDER BY ${quoteIdent(field)} ${dir}`;
       }
       const whereSql = clauses.length ? ` WHERE ${clauses.join(" AND ")}` : "";
-      const rows = await db.query(
-        `SELECT * FROM ${quoteIdent(table)}${whereSql}${orderSql} LIMIT ${rowLimit}`,
-        params,
-      );
-      return json({ rows });
+      try {
+        const rows = await db.query(
+          `SELECT * FROM ${quoteIdent(table)}${whereSql}${orderSql} LIMIT ${rowLimit}`,
+          params,
+        );
+        return json({ rows });
+      } catch (e) {
+        return json({ error: String((e as Error)?.message ?? e) }, 500);
+      }
     },
   });
 

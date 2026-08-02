@@ -181,3 +181,44 @@ test("GET /app/data quotes table/column identifiers in the emitted SQL", async (
   assert.match(select, /WHERE "status" = \?/);
   assert.match(select, /ORDER BY "total" DESC/);
 });
+
+test("GET /app/data returns a structured 500 when the SELECT query throws", async () => {
+  const db = fakeDb({
+    query: async (sql: string) => {
+      if (/PRAGMA table_info/i.test(sql)) return [{ name: "id" }, { name: "status" }];
+      throw new Error("disk gone");
+    },
+  });
+  const routes = createPagesRoutes({ pagesDir: "pages", homePage: "home", sourceName: "app" }, {
+    db,
+    engine: fakeEngine().engine,
+    readPage: async () => "{}",
+  });
+  const res = await makeRouter(routes)(req("GET", "/app/data/app/orders"));
+  assert.equal(res.status, 500);
+  assert.match(JSON.parse(res.body ?? "{}").error, /disk gone/);
+});
+
+test("rowLimit respects an explicit 0 and falls back for non-finite values", async () => {
+  const limits: string[] = [];
+  const mkDb = () => fakeDb({
+    query: async (sql: string) => {
+      if (/PRAGMA table_info/i.test(sql)) return [{ name: "id" }];
+      const m = sql.match(/LIMIT (\S+)/);
+      if (m) limits.push(m[1]);
+      return [];
+    },
+  });
+  const run = async (rowLimit: number | undefined) => {
+    const routes = createPagesRoutes({ pagesDir: "p", homePage: "h", sourceName: "app", rowLimit }, {
+      db: mkDb(),
+      engine: fakeEngine().engine,
+      readPage: async () => "{}",
+    });
+    return makeRouter(routes)(req("GET", "/app/data/app/orders"));
+  };
+  await run(0);
+  await run(Infinity);
+  await run(undefined);
+  assert.deepEqual(limits, ["0", "200", "200"]);
+});
