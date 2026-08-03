@@ -122,6 +122,7 @@ test("code-first style scaffolds a defineFlow app (no processes/, custom main.ts
   assert.equal(manifest.name, "Code App");
   // Self-describing: declares the code-first workflow source + where derived models land,
   // so `urban gen`/`urban derive` and standalone (non-console) tooling need no defaults.
+  assert.ok(manifest.models, "code-first declares a models block");
   assert.deepEqual(manifest.models.workflows, ["workflows/*.ts"], "declares the workflow source");
   assert.deepEqual(manifest.models.processes, ["processes/*.bpmn"], "declares the derived model dir");
   assert.equal(manifest.workers, undefined, "code-first hosts workers in main.ts");

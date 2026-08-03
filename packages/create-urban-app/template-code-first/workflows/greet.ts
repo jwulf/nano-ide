@@ -44,8 +44,9 @@ function greetings(): Table<Greeting> {
 }
 
 /**
- * A one-step flow: `greet` writes a greeting row and completes with `{ message }`.
- * Start an instance with `WorkflowClient.start(greet, { who })` (see scripts/greet.ts).
+ * The `greet` flow, with a single `hello` step that writes a greeting row and
+ * completes with `{ message }`. Start an instance with
+ * `WorkflowClient.start(greet, { who })` (see scripts/greet.ts).
  */
 export const greet = defineFlow(
   "greet",
