@@ -74,13 +74,22 @@ function requiredEnv(spec: PackWorkerSpec): string[] {
   return [...seen];
 }
 
-/** Read + parse a JSON file under the app root; undefined if absent/malformed. */
-async function readJson<T>(ctx: RuntimeContext, relPath: string): Promise<T | undefined> {
+/** Read + parse a JSON file under the app root; undefined if absent. In `strict`
+ *  mode a malformed file throws a named parse error (used for the app's own files);
+ *  otherwise a malformed file is treated as absent (used for third-party packs). */
+async function readJson<T>(
+  ctx: RuntimeContext,
+  relPath: string,
+  opts?: { strict?: boolean },
+): Promise<T | undefined> {
   const path = joinRoot(ctx.root, relPath);
   if (!(await ctx.host.exists(path))) return undefined;
   try {
     return JSON.parse(await ctx.host.readTextFile(path)) as T;
-  } catch {
+  } catch (err) {
+    if (opts?.strict) {
+      throw new Error(`failed to parse ${relPath}: ${(err as Error).message}`);
+    }
     return undefined;
   }
 }
@@ -99,7 +108,7 @@ export async function resolveInstalledConnectors(
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
     optionalDependencies?: Record<string, string>;
-  }>(ctx, "package.json");
+  }>(ctx, "package.json", { strict: true });
   if (!pkg) return out;
   const names = new Set<string>([
     ...Object.keys(pkg.dependencies ?? {}),
@@ -211,7 +220,18 @@ export async function mountConnectors(ctx: RuntimeContext, app: AppApi): Promise
     let drained = drainedByEntry.get(entryAbs);
     if (!drained) {
       await ctx.host.importConnectorModule(entryAbs);
-      drained = new Map(drainDefinedWorkers().map((w) => [w.type, w]));
+      // Fail closed on a duplicate worker `type` within one pack entry: silently
+      // keeping the last registration would bind an arbitrary handler.
+      drained = new Map<string, ReturnType<typeof drainDefinedWorkers>[number]>();
+      for (const w of drainDefinedWorkers()) {
+        if (drained.has(w.type)) {
+          throw new Error(
+            `connector pack "${packId}" entry "${spec.entry}" registered the worker ` +
+              `type "${w.type}" more than once (duplicate defineWorker call).`,
+          );
+        }
+        drained.set(w.type, w);
+      }
       drainedByEntry.set(entryAbs, drained);
     }
     const worker = drained.get(jobType);

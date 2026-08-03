@@ -157,12 +157,32 @@ export async function addConnector(opts: AddConnectorOptions): Promise<AddConnec
   if (envFields.length > 0) {
     connection = connectionNameFor(pack.id);
     const connections = (app.connections ??= {});
-    if (!connections[connection]) {
+    const existing = connections[connection];
+    if (existing === undefined) {
       const conn: Record<string, unknown> = { type: pack.id };
       for (const f of envFields) {
         if (!(f.key in conn) && f.env) conn[f.key] = `\${${f.env}}`;
       }
       connections[connection] = conn;
+    } else {
+      // A pre-existing connection of this name must be a compatible object of the
+      // same pack `type`; otherwise wiring workers to it would produce an invalid
+      // or misleading manifest. Fail loudly instead of silently reusing it.
+      if (existing === null || typeof existing !== "object" || Array.isArray(existing)) {
+        throw new Error(`connection "${connection}" already exists and is not an object.`);
+      }
+      const conn = existing as Record<string, unknown>;
+      if (conn.type !== undefined && conn.type !== pack.id) {
+        throw new Error(
+          `connection "${connection}" already exists with type "${String(conn.type)}", ` +
+            `not "${pack.id}".`,
+        );
+      }
+      // Backfill the pack's `type` and any missing env-pointer templates.
+      if (conn.type === undefined) conn.type = pack.id;
+      for (const f of envFields) {
+        if (!(f.key in conn) && f.env) conn[f.key] = `\${${f.env}}`;
+      }
     }
   }
 

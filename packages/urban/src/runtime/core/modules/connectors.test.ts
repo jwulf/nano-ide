@@ -160,6 +160,32 @@ test("mountConnectors reports unsupported when the host cannot host connectors",
   assert.ok(logs.some((l) => l.msg === "skipping connector worker: host cannot host connector packs"));
 });
 
+test("resolveInstalledConnectors surfaces a malformed app package.json", async () => {
+  const { ctx } = makeCtx({}, new MiniEngine(), {
+    files: { "/app/package.json": "{ not json" },
+  });
+  await assert.rejects(() => resolveInstalledConnectors(ctx), /failed to parse package\.json/);
+});
+
+test("mountConnectors fails closed on a duplicate worker type in one pack entry", async () => {
+  const engine = new MiniEngine();
+  const { ctx } = makeCtx(
+    { workers: [{ taskType: "slack:send-message", connector: PACK_ID }] },
+    engine,
+    {
+      files: slackFiles(),
+      onImport: () => {
+        defineWorker({ type: "slack:send-message", async handle(job) { await job.complete({}); } });
+        defineWorker({ type: "slack:send-message", async handle(job) { await job.complete({}); } });
+      },
+    },
+  );
+  await assert.rejects(
+    () => mountConnectors(ctx, makeApp({ SLACK_BOT_TOKEN: "x" })),
+    /more than once/,
+  );
+});
+
 test("adaptConnectorHandler maps complete/fail/error(BpmnError) and a returned value", async () => {
   const job: EngineJob = { jobKey: "j", jobType: "t", variables: {} };
 

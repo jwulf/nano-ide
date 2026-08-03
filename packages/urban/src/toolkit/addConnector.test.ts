@@ -110,6 +110,40 @@ test("addConnector rejects a manifest whose connections is not an object", async
   await assert.rejects(() => addConnector({ root: "app", pkg: PKG, io }), /"connections" must be an object/);
 });
 
+test("addConnector rejects an existing connection of a different type", async () => {
+  const io = memIO(
+    baseFiles({
+      schemaVersion: 1,
+      id: "t",
+      name: "T",
+      connections: { [PACK_ID]: { type: "other" } },
+    }),
+  );
+  await assert.rejects(
+    () => addConnector({ root: "app", pkg: PKG, io }),
+    /already exists with type "other"/,
+  );
+});
+
+test("addConnector rejects an existing connection that is not an object", async () => {
+  const io = memIO(
+    baseFiles({ schemaVersion: 1, id: "t", name: "T", connections: { [PACK_ID]: "nope" } }),
+  );
+  await assert.rejects(
+    () => addConnector({ root: "app", pkg: PKG, io }),
+    /already exists and is not an object/,
+  );
+});
+
+test("addConnector backfills missing env pointers on a matching existing connection", async () => {
+  const io = memIO(
+    baseFiles({ schemaVersion: 1, id: "t", name: "T", connections: { [PACK_ID]: { type: PACK_ID } } }),
+  );
+  await addConnector({ root: "app", pkg: PKG, io });
+  const app = JSON.parse(io.files["app/nano.app.json"]);
+  assert.deepEqual(app.connections[PACK_ID], { type: PACK_ID, botToken: "${SLACK_BOT_TOKEN}" });
+});
+
 test("addConnector omits a connection when the pack needs no env credentials", async () => {
   const io = memIO({
     "app/nano.app.json": JSON.stringify({ schemaVersion: 1, id: "t", name: "T" }),
