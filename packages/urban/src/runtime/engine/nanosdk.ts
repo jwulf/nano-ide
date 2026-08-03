@@ -17,6 +17,7 @@ import type {
   JobHandler,
   WorkerSubscription,
 } from "../core/host.ts";
+import { isBpmnError } from "../core/host.ts";
 import type { EngineSdkClient } from "./sdk.ts";
 
 /** Coerce an engine response's process-instance key to a non-empty string, or
@@ -38,6 +39,10 @@ export interface NanoSdkActivatedJob {
   variables?: Record<string, unknown>;
   complete(variables?: Record<string, unknown>): Promise<unknown>;
   fail(body: { errorMessage: string; retries?: number }): Promise<unknown>;
+  /** Raise a BPMN error (Zeebe `ThrowError`) routed to an error boundary/event.
+   *  Present on the nano-sdk enriched job at runtime; typed here so the adapter
+   *  can honour a handler's {@link BpmnError} (ADR 0050). */
+  error?(e: { errorCode: string; errorMessage?: string }): Promise<unknown>;
 }
 
 /** Config for a nano-sdk job worker (the subset this adapter sets). */
@@ -233,6 +238,24 @@ export class SdkEngineClient implements EngineClient {
           const out = await handler(engineJob);
           return await job.complete((out as Record<string, unknown> | undefined) ?? {});
         } catch (err) {
+          // A handler-raised BPMN error is a modelled, non-retryable outcome:
+          // report it as a BPMN error (routed to an error boundary/event) rather
+          // than a plain failure. Falls back to `fail` when the transport does not
+          // expose `error` (older SDK) so the job is still acknowledged.
+          if (isBpmnError(err) && typeof job.error === "function") {
+            const message = err.message ?? err.errorCode;
+            this.log("info", `handler ${jobType} raised BPMN error`, {
+              errorCode: err.errorCode,
+            });
+            try {
+              return await job.error({
+                errorCode: err.errorCode,
+                errorMessage: message.slice(0, 500),
+              });
+            } catch {
+              return undefined;
+            }
+          }
           const message = err instanceof Error ? err.message : String(err);
           this.log("error", `handler ${jobType} threw`, { err: message });
           try {

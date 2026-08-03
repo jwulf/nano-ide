@@ -2,10 +2,12 @@
 // (with deno.ts) allowed to touch a concrete runtime.
 
 import { readFile, readdir, stat } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { watch as fsWatch, type FSWatcher } from "node:fs";
 import { createServer } from "node:http";
+import { register } from "node:module";
 import { isAbsolute, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import type {
   HostContext,
@@ -26,6 +28,53 @@ export interface NodeHostOptions {
    * dev server bumps this on every reload; production leaves it unset.
    */
   importNonce?: string;
+}
+
+/** Resolve the in-process `@nanobpm/worker` shim URL relative to this adapter,
+ *  tolerating both the compiled package (`.js`, the published/`urban run` path)
+ *  and a from-source run (`.ts`). */
+function connectorShimUrl(): string {
+  const js = new URL("../connector-worker-sdk.js", import.meta.url);
+  if (existsSync(fileURLToPath(js))) return js.href;
+  return new URL("../connector-worker-sdk.ts", import.meta.url).href;
+}
+
+let connectorHooksRegistered = false;
+
+/**
+ * Register (once per process) the ESM customization hooks that let a connector
+ * pack's worker `entry` be imported in-process (ADR 0050, in-process port):
+ *   - a **resolve** hook aliasing the bare `@nanobpm/worker` specifier the pack
+ *     imports to the runtime's shim, so its `defineWorker(...)` registers into the
+ *     registry the runtime drains;
+ *   - a **load** hook that strips TypeScript from a pack's `.ts` entry under
+ *     `node_modules` (Node refuses to type-strip there by default), supplying the
+ *     transpiled source directly while keeping the module's real URL so its own
+ *     bare imports (npm deps) still resolve.
+ * The hooks run on a separate thread, so the shim URL is baked into the hook
+ * source; the shim itself loads on the main thread (shared registry instance).
+ */
+function ensureConnectorHooks(): void {
+  if (connectorHooksRegistered) return;
+  const shim = JSON.stringify(connectorShimUrl());
+  const src =
+    `import { readFileSync } from "node:fs";\n` +
+    `import { fileURLToPath } from "node:url";\n` +
+    `import { stripTypeScriptTypes } from "node:module";\n` +
+    `const SHIM = ${shim};\n` +
+    `export async function resolve(spec, ctx, next) {\n` +
+    `  if (spec === "@nanobpm/worker") return { url: SHIM, shortCircuit: true };\n` +
+    `  return next(spec, ctx);\n` +
+    `}\n` +
+    `export async function load(url, ctx, next) {\n` +
+    `  if (url.endsWith(".ts") && url.includes("/node_modules/")) {\n` +
+    `    const source = stripTypeScriptTypes(readFileSync(fileURLToPath(url), "utf8"), { mode: "strip" });\n` +
+    `    return { format: "module", source, shortCircuit: true };\n` +
+    `  }\n` +
+    `  return next(url, ctx);\n` +
+    `}\n`;
+  register("data:text/javascript," + encodeURIComponent(src));
+  connectorHooksRegistered = true;
 }
 
 export function createNodeHost(opts: NodeHostOptions = {}): HostContext {
@@ -68,6 +117,12 @@ export function createNodeHost(opts: NodeHostOptions = {}): HostContext {
       const href =
         pathToFileURL(abs(p)).href + (opts.importNonce ? `?v=${opts.importNonce}` : "");
       return import(href) as Promise<Record<string, unknown>>;
+    },
+    async importConnectorModule(entry) {
+      ensureConnectorHooks();
+      // Import for side effects only: the pack's top-level `defineWorker(...)` runs
+      // and registers into the shim registry, which the caller drains.
+      await import(pathToFileURL(abs(entry)).href);
     },
     async serveHttp(port, handler) {
       return await startNodeServer(port, handler);

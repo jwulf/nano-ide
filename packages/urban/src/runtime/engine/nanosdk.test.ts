@@ -9,6 +9,7 @@ import {
   type NanoSdkJobWorker,
   type NanoSdkJobWorkerConfig,
 } from "./nanosdk.ts";
+import { BpmnError } from "../core/host.ts";
 
 /** A fake nano-sdk client that records calls and lets a test drive its job worker. */
 function fakeSdkClient(overrides: Partial<NanoSdkClient> = {}): NanoSdkClient & {
@@ -264,6 +265,55 @@ test("registerWorker fails the job when the handler throws", async () => {
   } as unknown as NanoSdkActivatedJob);
   assert.equal(failBody?.errorMessage, "boom");
   assert.equal(failBody?.retries, 0);
+});
+
+test("registerWorker routes a thrown BpmnError to the engine's error()", async () => {
+  const client = fakeSdkClient();
+  const engine = new SdkEngineClient(client);
+  await engine.registerWorker("svc", () => {
+    throw new BpmnError("NOT_FOUND", "no such record");
+  });
+  const rec = client.workers[0];
+  let errorBody: { errorCode: string; errorMessage?: string } | undefined;
+  await rec.dispatch({
+    jobKey: "j1",
+    variables: {},
+    async complete() {
+      throw new Error("should not complete");
+    },
+    async fail() {
+      throw new Error("should not fail — a BPMN error is not a job failure");
+    },
+    async error(body: { errorCode: string; errorMessage?: string }) {
+      errorBody = body;
+      return "raised";
+    },
+  } as unknown as NanoSdkActivatedJob);
+  assert.equal(errorBody?.errorCode, "NOT_FOUND");
+  assert.equal(errorBody?.errorMessage, "no such record");
+});
+
+test("registerWorker falls back to fail() for a BpmnError when the SDK has no error()", async () => {
+  const client = fakeSdkClient();
+  const engine = new SdkEngineClient(client);
+  await engine.registerWorker("svc", () => {
+    throw new BpmnError("NOT_FOUND", "no such record");
+  });
+  const rec = client.workers[0];
+  let failBody: { errorMessage: string } | undefined;
+  await rec.dispatch({
+    jobKey: "j1",
+    variables: {},
+    async complete() {
+      throw new Error("should not complete");
+    },
+    async fail(body: { errorMessage: string }) {
+      failBody = body;
+      return "failed";
+    },
+    // no error() — older transport
+  } as unknown as NanoSdkActivatedJob);
+  assert.equal(failBody?.errorMessage, "no such record");
 });
 
 test("close stops every worker and closes the SDK client", async () => {
