@@ -50,18 +50,20 @@ function fixture(): Record<string, string> {
   };
 }
 
-test("runGen writes migrations, the worker index, and the meta accessor", async () => {
+test("runGen writes migrations, the worker index, the meta accessor, and the message map", async () => {
   const io = memIO(fixture());
   const res = await runGen({ root: "/app", io });
   const paths = res.artifacts.map((a) => a.path).sort();
   assert.deepEqual(paths, [
     "nano-generated/app.schema.sql",
+    "nano-generated/message-io.d.ts",
     "nano-generated/meta.ts",
     "nano-generated/worker-io.d.ts",
   ]);
   assert.ok(io.files["/app/nano-generated/app.schema.sql"].includes("CREATE TABLE"));
   assert.ok(io.files["/app/nano-generated/worker-io.d.ts"].includes("demo.do"));
   assert.ok(io.files["/app/nano-generated/meta.ts"].includes("export function meta"));
+  assert.ok(io.files["/app/nano-generated/message-io.d.ts"].includes("export type MessageName"));
 });
 
 test("gen --check reports no drift right after a write", async () => {

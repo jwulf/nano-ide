@@ -4,8 +4,18 @@ import {
   deriveWorkerBindings,
   emitWorkerBindings,
   scanModelWorkers,
+  byModelPath,
   type WorkerIo,
 } from "./worker-io.ts";
+
+test("byModelPath is a spec-compliant comparator: returns 0 for equal paths", () => {
+  assert.equal(byModelPath({ path: "a" }, { path: "a" }), 0);
+  assert.equal(byModelPath({ path: "a" }, { path: "b" }), -1);
+  assert.equal(byModelPath({ path: "b" }, { path: "a" }), 1);
+  // Antisymmetry (the property the old `? -1 : 1` form violated for equal paths).
+  const eq = [{ path: "x" }, { path: "x" }];
+  assert.equal(byModelPath(eq[0], eq[1]) + byModelPath(eq[1], eq[0]), 0);
+});
 
 const XML = `<?xml version="1.0"?>
 <bpmn:definitions xmlns:bpmn="http://www.omg.org/spec/BPMN/20100524/MODEL"

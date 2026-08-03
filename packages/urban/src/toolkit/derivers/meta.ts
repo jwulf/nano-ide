@@ -6,7 +6,7 @@
 
 import type { DerivedArtifact, Deriver } from "../artifact.ts";
 import { GENERATED_DIR } from "../artifact.ts";
-import type { ModelSource } from "./worker-io.ts";
+import { byModelPath, type ModelSource } from "./worker-io.ts";
 
 /** Basename the console uses for the generated accessor; kept identical (drop-in). */
 export const META_TS = "meta.ts";
@@ -115,7 +115,7 @@ export function emitMeta(metas: MetaDecl[]): string {
  */
 export function deriveMeta(models: ModelSource[]): DerivedArtifact[] {
   const metas: MetaDecl[] = [];
-  for (const model of [...models].sort((a, b) => (a.path < b.path ? -1 : 1))) {
+  for (const model of [...models].sort(byModelPath)) {
     metas.push(...scanModelMeta(model.xml));
   }
   return [{ path: `${GENERATED_DIR}/${META_TS}`, content: emitMeta(metas) }];

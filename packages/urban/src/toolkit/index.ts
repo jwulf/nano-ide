@@ -25,6 +25,7 @@ export {
   DOMAIN_DTS,
 } from "./derivers/worker-io.ts";
 export type { ModelSource, WorkerIo, WorkerBindingDecl } from "./derivers/worker-io.ts";
+export { byModelPath, typeRefFor } from "./derivers/worker-io.ts";
 
 export {
   deriveMeta,
@@ -36,11 +37,21 @@ export {
 } from "./derivers/meta.ts";
 export type { MetaDecl } from "./derivers/meta.ts";
 
+export {
+  deriveMessageBindings,
+  emitMessageBindings,
+  messagesDeriver,
+  scanModelMessages,
+  MESSAGE_BINDINGS_DTS,
+} from "./derivers/messages.ts";
+export type { MessageIo, MessageBindingDecl } from "./derivers/messages.ts";
+
 // The registry of all derivers (for discovery / IDE migration).
 import { migrationsDeriver } from "./derivers/migrations.ts";
 import { workerIoDeriver } from "./derivers/worker-io.ts";
 import { metaDeriver } from "./derivers/meta.ts";
-export const DERIVERS = [migrationsDeriver, workerIoDeriver, metaDeriver] as const;
+import { messagesDeriver } from "./derivers/messages.ts";
+export const DERIVERS = [migrationsDeriver, workerIoDeriver, metaDeriver, messagesDeriver] as const;
 
 // Gen orchestrator + IO
 export { collectArtifacts, runGen, joinPath, readModels } from "./gen.ts";
