@@ -26,10 +26,21 @@ export {
 } from "./derivers/worker-io.ts";
 export type { ModelSource, WorkerIo, WorkerBindingDecl } from "./derivers/worker-io.ts";
 
+export {
+  deriveMeta,
+  emitMeta,
+  foldMeta,
+  metaDeriver,
+  scanModelMeta,
+  META_TS,
+} from "./derivers/meta.ts";
+export type { MetaDecl } from "./derivers/meta.ts";
+
 // The registry of all derivers (for discovery / IDE migration).
 import { migrationsDeriver } from "./derivers/migrations.ts";
 import { workerIoDeriver } from "./derivers/worker-io.ts";
-export const DERIVERS = [migrationsDeriver, workerIoDeriver] as const;
+import { metaDeriver } from "./derivers/meta.ts";
+export const DERIVERS = [migrationsDeriver, workerIoDeriver, metaDeriver] as const;
 
 // Gen orchestrator + IO
 export { collectArtifacts, runGen, joinPath, readModels } from "./gen.ts";
