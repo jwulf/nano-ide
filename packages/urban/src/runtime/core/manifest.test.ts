@@ -24,8 +24,7 @@ test("parseManifest expands env in place", () => {
   assert.equal(m.name, "App");
 });
 
-test("workerJobType prefers taskType then type", () => {
+test("workerJobType returns the taskType", () => {
   assert.equal(workerJobType({ taskType: "a", handler: "h" }), "a");
-  assert.equal(workerJobType({ type: "b", handler: "h" }), "b");
-  assert.equal(workerJobType({ handler: "h" }), undefined);
+  assert.equal(workerJobType({ taskType: "llm-job", llm: "gpt" }), "llm-job");
 });

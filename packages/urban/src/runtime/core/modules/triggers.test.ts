@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AppApi, RuntimeContext } from "../context.ts";
 import type { HttpRequest } from "../host.ts";
-import type { TriggerDecl } from "../manifest.ts";
+import type { Trigger } from "../manifest.ts";
 import { makeRouter } from "../router.ts";
 import { evalCorrelation, mountTriggers, runTriggerAction, type SchedulerDeps } from "./triggers.ts";
 
@@ -33,7 +33,7 @@ function fakeApp(): { app: AppApi; calls: EngineCall[]; logs: Array<{ level: str
   return { app, calls, logs };
 }
 
-function fakeCtx(triggers: TriggerDecl[]): { ctx: RuntimeContext; hostLogs: Array<{ level: string; msg: string }> } {
+function fakeCtx(triggers: Trigger[]): { ctx: RuntimeContext; hostLogs: Array<{ level: string; msg: string }> } {
   const hostLogs: Array<{ level: string; msg: string }> = [];
   const ctx = {
     root: "/app",
@@ -113,6 +113,8 @@ test("evalCorrelation returns undefined for a non-scalar result", () => {
 
 test("runTriggerAction starts a process with action.variables", async () => {
   const { app, calls } = fakeApp();
+  // The manifest surface types `variables` as a FEEL string; the runtime helper
+  // (runTriggerAction/resolveActionVariables) also accepts an inline object literal.
   const res = await runTriggerAction(app, { start: "proc-1", variables: { a: 1 } }, {
     body: { ignored: true },
     headers: {},
@@ -207,7 +209,7 @@ test("cron trigger with an invalid spec logs an error and does not schedule", ()
 
 test("cron trigger with no actionable action is not scheduled", () => {
   const { app, logs } = fakeApp();
-  const { ctx } = fakeCtx([{ id: "noop", type: "cron", spec: "0 6 * * *" }]);
+  const { ctx } = fakeCtx([{ id: "noop", type: "cron", spec: "0 6 * * *", action: {} }]);
   const sched = fakeScheduler(0);
   const handle = mountTriggers(ctx, app, sched);
   assert.equal(sched.pending(), 0);

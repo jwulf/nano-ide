@@ -19,13 +19,16 @@ export {
 export type {
   ActionDecl,
   AppManifest,
+  ChatSurface,
   DataSource,
+  DomainField,
   DomainType,
   LlmBinding,
-  SurfaceDecl,
-  TriggerDecl,
-  TypeField,
-  WorkerDecl,
+  PagesSurface,
+  Surfaces,
+  TaskInboxSurface,
+  Trigger,
+  Worker,
 } from "./core/manifest.ts";
 
 // Validation

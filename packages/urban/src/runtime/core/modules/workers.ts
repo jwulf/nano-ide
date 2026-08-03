@@ -4,7 +4,7 @@
 
 import type { AppApi, Mounted, RuntimeContext } from "../context.ts";
 import type { EngineJob, JobHandler, WorkerSubscription } from "../host.ts";
-import { workerJobType, type WorkerDecl } from "../manifest.ts";
+import { workerJobType, type Worker } from "../manifest.ts";
 import { type DecisionEvaluator, type LlmRuntime, runLlmJob } from "./llm.ts";
 
 /** The subset of the engine SDK the LLM decision-rails need: evaluate a DMN decision,
@@ -106,7 +106,7 @@ export async function mountWorkers(ctx: RuntimeContext, app: AppApi): Promise<Wo
     return mod;
   };
 
-  for (const decl of decls as WorkerDecl[]) {
+  for (const decl of decls as Worker[]) {
     const jobType = workerJobType(decl);
     if (!jobType) continue;
     if (!decl.handler) {

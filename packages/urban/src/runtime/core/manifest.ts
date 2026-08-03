@@ -1,139 +1,40 @@
-// Manifest types (a hand-mirrored subset of nano-app.schema.json — the block shapes the
-// runtime actually consumes) plus env-placeholder expansion and a host-driven loader.
-// The schema itself (src/schema/nano-app.schema.json) remains the source of truth for
-// validation; see validate.ts.
+// Manifest types + env-placeholder expansion + a host-driven loader.
+//
+// The App manifest contract (nano.app.json) is owned by the canonical
+// @nanobpm/nano-app-schema package (ADR 0027): the JSON Schema and its generated
+// TypeScript types are the single source of truth. This module re-exports those
+// types (type-only, so nothing from the package is pulled into the runtime
+// bundle) and adds the runtime-side helpers the App loader needs. No shape is
+// hand-mirrored here — that eliminated the schema/type drift the vendored copies
+// used to cause.
 
 import type { HostContext } from "./host.ts";
+import type { AppManifest, Worker } from "@nanobpm/nano-app-schema";
 
-export interface DataSource {
-  driver: string;
-  url: string;
-  migrations?: string;
-}
+export type {
+  ActionDecl,
+  AppManifest,
+  ChatSurface,
+  Connection,
+  Data,
+  DataSource,
+  DomainField,
+  DomainType,
+  LlmBinding,
+  Models,
+  PagesSurface,
+  Runtime,
+  Security,
+  Surfaces,
+  TaskInboxSurface,
+  Trigger,
+  TriggerAction,
+  Worker,
+} from "@nanobpm/nano-app-schema";
 
-export interface TypeField {
-  type: string;
-  optional?: boolean;
-}
-
-export interface DomainType {
-  name?: string;
-  table?: string;
-  fields?: Record<string, TypeField>;
-}
-
-export interface WorkerDecl {
-  /** Job/task type the worker subscribes to. Schema allows `taskType` or `type`. */
-  taskType?: string;
-  type?: string;
-  /** Path to the handler module, relative to the app root. Mutually exclusive with `llm`. */
-  handler?: string;
-  /** Name of an `llm[]` binding used as the worker (LLM-as-worker). Mutually exclusive with `handler`. */
-  llm?: string;
-}
-
-/**
- * One named LLM binding (`llm.<id>` in the manifest). A binding is usable as a worker
- * (LLM-as-worker, ADR 0022 §E role 1) or as a chat surface agent. `provider` selects how
- * the endpoint is resolved (`"env"` reads it from the environment); `model` is typically
- * an env template. When `output.decision` is set, the model's JSON reply is fed through
- * that DMN decision (the "rails") and the decision's output is returned instead.
- */
-export interface LlmBinding {
-  /** Provider selector. `"env"` resolves an OpenAI-compatible endpoint from the environment. */
-  provider: string;
-  /** Model id, typically an env template (e.g. `${NANO_APP_LLM_MODEL}`). */
-  model: string;
-  /** Constrains the model's structured output — currently a DMN decision id (the rails). */
-  output?: { decision?: string };
-  /** Action-API tools the agent may call (chat-agent role; unused by the worker role). */
-  tools?: string[];
-}
-
-export interface TriggerDecl {
-  id: string;
-  type: string;
-  path?: string;
-  auth?: string;
-  /** cron: the 5-field crontab spec (UTC), e.g. "0 6 * * *". */
-  spec?: string;
-  /** cron catch-up policy for fires missed while the app was down. Default "skip". */
-  onMissed?: "skip" | "once" | "all";
-  /** Source-kind-specific settings (e.g. file `{ pollMs }`). */
-  config?: Record<string, unknown>;
-  /** Name of a connections[] entry supplying this source's credentials. */
-  connection?: string;
-  /** Maps the event to one engine call: start a process OR publish a message (ADR 0025 §1). */
-  action?: {
-    /** Process id/name to start. */
-    start?: string;
-    /** messageName to publish as a CorrelateMessage. */
-    message?: string;
-    /** correlationKey (literal, or `= body.path`) for a message action. */
-    correlationKey?: string;
-    /**
-     * Variables for the started instance / published message. Per the manifest schema
-     * (`#/$defs/triggerAction.variables`) this is a FEEL string over the event body
-     * (e.g. `= body.payload`); an inline object literal is also accepted for convenience.
-     */
-    variables?: string | Record<string, unknown>;
-  };
-}
-
-export interface SurfaceDecl {
-  enabled?: boolean;
-  path?: string;
-  agent?: string;
-  /** pages surface: directory of `*.page.json` (relative to app root). Default `pages`. */
-  pagesDir?: string;
-  /** pages surface: the page served at `/`. Default `home`. */
-  homePage?: string;
-  /** pages surface: max rows a `dataGrid` fetch returns. Default 200. */
-  rowLimit?: number;
-  /** pages surface: the injected default datasource name. Default `app`. */
-  sourceName?: string;
-}
-
-/**
- * An app-authored action handler override (ADR 0055 phase 3). Each declaration binds a
- * route to a handler module (default-exports an `ActionHandler`), letting an app wrap the
- * generic pages start/cancel/message actions with business logic. Mounted before the
- * generic pages action routes, so an exact override shadows the generic one.
- */
-export interface ActionDecl {
-  /** Route path to serve, e.g. "/app/actions/cancel" or "/app/actions/start/convergence-loop". */
-  path: string;
-  /** Handler module path relative to the app root; default-exports an `ActionHandler`. */
-  module: string;
-  /** HTTP method to match. Default "POST". */
-  method?: string;
-  /** Match `path` as a prefix rather than exactly. Default false. */
-  prefix?: boolean;
-}
-
-export interface AppManifest {
-  $schema?: string;
-  schemaVersion: 1;
-  id: string;
-  name: string;
-  codename?: string;
-  runtime?: { engine?: string; node?: string };
-  models?: { processes?: string[]; decisions?: string[]; forms?: string[] };
-  data?: { default?: string; sources?: Record<string, DataSource> };
-  types?: Record<string, DomainType>;
-  triggers?: TriggerDecl[];
-  connections?: Record<string, { type: string; [k: string]: unknown }>;
-  surfaces?: Record<string, SurfaceDecl>;
-  actions?: ActionDecl[];
-  workers?: WorkerDecl[];
-  llm?: Record<string, LlmBinding>;
-  security?: Record<string, unknown>;
-  [k: string]: unknown;
-}
-
-/** The normalised job type for a worker declaration (`taskType` preferred, `type` fallback). */
-export function workerJobType(w: WorkerDecl): string | undefined {
-  return w.taskType ?? w.type;
+/** The job type a worker subscribes to (schema key: `taskType`). */
+export function workerJobType(w: Worker): string | undefined {
+  return w.taskType;
 }
 
 const ENV_RE = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g;

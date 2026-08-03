@@ -1,6 +1,6 @@
 {
   "name": "@nanobpm/urban",
-  "version": "0.16.1",
+  "version": "0.17.0",
   "description": "Urban: build and run code-first apps on Nano — runtime, derivation toolkit, and CLI in one. Author durable processes with @nanobpm/workflow (defineFlow), a typed datasource, forms, triggers and surfaces from a nano.app.json manifest, on Node or Deno.",
   "license": "Apache-2.0",
   "type": "module",
@@ -55,13 +55,14 @@
     "README.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node -e \"const fs=require('fs');fs.mkdirSync('dist/runtime/schema',{recursive:true});fs.copyFileSync('src/runtime/schema/nano-app.schema.json','dist/runtime/schema/nano-app.schema.json')\"",
+    "build": "tsc -p tsconfig.build.json",
     "prepack": "npm run build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
     "test:deno": "deno test -A --no-check src/"
   },
   "dependencies": {
+    "@nanobpm/nano-app-schema": "^0.1.0",
     "@nanobpm/nano-sdk": "^1.2.3",
     "@nanobpm/workflow": "^0.7.0",
     "bpmn-auto-layout": "^2.0.0-alpha.2",

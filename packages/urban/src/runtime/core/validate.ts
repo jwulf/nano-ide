@@ -1,13 +1,14 @@
-// Manifest validation. We deliberately avoid a heavyweight JSON-Schema engine here to
-// keep core dependency-free and runtime-agnostic. Instead we drive validation *from* the
-// vendored nano-app.schema.json (the ADR 0027 source of truth) for the top-level envelope
-// — required keys, allowed keys (additionalProperties:false), the schemaVersion const, and
-// the id slug pattern — and then layer the runtime's binding rules (a worker needs a
-// handler, a data source needs driver+url, a typed table needs fields, a trigger needs
-// id+type). Reading the schema means the envelope check tracks the schema and can't drift
-// from it silently.
+// Manifest validation. We deliberately avoid a heavyweight JSON-Schema engine here to keep
+// core lean and runtime-agnostic. Instead we drive validation *from* the canonical
+// nano-app.schema.json (the ADR 0027 source of truth, imported from the
+// @nanobpm/nano-app-schema package) for the top-level envelope — required keys, allowed keys
+// (additionalProperties:false), the schemaVersion const, and the id slug pattern — and then
+// layer the runtime's binding rules (a worker needs a handler, a data source needs
+// driver+url, a typed table needs fields, a trigger needs id+type). Importing the shared
+// schema JSON means the envelope check tracks the published schema and can't drift from it
+// silently — the whole point of consuming the package rather than vendoring a copy.
 
-import schema from "../schema/nano-app.schema.json" with { type: "json" };
+import schema from "@nanobpm/nano-app-schema/schema" with { type: "json" };
 import { workerJobType, type AppManifest } from "./manifest.ts";
 
 export interface ValidationIssue {
@@ -73,7 +74,7 @@ export function collectManifestIssues(m: unknown): ValidationIssue[] {
   if (Array.isArray(man.workers)) {
     man.workers.forEach((w, i) => {
       if (!workerJobType(w)) {
-        issues.push({ path: `workers[${i}]`, message: "missing taskType/type" });
+        issues.push({ path: `workers[${i}]`, message: "missing taskType" });
       }
       // The schema allows a worker backed by either a `handler` file or an `llm`
       // binding (oneOf). Require exactly one — don't force `handler`.
