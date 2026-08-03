@@ -10,8 +10,9 @@ ADR 0027 (nano-bpm; `nano.app.json` manifest spec), ADR 0056 (worker stubs are
 scaffolded, not derived); nano-ide **#520** (the first-class *New Urban App* pack,
 delivered) and its follow-up **#539** (this issue); nano-bpm epic **#514** (dry out the
 Nano host over `@nanobpm/urban`).
-Repo: jwulf/nano-ide (packs, `packages/urban`) + the nano-bpm host
-(`server/src/console/{extensions,projects}.rs`).
+Repo: jwulf/nano-ide (packs, `packages/urban`) + the nano-bpm host repo **nanobpmn**
+(all bare `projects.rs` / `extensions.rs` / `node_loader.mjs` file:line citations below
+refer to `server/src/console/{extensions,projects}.rs` in that host repo, not to nano-ide).
 
 ## Context
 
@@ -38,7 +39,7 @@ artifacts + handler files*, run by `runFromEnv`. Concretely the app's own source
 | **Human-owned handlers** | `workers/<slug>/worker.ts` (ADR 0056: scaffolded write-once, then human-owned) | ✅ authored |
 | **Runtime engines** | `@nanobpm/urban` (data / pages / llm / triggers / workers) | ❌ **npm dependency** — materialised by `npm install`, never copied |
 | **Derived typed wrappers** | `nano-generated/*` (worker-io, domain-rows, message-io) | ❌ **derived** — gitignored, reconstituted by `urban gen` (ADR 0053/0055) |
-| **Third-party worker deps** | packages a `workers/*.ts` handler imports (`octokit`, `zod`, native SDKs…) | ⚠️ **declared, not vendored** — named in the app's `package.json` / `deno.json` import map; materialised by `npm install` at the project root (§6) |
+| **Third-party worker deps** | packages a `workers/<slug>/worker.ts` handler imports (`octokit`, `zod`, native SDKs…) | ⚠️ **declared, not vendored** — named in the app's `package.json` / `deno.json` import map; materialised by `npm install` at the project root (§6) |
 
 So the "bundle" is **only the authored artifacts** — including the **dependency
 manifest** (`package.json`/`deno.json`), but never `node_modules`. It is already small:
@@ -85,12 +86,14 @@ artifacts feed the same pure derivers (ADR 0053).
 
 `nano-generated/*` and `node_modules/` **MUST NOT** ship in an app-pack: the first is
 derived (`urban gen`), the second is npm-managed. Enforce with the pack `files` allowlist
-**and** a `scripts/validate-manifests.mjs` rule that fails a complete-app pack which
-bundles `nano-generated/` or `node_modules/`. This is the no-drift rule made physical: the
+**and** a **new** `scripts/validate-manifests.mjs` rule (today the validator only checks
+`nano-ide.ext.json` structure + referenced-file existence — see Status) that fails a
+complete-app pack which bundles `nano-generated/` or `node_modules/`. This is the no-drift rule made physical: the
 **authored artifacts are the single source of truth**, and everything else is
 reconstituted at install. The **dependency manifest** (`package.json` + a pinned
-`package-lock.json`) *does* travel — it is authored, not derived — and drives the
-third-party install described in §6.
+`package-lock.json`) *does* travel — it is version-controlled and checked in (the
+`deno.json` import map it derives from is authored), not a build output like
+`node_modules` — and drives the third-party install described in §6.
 
 ### 3. Import-by-reference (ADR 0041) is the complementary **live/private** path — explicitly *not* a distribution format
 
