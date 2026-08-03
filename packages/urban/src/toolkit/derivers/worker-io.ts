@@ -73,7 +73,10 @@ export function scanModelWorkers(xml: string): WorkerIo[] {
 // --- Faithful port of the console's emitWorkerBindings (domain_types.ts) so the emitted
 //     worker-io.d.ts is byte-compatible with the IDE's own codegen. ---
 
-function typeRefFor(id: string | undefined, declared: Set<string>): string | undefined {
+/** A `DomainTypes[...]` ref for a declared type id (else undefined). The one canonical
+ * ref helper shared by the worker- and message-IO emitters (matches the console's single
+ * `typeRefFor` in domain_types.ts), so both stay identical to the host codegen. */
+export function typeRefFor(id: string | undefined, declared: Set<string>): string | undefined {
   return id != null && declared.has(id) ? `DomainTypes[${JSON.stringify(id)}]` : undefined;
 }
 
