@@ -39,7 +39,7 @@ artifacts + handler files*, run by `runFromEnv`. Concretely the app's own source
 | **Human-owned handlers** | `workers/<slug>/worker.ts` (ADR 0056: scaffolded write-once, then human-owned) | ✅ authored |
 | **Runtime engines** | `@nanobpm/urban` (data / pages / llm / triggers / workers) | ❌ **npm dependency** — materialised by `npm install`, never copied |
 | **Derived typed wrappers** | `nano-generated/*` (worker-io, domain-rows, message-io) | ❌ **derived** — gitignored, reconstituted by `urban gen` (ADR 0053/0055) |
-| **Third-party worker deps** | packages a `workers/<slug>/worker.ts` handler imports (`octokit`, `zod`, native SDKs…) | ⚠️ **declared, not vendored** — named in the app's `package.json` / `deno.json` import map; materialised by `npm install` at the project root (§6) |
+| **Third-party worker deps** | npm packages that a `workers/<slug>/worker.ts` handler imports (`octokit`, `zod`, native SDKs…) | ⚠️ **declared, not vendored** — named in the app's `package.json` / `deno.json` import map; materialised by `npm install` at the project root (§6) |
 
 So the "bundle" is **only the authored artifacts** — including the **dependency
 manifest** (`package.json`/`deno.json`), but never `node_modules`. It is already small:
