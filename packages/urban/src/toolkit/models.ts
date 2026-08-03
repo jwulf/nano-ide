@@ -150,7 +150,9 @@ export async function deriveModels(
   if (files.length === 0) return emptyDerived(outDir);
 
   const out: DerivedModels = { ...emptyDerived(outDir), attempted: true };
-  const byId = new Map<string, string>(); // id → source file (collision detection)
+  // id → { source file, workflow ref } — distinguishes a genuine re-export (same
+  // object under two export names) from a true collision (two distinct flows, one id).
+  const byId = new Map<string, { rel: string; ref: unknown }>();
 
   for (const rel of files.sort()) {
     let mod: Record<string, unknown>;
@@ -165,13 +167,14 @@ export async function deriveModels(
       if (!isWorkflow(value)) continue;
       const id = value.id;
       const prior = byId.get(id);
-      if (prior && prior !== rel) {
+      if (prior) {
+        if (prior.ref === value && prior.rel === rel) continue; // genuine intra-module re-export
         out.incomplete = true;
-        out.errors.push({ path: rel, message: `duplicate flow id "${id}" (also defined in ${prior})` });
+        const where = prior.rel === rel ? "also defined in the same module" : `also defined in ${prior.rel}`;
+        out.errors.push({ path: rel, message: `duplicate flow id "${id}" (${where})` });
         continue;
       }
-      if (prior === rel) continue; // same flow re-exported within a module
-      byId.set(id, rel);
+      byId.set(id, { rel, ref: value });
       try {
         const semantic = await toDeployableBpmn(value);
         const xml = withProvenance(semantic);

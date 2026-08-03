@@ -133,3 +133,27 @@ test("deriveModels flags a duplicate flow id across two files", async () => {
   assert.ok(d.errors.some((e) => /duplicate flow id "greet"/.test(e.message)));
   assert.equal(d.ids.length, 1); // first wins
 });
+
+test("deriveModels flags two distinct flows sharing an id in the same module", async () => {
+  // two SEPARATE defineFlow objects, same id, same file — a real collision, not a re-export.
+  const greetA = defineFlow("greet", { hello: { in: GreetIn, out: GreetOut } }, (w) => {
+    w.run("hello", async () => ({ message: "a" }));
+  });
+  const greetB = defineFlow("greet", { hello: { in: GreetIn, out: GreetOut } }, (w) => {
+    w.run("hello", async () => ({ message: "b" }));
+  });
+  const io = memIO({ "/app/workflows/dup.ts": "// dup" }, { "workflows/dup.ts": { greetA, greetB } });
+  const d = await deriveModels("/app", io, CODE_FIRST_MANIFEST);
+  assert.equal(d.incomplete, true);
+  assert.ok(d.errors.some((e) => /duplicate flow id "greet" \(also defined in the same module\)/.test(e.message)));
+  assert.equal(d.ids.length, 1); // only the first is derived
+});
+
+test("deriveModels treats a genuine same-module re-export as one model, no error", async () => {
+  // the SAME flow object exported under two names in one file — harmless.
+  const io = memIO({ "/app/workflows/re.ts": "// re" }, { "workflows/re.ts": { greet, alsoGreet: greet } });
+  const d = await deriveModels("/app", io, CODE_FIRST_MANIFEST);
+  assert.equal(d.incomplete, false);
+  assert.deepEqual(d.errors, []);
+  assert.equal(d.ids.length, 1);
+});
