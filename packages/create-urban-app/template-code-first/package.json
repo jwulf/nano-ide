@@ -16,6 +16,6 @@
     "greet": "node --experimental-strip-types scripts/greet.ts"
   },
   "dependencies": {
-    "@nanobpm/urban": "^0.15.0"
+    "@nanobpm/urban": "^0.17.0"
   }
 }
