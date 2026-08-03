@@ -38,9 +38,18 @@ export function createNodeGenIO(): GenIO {
     },
     // Import an app module for code-first model derivation. `import()` of a file URL loads TS on
     // Deno natively and on Node with type-stripping (≥22.18 default, or `--experimental-strip-types`).
-    // A cache-busting query keeps re-gen honest if a workflow changed within a long-lived process.
-    importModule(path: string): Promise<Record<string, unknown>> {
-      const href = `${pathToFileURL(resolve(path)).href}?t=${Date.now()}`;
+    // The cache key is the file's mtime, not a monotonic clock: an unchanged workflow reuses the
+    // cached module instance (bounding the ESM module map in long-lived processes like `urban dev`)
+    // while an edited one still reloads.
+    async importModule(path: string): Promise<Record<string, unknown>> {
+      const abs = resolve(path);
+      let version = "";
+      try {
+        version = `?v=${(await stat(abs)).mtimeMs}`;
+      } catch {
+        // stat failed (e.g. a virtual path); fall back to no cache key and let import() surface it.
+      }
+      const href = `${pathToFileURL(abs).href}${version}`;
       return import(href) as Promise<Record<string, unknown>>;
     },
   };

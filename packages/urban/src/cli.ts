@@ -155,6 +155,14 @@ async function cmdGen(f: Flags): Promise<number> {
 }
 
 async function cmdDerive(f: Flags): Promise<number> {
+  // `urban derive` IS model derivation, so `--no-models` is contradictory. Reject it explicitly
+  // rather than silently ignoring it (flags are global, so it's easy to pass by accident).
+  if (!f.models) {
+    console.error(
+      "✖ `urban derive` derives models — `--no-models` is contradictory. Use `urban gen --no-models` for type-contracts only.",
+    );
+    return 2;
+  }
   const io = createNodeGenIO();
 
   // Non-writing preview: emit `{ models: [{ id, kind, xml }], incomplete }` to stdout for the
