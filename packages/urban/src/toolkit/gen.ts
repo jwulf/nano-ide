@@ -7,6 +7,7 @@ import type { DerivedArtifact } from "./artifact.ts";
 import { sortArtifacts } from "./artifact.ts";
 import { deriveMigrations, type ToolkitManifest } from "./derivers/migrations.ts";
 import { deriveWorkerBindings, type ModelSource } from "./derivers/worker-io.ts";
+import { deriveMeta } from "./derivers/meta.ts";
 
 /** Minimal filesystem port. Node/Deno impls live in `fsio.ts`. */
 export interface GenIO {
@@ -88,11 +89,12 @@ export async function collectArtifacts(opts: GenOptions): Promise<DerivedArtifac
     artifacts.push(...deriveMigrations(manifest));
   }
 
-  // 2. models → worker I/O index
+  // 2. models → worker I/O index + model-metadata accessor
   const models = await readModels(root, io, manifest);
   if (models.length > 0) {
     const declaredTypeIds = Object.keys(manifest.types ?? {});
     artifacts.push(...deriveWorkerBindings(models, declaredTypeIds));
+    artifacts.push(...deriveMeta(models));
   }
 
   return sortArtifacts(artifacts);
