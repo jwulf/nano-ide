@@ -1,22 +1,27 @@
 # nano-ide
 
-Monorepo publishing **extension packs** for the Nano RAD console IDE (ADR 0007/0008/0009).
-Packs are plain npm packages discovered + installed from npm in the console UI. The host
-parses each pack's `nano-ide.ext.json` manifest (mirror of `server/src/console/extensions.rs`).
+Monorepo for the Nano RAD console IDE. It publishes two families of `@nanobpm/*` packages:
 
-`deno` ships built into the server (offline baseline). Everything else is a pack here.
+- **Extension packs** — plain npm packages discovered + installed from npm in the console
+  UI (ADR 0007/0008/0009). The host parses each pack's `nano-ide.ext.json` manifest
+  (mirror of `server/src/console/extensions.rs`).
+- **The Urban code-first stack** — `@nanobpm/urban` (runtime + derivation toolkit + `urban`
+  CLI), `@nanobpm/workflow` (the `defineFlow` durable-orchestration library), and the
+  `create-urban-app` scaffolder. These are published libraries/CLIs, **not** packs — they
+  have no `nano-ide.ext.json` (ADR 0052/0053/0054/0055).
 
-## Packages
+`deno` ships built into the server (offline baseline).
+
+## Packs
 | Package | Kind | What |
 | --- | --- | --- |
-| `@nanobpm/nano-ide-ext-types` | — | TypeScript types for `nano-ide.ext.json` |
 | `@nanobpm/nano-ide-lang-rust` | lang | Rust file types + cargo toolchain + throughput template |
 | `@nanobpm/nano-ide-lang-node` | lang | TypeScript/Node file types + node toolchain + official JS SDK starter |
 | `@nanobpm/nano-ide-lang-python` | lang | Python file types + uv toolchain + Camunda SDK starter template |
 | `@nanobpm/nano-ide-lang-csharp` | lang | C# file types + dotnet toolchain + Camunda SDK starter template |
 | `@nanobpm/nano-ide-lang-java` | lang | Java file types + Maven toolchain + Camunda client + job worker starter |
 | `@nanobpm/nano-ide-app-deno-gui` | app | Deno served-UI binary template |
-| `@nanobpm/nano-ide-app-workflow` | app | Code-first durable workflow starters (@nanobpm/workflow): imperative replay + declarative human-in-the-loop signal; model derived from code |
+| `@nanobpm/nano-ide-app-workflow` | app | Code-first durable workflow starters built on `@nanobpm/workflow` (`defineFlow`): a declarative flow with human-in-the-loop signals; the BPMN model, job types, and correlation wiring are derived from code |
 | `@nanobpm/nano-ide-app-embedded-nano` | app | Embedded engine — self-contained binary, no gateway (ADR 0005) |
 | `@nanobpm/nano-ide-app-embedded-jvm` | app | Embedded Nano (JVM): inner Bernd engine serving an outer BPMN task (ADR 0005) |
 | `@nanobpm/nano-ide-app-embedded-graalvm-native` | app | Embedded Nano as a ~30 MB GraalVM native-image binary (ADR 0005) |
@@ -29,6 +34,16 @@ parses each pack's `nano-ide.ext.json` manifest (mirror of `server/src/console/e
 | `@nanobpm/nano-ide-theme-solarized` | theme | Solarized Dark + Light console themes |
 | `@nanobpm/nano-ide-theme-synthwave` | theme | Synthwave '84 neon console theme |
 | `@nanobpm/nano-ide-trigger-mqtt` | trigger | MQTT event trigger — start processes from broker messages |
+| `@nanobpm/nano-ide-connector-slack` | trigger | Slack connector pack — outbound "Send Slack Message" worker + inbound Slack events/slash-command trigger source (ADR 0033/0050) |
+
+## Libraries
+Published libraries + tooling — no `nano-ide.ext.json`, not installed as packs.
+| Package | What |
+| --- | --- |
+| `@nanobpm/nano-ide-ext-types` | TypeScript types for the `nano-ide.ext.json` pack manifest |
+| `@nanobpm/urban` | Urban runtime + derivation toolkit + `urban` CLI — build and run code-first apps from a `nano.app.json` manifest on Node or Deno (ADR 0053/0054/0055) |
+| `@nanobpm/workflow` | Code-first durable orchestration — author a flow with `defineFlow` and derive the BPMN model, job types, and correlation wiring; `defineFlow` is the blessed surface (imperative `defineWorkflow` is experimental/internal) (ADR 0044/0045) |
+| `create-urban-app` | `npm create urban-app` scaffolder for a runnable Urban app that runs on Node and Deno (ADR 0052) |
 
 ## Pack kinds
 - **lang** — file types (Monaco lazy-loads the grammar), toolchain (detect/run/compile/targets), templates.
