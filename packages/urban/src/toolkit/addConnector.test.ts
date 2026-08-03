@@ -105,6 +105,11 @@ test("addConnector reports which app manifest fails to parse", async () => {
   await assert.rejects(() => addConnector({ root: "app", pkg: PKG, io }), /failed to parse .*nano\.app\.json/);
 });
 
+test("addConnector rejects a manifest whose connections is not an object", async () => {
+  const io = memIO(baseFiles({ schemaVersion: 1, id: "t", name: "T", connections: "nope" }));
+  await assert.rejects(() => addConnector({ root: "app", pkg: PKG, io }), /"connections" must be an object/);
+});
+
 test("addConnector omits a connection when the pack needs no env credentials", async () => {
   const io = memIO({
     "app/nano.app.json": JSON.stringify({ schemaVersion: 1, id: "t", name: "T" }),

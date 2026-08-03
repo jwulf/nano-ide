@@ -131,6 +131,12 @@ export async function addConnector(opts: AddConnectorOptions): Promise<AddConnec
   if (app.workers !== undefined && !Array.isArray(app.workers)) {
     throw new Error(`${appManifestPath} "workers" must be an array.`);
   }
+  if (
+    app.connections !== undefined &&
+    (app.connections === null || typeof app.connections !== "object" || Array.isArray(app.connections))
+  ) {
+    throw new Error(`${appManifestPath} "connections" must be an object.`);
+  }
   const workers = (app.workers ??= []);
 
   // Required env across the pack's workers (env-pointer fields without a default).

@@ -98,7 +98,10 @@ export function collectManifestIssues(m: unknown): ValidationIssue[] {
       }
       // A `connection` must reference a declared top-level `connections` entry.
       if (typeof w?.connection === "string" && w.connection.length > 0) {
-        const conns = man.connections as Record<string, unknown> | undefined;
+        const conns =
+          man.connections && typeof man.connections === "object" && !Array.isArray(man.connections)
+            ? (man.connections as Record<string, unknown>)
+            : undefined;
         if (!conns || !(w.connection in conns)) {
           issues.push({
             path: `workers[${i}].connection`,
