@@ -56,6 +56,7 @@ test("runGen writes migrations, the worker index, the meta accessor, and the mes
   const paths = res.artifacts.map((a) => a.path).sort();
   assert.deepEqual(paths, [
     "nano-generated/app.schema.sql",
+    "nano-generated/domain-rows.d.ts",
     "nano-generated/message-io.d.ts",
     "nano-generated/meta.ts",
     "nano-generated/worker-io.d.ts",
@@ -64,6 +65,8 @@ test("runGen writes migrations, the worker index, the meta accessor, and the mes
   assert.ok(io.files["/app/nano-generated/worker-io.d.ts"].includes("demo.do"));
   assert.ok(io.files["/app/nano-generated/meta.ts"].includes("export function meta"));
   assert.ok(io.files["/app/nano-generated/message-io.d.ts"].includes("export type MessageName"));
+  assert.ok(io.files["/app/nano-generated/domain-rows.d.ts"].includes('"greetings": Greetings;'));
+  assert.ok(io.files["/app/nano-generated/domain-rows.d.ts"].includes('"greeting": {'));
 });
 
 test("gen --check reports no drift right after a write", async () => {
