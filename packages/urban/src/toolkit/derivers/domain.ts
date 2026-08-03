@@ -287,7 +287,7 @@ export function registryFromManifest(manifest: ToolkitManifest): DomainTypeRegis
   for (const [id, def] of Object.entries(manifest.types ?? {})) {
     const fields: Record<string, DomainFieldDef> = {};
     for (const [fname, f] of Object.entries(def.fields ?? {})) {
-      fields[fname] = { type: f.type ?? "string", optional: f.optional };
+      fields[fname] = { type: f.type ?? "string", optional: f.optional, list: f.list };
     }
     out[id] = { table: def.table, fields };
   }

@@ -101,8 +101,17 @@ test("registryFromManifest: declared fields only (no persisted id); type default
     greeting: { table: "greetings", fields: { who: {}, note: { type: "string", optional: true } } },
   } };
   assert.deepEqual(registryFromManifest(manifest), {
-    greeting: { table: "greetings", fields: { who: { type: "string", optional: undefined }, note: { type: "string", optional: true } } },
+    greeting: { table: "greetings", fields: { who: { type: "string", optional: undefined, list: undefined }, note: { type: "string", optional: true, list: undefined } } },
   });
+});
+
+test("registryFromManifest + emitDomain: the `list` modifier is preserved as `T[]`", () => {
+  const manifest: ToolkitManifest = { types: {
+    order: { fields: { tags: { type: "string", list: true } } },
+  } };
+  // The bridge must forward `list` (not drop it) so the emitter can project the repeated field.
+  assert.equal(registryFromManifest(manifest).order.fields.tags.list, true);
+  assert.match(emitDomain(manifest), /tags: string\[\];/);
 });
 
 test("deriveDomain: emits domain-rows.d.ts only when the manifest declares types", () => {

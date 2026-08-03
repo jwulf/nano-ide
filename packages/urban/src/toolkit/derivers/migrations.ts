@@ -8,6 +8,8 @@ import { GENERATED_DIR } from "../artifact.ts";
 export interface ToolkitField {
   type?: string;
   optional?: boolean;
+  /** Marks a repeated field: the domain row-type projects it as `T[]` in the `DomainTypes` registry. */
+  list?: boolean;
 }
 export interface ToolkitType {
   table?: string;
