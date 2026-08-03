@@ -64,8 +64,11 @@ test("createTableSql quotes identifiers so reserved-word names produce executabl
   assert.match(sql, /"select" INTEGER(?! NOT NULL)/);
   // And the DDL actually executes against a real SQLite engine.
   const db = new DatabaseSync(":memory:");
-  assert.doesNotThrow(() => db.exec(sql), "derived DDL must execute against node:sqlite");
-  db.close();
+  try {
+    assert.doesNotThrow(() => db.exec(sql), "derived DDL must execute against node:sqlite");
+  } finally {
+    db.close();
+  }
 });
 
 // #88 companion: the domain deriver keys `DomainTables` off the raw wire name via
@@ -75,5 +78,11 @@ test("deriveDomain keeps reserved-word table names addressable in DomainTables",
     data: { default: "app" },
     types: { order: { fields: { group: { type: "string" } } } },
   });
-  assert.match(artifact.content, /"order":/, 'DomainTables["order"] must resolve');
+  // Anchor to the DomainTables interface specifically — DomainTypes also emits an
+  // "order" key, so a bare /"order":/ would pass even if the DomainTables spine regressed.
+  assert.match(
+    artifact.content,
+    /export interface DomainTables \{\s*"order":/,
+    'DomainTables["order"] must resolve',
+  );
 });
