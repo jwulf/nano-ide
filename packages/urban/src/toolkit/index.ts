@@ -25,6 +25,7 @@ export {
   DOMAIN_DTS,
 } from "./derivers/worker-io.ts";
 export type { ModelSource, WorkerIo, WorkerBindingDecl } from "./derivers/worker-io.ts";
+export { byModelPath, typeRefFor } from "./derivers/worker-io.ts";
 
 export {
   deriveMeta,

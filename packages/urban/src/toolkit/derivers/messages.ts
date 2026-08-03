@@ -8,7 +8,7 @@
 
 import type { DerivedArtifact, Deriver } from "../artifact.ts";
 import { GENERATED_DIR } from "../artifact.ts";
-import { DOMAIN_DTS, typeRefFor, type ModelSource } from "./worker-io.ts";
+import { byModelPath, DOMAIN_DTS, typeRefFor, type ModelSource } from "./worker-io.ts";
 
 /** Filename the console uses for the derived message-payload map; kept identical (drop-in). */
 export const MESSAGE_BINDINGS_DTS = "message-io.d.ts";
@@ -25,12 +25,10 @@ export interface MessageIo {
   outputType?: string;
 }
 
-/** The binding shape the emitter reads (matches the console's `MessageBindingDecl`). */
-export interface MessageBindingDecl {
-  messageName: string;
-  inputType?: string;
-  outputType?: string;
-}
+/** The binding shape the emitter reads. Identical to a scanned `MessageIo`, so it is an
+ * alias — one canonical shape, no second declaration to drift (the console keeps the two
+ * apart only because its scan output is Rust and its emitter input is TS). */
+export type MessageBindingDecl = MessageIo;
 
 function attr(tag: string, name: string): string | undefined {
   const m = tag.match(new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`));
@@ -138,7 +136,7 @@ export function deriveMessageBindings(
   declaredTypeIds: Iterable<string> = [],
 ): DerivedArtifact[] {
   const byName = new Map<string, MessageBindingDecl>();
-  for (const model of [...models].sort((a, b) => (a.path < b.path ? -1 : 1))) {
+  for (const model of [...models].sort(byModelPath)) {
     for (const msg of scanModelMessages(model.xml)) {
       const existing = byName.get(msg.messageName);
       if (!existing) {

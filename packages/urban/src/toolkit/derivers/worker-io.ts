@@ -13,6 +13,15 @@ export interface ModelSource {
   xml: string;
 }
 
+/** Deterministic comparator for ordering `ModelSource` lists by path. Returns 0 on equal
+ * paths so it satisfies the JS sort contract (a comparator that reports both `a>b` and
+ * `b>a` can reorder equal elements unpredictably) — keeping the derivers' cross-model
+ * fold order stable even if a manifest pattern yields duplicate paths. Shared by every
+ * model-scanning deriver so there is one canonical ordering. */
+export function byModelPath(a: { path: string }, b: { path: string }): number {
+  return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+}
+
 export interface WorkerIo {
   taskType: string;
   elementId?: string;
@@ -163,7 +172,7 @@ export function deriveWorkerBindings(
   declaredTypeIds: Iterable<string> = [],
 ): DerivedArtifact[] {
   const workers: WorkerBindingDecl[] = [];
-  for (const model of [...models].sort((a, b) => (a.path < b.path ? -1 : 1))) {
+  for (const model of [...models].sort(byModelPath)) {
     for (const w of scanModelWorkers(model.xml)) {
       workers.push({ taskType: w.taskType, inputType: w.in, outputType: w.out });
     }
