@@ -113,9 +113,9 @@ test("evalCorrelation returns undefined for a non-scalar result", () => {
 
 test("runTriggerAction starts a process with action.variables", async () => {
   const { app, calls } = fakeApp();
-  // The locked schema types `variables` as a FEEL string; the runtime also tolerates an
-  // inline object literal (back-compat, resolveActionVariables takes `unknown`).
-  const res = await runTriggerAction(app, { start: "proc-1", variables: { a: 1 } as unknown as string }, {
+  // The manifest surface types `variables` as a FEEL string; the runtime helper
+  // (runTriggerAction/resolveActionVariables) also accepts an inline object literal.
+  const res = await runTriggerAction(app, { start: "proc-1", variables: { a: 1 } }, {
     body: { ignored: true },
     headers: {},
     query: {},

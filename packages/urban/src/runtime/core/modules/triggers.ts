@@ -112,9 +112,23 @@ function headerRecord(req: HttpRequest): Record<string, string> {
  * of `correlationKey`/`variables`; cron passes a minimal `{ firedAt }` body. Returns what
  * was done.
  */
+/**
+ * The trigger action as the *runtime* helper reads it: the fields `runTriggerAction`
+ * consumes, with `variables` permitting an inline object literal as well as a FEEL string.
+ * The manifest surface keeps `variables` string-only (a FEEL expression);
+ * `resolveActionVariables` tolerates both, so this shape matches runtime behaviour without
+ * loosening the schema. A locked `Trigger["action"]` is assignable to it.
+ */
+export interface RuntimeTriggerAction {
+  start?: string;
+  message?: string;
+  correlationKey?: string;
+  variables?: string | Record<string, unknown>;
+}
+
 export async function runTriggerAction(
   app: AppApi,
-  action: Trigger["action"],
+  action: RuntimeTriggerAction | undefined,
   scope: Scope,
 ): Promise<{ kind: "start" | "message" | "none"; target?: string; correlationKey?: string }> {
   if (!action) return { kind: "none" };
