@@ -13,8 +13,36 @@ export {
   migrationsDeriver,
   sqlType,
   createTableSql,
+  tableSchemaForType,
+  groupTypesBySource,
 } from "./derivers/migrations.ts";
-export type { ToolkitManifest, ToolkitType, ToolkitField } from "./derivers/migrations.ts";
+export type {
+  ToolkitManifest,
+  ToolkitType,
+  ToolkitField,
+  DerivedColumn,
+  DerivedTable,
+} from "./derivers/migrations.ts";
+
+export {
+  deriveDomain,
+  emitDomain,
+  emitDomainModel,
+  emitDomainDts,
+  emitDomainDtsForSources,
+  emitDomainTypeRegistry,
+  domainDeriver,
+  sourcesFromManifest,
+  registryFromManifest,
+  sqliteAffinityToTs,
+  interfaceName,
+} from "./derivers/domain.ts";
+export type {
+  SourceSchema,
+  DomainFieldDef,
+  DomainTypeDef,
+  DomainTypeRegistry,
+} from "./derivers/domain.ts";
 
 export {
   deriveWorkerBindings,
@@ -48,10 +76,11 @@ export type { MessageIo, MessageBindingDecl } from "./derivers/messages.ts";
 
 // The registry of all derivers (for discovery / IDE migration).
 import { migrationsDeriver } from "./derivers/migrations.ts";
+import { domainDeriver } from "./derivers/domain.ts";
 import { workerIoDeriver } from "./derivers/worker-io.ts";
 import { metaDeriver } from "./derivers/meta.ts";
 import { messagesDeriver } from "./derivers/messages.ts";
-export const DERIVERS = [migrationsDeriver, workerIoDeriver, metaDeriver, messagesDeriver] as const;
+export const DERIVERS = [migrationsDeriver, domainDeriver, workerIoDeriver, metaDeriver, messagesDeriver] as const;
 
 // Gen orchestrator + IO
 export { collectArtifacts, runGen, joinPath, readModels } from "./gen.ts";

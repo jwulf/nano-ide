@@ -6,6 +6,7 @@
 import type { DerivedArtifact } from "./artifact.ts";
 import { sortArtifacts } from "./artifact.ts";
 import { deriveMigrations, type ToolkitManifest } from "./derivers/migrations.ts";
+import { deriveDomain } from "./derivers/domain.ts";
 import { deriveWorkerBindings, type ModelSource } from "./derivers/worker-io.ts";
 import { deriveMeta } from "./derivers/meta.ts";
 import { deriveMessageBindings } from "./derivers/messages.ts";
@@ -85,9 +86,10 @@ export async function collectArtifacts(opts: GenOptions): Promise<DerivedArtifac
 
   const artifacts: DerivedArtifact[] = [];
 
-  // 1. types → migrations
+  // 1. types → migrations + domain row types (DomainTables spine + DomainTypes registry)
   if (manifest.types && Object.keys(manifest.types).length > 0) {
     artifacts.push(...deriveMigrations(manifest));
+    artifacts.push(...deriveDomain(manifest));
   }
 
   // 2. models → worker I/O index + model-metadata accessor + message payload map
