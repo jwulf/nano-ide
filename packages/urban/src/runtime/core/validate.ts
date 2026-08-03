@@ -1,13 +1,13 @@
 // Manifest validation. We deliberately avoid a heavyweight JSON-Schema engine here to
 // keep core dependency-free and runtime-agnostic. Instead we drive validation *from* the
-// vendored nano-app.schema.json (the ADR 0027 source of truth) for the top-level envelope
-// — required keys, allowed keys (additionalProperties:false), the schemaVersion const, and
-// the id slug pattern — and then layer the runtime's binding rules (a worker needs a
-// handler, a data source needs driver+url, a typed table needs fields, a trigger needs
-// id+type). Reading the schema means the envelope check tracks the schema and can't drift
-// from it silently.
+// canonical nano-app.schema.json (the ADR 0027 source of truth, published as
+// @nanobpm/nano-app-schema) for the top-level envelope — required keys, allowed keys
+// (additionalProperties:false), the schemaVersion const, and the id slug pattern — and
+// then layer the runtime's binding rules (a worker needs a handler, a data source needs
+// driver+url, a typed table needs fields, a trigger needs id+type). Reading the shared
+// schema means the envelope check tracks the schema and can't drift from it silently.
 
-import schema from "../schema/nano-app.schema.json" with { type: "json" };
+import schema from "@nanobpm/nano-app-schema/schema" with { type: "json" };
 import { workerJobType, type AppManifest } from "./manifest.ts";
 
 export interface ValidationIssue {

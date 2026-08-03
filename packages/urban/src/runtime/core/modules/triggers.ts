@@ -6,7 +6,7 @@
 import type { AppApi, Mounted, RuntimeContext } from "../context.ts";
 import type { HttpRequest } from "../host.ts";
 import { json, normalizeRoutePath, type Route } from "../router.ts";
-import type { TriggerDecl } from "../manifest.ts";
+import type { Trigger } from "../manifest.ts";
 import { nextCronFire, parseCron } from "./cron.ts";
 
 export interface TriggersHandle extends Mounted {
@@ -114,7 +114,7 @@ function headerRecord(req: HttpRequest): Record<string, string> {
  */
 export async function runTriggerAction(
   app: AppApi,
-  action: TriggerDecl["action"],
+  action: Trigger["action"],
   scope: Scope,
 ): Promise<{ kind: "start" | "message" | "none"; target?: string; correlationKey?: string }> {
   if (!action) return { kind: "none" };
@@ -161,7 +161,7 @@ export function mountTriggers(
   let stopped = false;
 
   // Arm a cron trigger: compute the next UTC fire, sleep until it, fire the action, repeat.
-  const armCron = (trig: TriggerDecl): void => {
+  const armCron = (trig: Trigger): void => {
     const spec = trig.spec;
     if (!spec) {
       ctx.host.log("warn", `trigger "${trig.id}": cron trigger has no spec, skipped`);
@@ -241,7 +241,7 @@ export function mountTriggers(
     arm();
   };
 
-  for (const trig of (ctx.manifest.triggers ?? []) as TriggerDecl[]) {
+  for (const trig of (ctx.manifest.triggers ?? []) as Trigger[]) {
     if (trig.type === "cron") {
       armCron(trig);
       continue;
