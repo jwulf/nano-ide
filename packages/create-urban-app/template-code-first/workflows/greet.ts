@@ -49,10 +49,11 @@ function greetings(): Table<Greeting> {
  */
 export const greet = defineFlow(
   "greet",
-  { greet: { in: GreetIn, out: GreetOut } },
+  { hello: { in: GreetIn, out: GreetOut } },
   (w) => {
     // `job.variables` is typed `{ who: string }`; the return is checked against `{ message: string }`.
-    w.run("greet", async (job) => {
+    // The step name must differ from the flow id ("greet"), which is reserved for the process itself.
+    w.run("hello", async (job) => {
       const who = job.variables.who || "world";
       const message = `Hello, ${who}!`;
       await greetings().insert({ who, message, createdAt: new Date().toISOString() });
