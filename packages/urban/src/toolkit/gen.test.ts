@@ -1,9 +1,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { runGen, collectArtifacts, type GenIO } from "./gen.ts";
+import { defineFlow, envelope } from "@nanobpm/workflow";
+import { MODEL_PROVENANCE } from "./models.ts";
 
 /** In-memory filesystem for deterministic, IO-free gen tests. */
-function memIO(files: Record<string, string>): GenIO & { files: Record<string, string> } {
+function memIO(
+  files: Record<string, string>,
+  modules: Record<string, Record<string, unknown>> = {},
+): GenIO & { files: Record<string, string> } {
   return {
     files,
     async readText(p) {
@@ -26,6 +31,13 @@ function memIO(files: Record<string, string>): GenIO & { files: Record<string, s
     },
     async exists(p) {
       return p in files;
+    },
+    async remove(p) {
+      delete files[p];
+    },
+    async importModule(p) {
+      if (!(p in modules)) throw new Error(`no module registered for ${p}`);
+      return modules[p];
     },
   };
 }
@@ -89,4 +101,67 @@ test("collectArtifacts touches no writes", async () => {
   const before = Object.keys(io.files).length;
   await collectArtifacts({ root: "/app", io });
   assert.equal(Object.keys(io.files).length, before);
+});
+
+// --- code-first model derivation (urban gen / urban derive) ---
+
+const GreetIn = envelope("GreetIn", { who: "string" });
+const GreetOut = envelope("GreetOut", { message: "string" });
+const greetFlow = defineFlow("greet", { hello: { in: GreetIn, out: GreetOut } }, (w) => {
+  w.run("hello", async () => ({ message: "hi" }));
+});
+
+const CODE_FIRST_MANIFEST = JSON.stringify({
+  id: "cf",
+  data: { default: "app" },
+  models: { workflows: ["workflows/*.ts"] },
+  types: { greeting: { table: "greetings", fields: { who: { type: "string" } } } },
+});
+
+function codeFirstIO() {
+  return memIO(
+    {
+      "/cf/nano.app.json": CODE_FIRST_MANIFEST,
+      "/cf/workflows/greet.ts": "// derived in-memory via importModule stub",
+    },
+    { "/cf/workflows/greet.ts": { greet: greetFlow } },
+  );
+}
+
+test("runGen derives processes/<id>.bpmn from workflows/*.ts and feeds worker-io off it", async () => {
+  const io = codeFirstIO();
+  const res = await runGen({ root: "/cf", io });
+  const bpmn = io.files["/cf/processes/greet.bpmn"];
+  assert.ok(bpmn, "expected a derived processes/greet.bpmn");
+  assert.ok(bpmn.includes(MODEL_PROVENANCE), "derived .bpmn must be provenance-stamped");
+  assert.ok(bpmn.includes('type="greet:hello"'), "derived .bpmn carries the task type");
+  // worker-io is derived FROM the in-memory model, not from any on-disk file.
+  assert.ok(io.files["/cf/nano-generated/worker-io.d.ts"].includes("greet:hello"));
+  assert.equal(res.incomplete, false);
+  assert.deepEqual(res.modelErrors, []);
+});
+
+test("gen --no-models derives in-memory for worker-io but writes no .bpmn", async () => {
+  const io = codeFirstIO();
+  const res = await runGen({ root: "/cf", io, emitModels: false });
+  assert.equal(io.files["/cf/processes/greet.bpmn"], undefined, "must not write .bpmn");
+  // still derives the model in-memory so worker-io is populated.
+  assert.ok(io.files["/cf/nano-generated/worker-io.d.ts"].includes("greet:hello"));
+  assert.equal(res.incomplete, false);
+});
+
+test("the provenance sweep removes a stale derived .bpmn no longer backed by a workflow", async () => {
+  const io = codeFirstIO();
+  // a leftover derived model from a since-deleted flow, provenance-stamped.
+  io.files["/cf/processes/stale.bpmn"] = `<?xml version="1.0"?>\n${MODEL_PROVENANCE}\n<bpmn:x/>`;
+  await runGen({ root: "/cf", io });
+  assert.ok(io.files["/cf/processes/greet.bpmn"], "keeps the live derived model");
+  assert.equal(io.files["/cf/processes/stale.bpmn"], undefined, "sweeps the stale derived model");
+});
+
+test("the sweep never touches an authored (un-stamped) .bpmn", async () => {
+  const io = codeFirstIO();
+  io.files["/cf/processes/authored.bpmn"] = `<?xml version="1.0"?>\n<bpmn:authored/>`;
+  await runGen({ root: "/cf", io });
+  assert.ok(io.files["/cf/processes/authored.bpmn"], "authored .bpmn must survive the sweep");
 });

@@ -10,6 +10,7 @@ import { deriveDomain } from "./derivers/domain.ts";
 import { deriveWorkerBindings, type ModelSource } from "./derivers/worker-io.ts";
 import { deriveMeta } from "./derivers/meta.ts";
 import { deriveMessageBindings } from "./derivers/messages.ts";
+import { deriveModels, type DerivedModels, type ModelError, MODEL_PROVENANCE } from "./models.ts";
 
 /** Minimal filesystem port. Node/Deno impls live in `fsio.ts`. */
 export interface GenIO {
@@ -18,18 +19,40 @@ export interface GenIO {
   /** File names (not paths) in a directory; empty if it does not exist. */
   listDir(path: string): Promise<string[]>;
   exists(path: string): Promise<boolean>;
+  /**
+   * Import an app module and return its exports. Optional: only present when the caller runs on
+   * a runtime that can load the app's TypeScript (Node with type-stripping, or Deno). Code-first
+   * model derivation (`workflows/*.ts` → BPMN) needs it; when absent, gen still derives everything
+   * else (migrations, domain, worker I/O from authored/derived models).
+   */
+  importModule?(path: string): Promise<Record<string, unknown>>;
+  /** Delete a file. Optional: enables the provenance-scoped stale-model sweep (skipped when absent). */
+  remove?(path: string): Promise<void>;
 }
 
 export interface GenOptions {
   root: string;
   io: GenIO;
   manifestFile?: string;
+  /**
+   * Whether to emit (write) derived `.bpmn` models. Default true. When false, code-first models
+   * are still derived *in-memory* to feed the type-contract derivers (worker I/O, meta, messages)
+   * — they are just not written to disk or swept. This is the `urban gen --no-models` path, so
+   * the console's type-contract regen never mutates `processes/*.bpmn`.
+   */
+  emitModels?: boolean;
+  /** Derive ONLY the models (skip migrations/domain/worker-I/O). The `urban derive` path. */
+  modelsOnly?: boolean;
 }
 
 export interface GenResult {
   artifacts: DerivedArtifact[];
   /** Paths that differ from disk (only populated by `check`). */
   drift: string[];
+  /** True if any code-first workflow failed to import/derive. */
+  incomplete: boolean;
+  /** Per-file model-derivation errors (empty on success). */
+  modelErrors: ModelError[];
 }
 
 function join(root: string, rel: string): string {
@@ -44,7 +67,7 @@ function dirOf(p: string): string {
 }
 
 /** Resolve a `dir/*.ext` (or literal) manifest pattern to file paths relative to root. */
-async function expandPattern(root: string, io: GenIO, pattern: string): Promise<string[]> {
+export async function expandPattern(root: string, io: GenIO, pattern: string): Promise<string[]> {
   const star = pattern.indexOf("*");
   if (star === -1) {
     return (await io.exists(join(root, pattern))) ? [pattern] : [];
@@ -78,36 +101,55 @@ export async function readModels(
 
 /** Collect all artifacts a run would produce, without touching disk beyond reads. */
 export async function collectArtifacts(opts: GenOptions): Promise<DerivedArtifact[]> {
+  return (await collectAll(opts)).artifacts;
+}
+
+/** Internal: collect artifacts AND the model-derivation details (needed by `runGen` for the
+ * incomplete signal + the provenance-scoped stale sweep). */
+async function collectAll(opts: GenOptions): Promise<{ artifacts: DerivedArtifact[]; derived: DerivedModels }> {
   const { root, io } = opts;
+  const emitModels = opts.emitModels ?? true;
   const manifestPath = join(root, opts.manifestFile ?? "nano.app.json");
   const manifest = JSON.parse(await io.readText(manifestPath)) as ToolkitManifest & {
-    models?: { processes?: string[] };
+    models?: { processes?: string[]; workflows?: string[] };
   };
 
   const artifacts: DerivedArtifact[] = [];
 
   // 1. types → migrations + domain row types (DomainTables spine + DomainTypes registry)
-  if (manifest.types && Object.keys(manifest.types).length > 0) {
+  if (!opts.modelsOnly && manifest.types && Object.keys(manifest.types).length > 0) {
     artifacts.push(...deriveMigrations(manifest));
     artifacts.push(...deriveDomain(manifest));
   }
 
-  // 2. models → worker I/O index + model-metadata accessor + message payload map
-  const models = await readModels(root, io, manifest);
-  if (models.length > 0) {
-    const declaredTypeIds = Object.keys(manifest.types ?? {});
-    artifacts.push(...deriveWorkerBindings(models, declaredTypeIds));
-    artifacts.push(...deriveMeta(models));
-    artifacts.push(...deriveMessageBindings(models, declaredTypeIds));
+  // 2. code-first models → derive BPMN from `workflows/*.ts` (executes the app's TS). The derived
+  //    `.bpmn` are emitted only when `emitModels` (default), but always fed to the type-contract
+  //    derivers below so worker I/O works for a code-first app even on a `--no-models` run.
+  const derived = await deriveModels(root, io, manifest);
+  if (emitModels) artifacts.push(...derived.artifacts);
+
+  // 3. models (authored on-disk + derived) → worker I/O index + meta accessor + message map.
+  //    Drop any on-disk model whose path a derived model already covers, to avoid double-counting.
+  if (!opts.modelsOnly) {
+    const derivedPaths = new Set(derived.artifacts.map((a) => a.path));
+    const diskModels = (await readModels(root, io, manifest)).filter((m) => !derivedPaths.has(m.path));
+    const models = [...diskModels, ...derived.models];
+    if (models.length > 0) {
+      const declaredTypeIds = Object.keys(manifest.types ?? {});
+      artifacts.push(...deriveWorkerBindings(models, declaredTypeIds));
+      artifacts.push(...deriveMeta(models));
+      artifacts.push(...deriveMessageBindings(models, declaredTypeIds));
+    }
   }
 
-  return sortArtifacts(artifacts);
+  return { artifacts: sortArtifacts(artifacts), derived };
 }
 
 /** Run the derivers and write artifacts (or, with `check`, report drift without writing). */
 export async function runGen(opts: GenOptions & { check?: boolean }): Promise<GenResult> {
-  const artifacts = await collectArtifacts(opts);
+  const { artifacts, derived } = await collectAll(opts);
   const { root, io } = opts;
+  const emitModels = opts.emitModels ?? true;
   const drift: string[] = [];
 
   for (const a of artifacts) {
@@ -119,7 +161,33 @@ export async function runGen(opts: GenOptions & { check?: boolean }): Promise<Ge
       await io.writeText(abs, a.content);
     }
   }
-  return { artifacts, drift };
+
+  // Provenance-scoped stale sweep: delete derived `.bpmn` for flows that no longer exist. Only
+  // in write mode, only when we emitted models, only on a complete derivation (never delete when
+  // a workflow failed to load), and only files bearing our marker (authored models are untouched).
+  if (!opts.check && emitModels && derived.attempted && !derived.incomplete && io.remove) {
+    const keep = new Set(derived.artifacts.map((a) => a.path));
+    for (const name of await io.listDir(join(root, derived.outDir))) {
+      if (!name.endsWith(".bpmn")) continue;
+      const rel = `${derived.outDir}/${name}`;
+      if (keep.has(rel)) continue;
+      const content = await io.readText(join(root, rel));
+      if (content.includes(MODEL_PROVENANCE)) await io.remove(join(root, rel));
+    }
+  }
+
+  return { artifacts, drift, incomplete: derived.incomplete, modelErrors: derived.errors };
 }
 
 export { dirOf, join as joinPath };
+
+/** Derive code-first models in-memory (no writes) — backs `urban derive --stdout`, the
+ * non-mutating preview the console's read-only model viewer uses. */
+export async function previewModels(opts: GenOptions): Promise<DerivedModels> {
+  const { root, io } = opts;
+  const manifestPath = join(root, opts.manifestFile ?? "nano.app.json");
+  const manifest = JSON.parse(await io.readText(manifestPath)) as {
+    models?: { processes?: string[]; workflows?: string[] };
+  };
+  return deriveModels(root, io, manifest);
+}

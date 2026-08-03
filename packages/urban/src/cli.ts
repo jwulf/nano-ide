@@ -2,7 +2,8 @@
 //
 //   urban new <name>     scaffold a new app (delegates to create-urban-app)
 //   urban check          load + validate the manifest, report issues
-//   urban gen            derive generated artifacts (migrations, worker I/O)
+//   urban gen            derive generated artifacts (migrations, worker I/O, code-first models)
+//   urban derive         derive code-first models only (workflows/*.ts → processes/*.bpmn)
 //   urban run            materialize + serve the app (deploy, data, workers, surfaces, triggers)
 //   urban dev            like run, plus watch sources and hot-reload on change
 //   urban deploy         deploy models only, then exit
@@ -19,7 +20,7 @@ import {
   selectHost,
 } from "./runtime/index.ts";
 import { scaffold, slugify } from "create-urban-app";
-import { createNodeGenIO, runGen, scaffoldWorkers } from "./toolkit/index.ts";
+import { createNodeGenIO, previewModels, runGen, scaffoldWorkers } from "./toolkit/index.ts";
 import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
 
@@ -44,6 +45,8 @@ interface Flags {
   check: boolean;
   write: boolean;
   deno: boolean;
+  models: boolean;
+  stdout: boolean;
   style?: "model" | "code";
   help: boolean;
   version: boolean;
@@ -51,7 +54,7 @@ interface Flags {
 }
 
 function parse(argv: string[]): Flags {
-  const f: Flags = { root: ".", manifest: "nano.app.json", check: false, write: false, deno: false, help: false, version: false, _: [] };
+  const f: Flags = { root: ".", manifest: "nano.app.json", check: false, write: false, deno: false, models: true, stdout: false, help: false, version: false, _: [] };
   const need = (i: number, flag: string): string => {
     const v = argv[i];
     if (v === undefined || v.startsWith("-")) throw new Error(`flag ${flag} requires a value`);
@@ -64,6 +67,9 @@ function parse(argv: string[]): Flags {
     else if (a === "--check") f.check = true;
     else if (a === "--write") f.write = true;
     else if (a === "--deno") f.deno = true;
+    else if (a === "--no-models") f.models = false;
+    else if (a === "--models") f.models = true;
+    else if (a === "--stdout") f.stdout = true;
     else if (a === "--code-first") f.style = "code";
     else if (a === "--style") {
       const v = need(++i, a);
@@ -92,7 +98,10 @@ Usage:
   urban new <name> [--root <path>] [--deno] [--style model|code]    scaffold a new Urban app
                                     (--code-first is shorthand for --style code)
   urban check                       validate the manifest
-  urban gen [--check]               derive artifacts (migrations, worker-io)
+  urban gen [--check] [--no-models] derive artifacts (migrations, worker-io, + code-first models)
+                                    (--no-models: skip writing derived .bpmn; type-contracts only)
+  urban derive [--check|--stdout]   derive code-first models only (workflows/*.ts → processes/*.bpmn)
+                                    (--stdout: print {models,incomplete} JSON without writing)
   urban stubs [--write]             scaffold write-once handler stubs from the model
   urban run                         materialize + serve the app
   urban dev                         run + watch sources, hot-reload on change
@@ -125,7 +134,12 @@ async function cmdCheck(f: Flags): Promise<number> {
 
 async function cmdGen(f: Flags): Promise<number> {
   const io = createNodeGenIO();
-  const res = await runGen({ root: f.root, io, manifestFile: f.manifest, check: f.check });
+  const res = await runGen({ root: f.root, io, manifestFile: f.manifest, check: f.check, emitModels: f.models });
+  if (res.incomplete) {
+    console.error(`✖ ${res.modelErrors.length} workflow(s) failed to derive:`);
+    for (const e of res.modelErrors) console.error(`  • ${e.path}: ${e.message}`);
+    return 1;
+  }
   if (f.check) {
     if (res.drift.length === 0) {
       console.log(`✔ generated artifacts are up to date (${res.artifacts.length} checked)`);
@@ -136,6 +150,47 @@ async function cmdGen(f: Flags): Promise<number> {
     return 1;
   }
   console.log(`✔ generated ${res.artifacts.length} artifact(s):`);
+  for (const a of res.artifacts) console.log(`  • ${a.path}`);
+  return 0;
+}
+
+async function cmdDerive(f: Flags): Promise<number> {
+  const io = createNodeGenIO();
+
+  // Non-writing preview: emit `{ models: [{ id, kind, xml }], incomplete }` to stdout for the
+  // console's read-only model viewer (never touches `processes/`).
+  if (f.stdout) {
+    const d = await previewModels({ root: f.root, io, manifestFile: f.manifest });
+    process.stdout.write(
+      JSON.stringify({
+        models: d.list.map((m) => ({ id: m.id, kind: m.kind, xml: m.xml })),
+        incomplete: d.incomplete,
+      }) + "\n",
+    );
+    if (d.incomplete) {
+      for (const e of d.errors) console.error(`  • ${e.path}: ${e.message}`);
+      return 1;
+    }
+    return 0;
+  }
+
+  // Derive + write models only (skip the type-contract derivers); `generate_models` delegates here.
+  const res = await runGen({ root: f.root, io, manifestFile: f.manifest, check: f.check, modelsOnly: true });
+  if (res.incomplete) {
+    console.error(`✖ ${res.modelErrors.length} workflow(s) failed to derive:`);
+    for (const e of res.modelErrors) console.error(`  • ${e.path}: ${e.message}`);
+    return 1;
+  }
+  if (f.check) {
+    if (res.drift.length === 0) {
+      console.log(`✔ derived models are up to date (${res.artifacts.length} checked)`);
+      return 0;
+    }
+    console.error(`✖ ${res.drift.length} derived model(s) are out of date — run \`urban derive\`:`);
+    for (const p of res.drift) console.error(`  • ${p}`);
+    return 1;
+  }
+  console.log(`✔ derived ${res.artifacts.length} model(s):`);
   for (const a of res.artifacts) console.log(`  • ${a.path}`);
   return 0;
 }
@@ -243,6 +298,8 @@ export async function main(argv: string[]): Promise<number> {
       return cmdCheck(f);
     case "gen":
       return cmdGen(f);
+    case "derive":
+      return cmdDerive(f);
     case "stubs":
       return cmdStubs(f);
     case "run":

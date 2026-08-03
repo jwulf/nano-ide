@@ -1,8 +1,9 @@
 // Node/Deno filesystem implementation of the GenIO port. Uses node:fs/promises, which both
 // Node and Deno provide, so a single implementation serves both runtimes.
 
-import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { mkdir, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import type { GenIO } from "./gen.ts";
 
 export function createNodeGenIO(): GenIO {
@@ -31,6 +32,16 @@ export function createNodeGenIO(): GenIO {
       } catch {
         return false;
       }
+    },
+    async remove(path: string): Promise<void> {
+      await rm(path, { force: true });
+    },
+    // Import an app module for code-first model derivation. `import()` of a file URL loads TS on
+    // Deno natively and on Node with type-stripping (≥22.18 default, or `--experimental-strip-types`).
+    // A cache-busting query keeps re-gen honest if a workflow changed within a long-lived process.
+    importModule(path: string): Promise<Record<string, unknown>> {
+      const href = `${pathToFileURL(resolve(path)).href}?t=${Date.now()}`;
+      return import(href) as Promise<Record<string, unknown>>;
     },
   };
 }
