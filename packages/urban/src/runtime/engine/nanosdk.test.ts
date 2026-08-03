@@ -316,6 +316,32 @@ test("registerWorker falls back to fail() for a BpmnError when the SDK has no er
   assert.equal(failBody?.errorMessage, "no such record");
 });
 
+test("registerWorker falls back to fail() when the BPMN error report itself throws", async () => {
+  const client = fakeSdkClient();
+  const engine = new SdkEngineClient(client);
+  await engine.registerWorker("svc", () => {
+    throw new BpmnError("NOT_FOUND", "no such record");
+  });
+  const rec = client.workers[0];
+  let failBody: { errorMessage: string } | undefined;
+  await rec.dispatch({
+    jobKey: "j1",
+    variables: {},
+    async complete() {
+      throw new Error("should not complete");
+    },
+    async error() {
+      throw new Error("transport down");
+    },
+    async fail(body: { errorMessage: string }) {
+      failBody = body;
+      return "failed";
+    },
+  } as unknown as NanoSdkActivatedJob);
+  // The job must still be acknowledged via fail() rather than silently dropped.
+  assert.equal(failBody?.errorMessage, "no such record");
+});
+
 test("close stops every worker and closes the SDK client", async () => {
   const client = fakeSdkClient();
   const engine = new SdkEngineClient(client);

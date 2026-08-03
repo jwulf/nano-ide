@@ -303,9 +303,13 @@ async function cmdAdd(f: Flags): Promise<number> {
       console.error(`npm install failed: ${res.error.message}`);
       return 1;
     }
-    if (typeof res.status === "number" && res.status !== 0) {
+    if (res.signal) {
+      console.error(`npm install was terminated by signal ${res.signal}`);
+      return 1;
+    }
+    if (res.status !== 0) {
       console.error(`npm install exited with code ${res.status}`);
-      return res.status;
+      return res.status ?? 1;
     }
   }
 

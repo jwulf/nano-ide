@@ -109,6 +109,10 @@ export async function mountWorkers(ctx: RuntimeContext, app: AppApi): Promise<Wo
   for (const decl of decls as Worker[]) {
     const jobType = workerJobType(decl);
     if (!jobType) continue;
+    // Connector-backed workers (a `connector` field, no handler/llm) are mounted
+    // separately by mountConnectors — skip them here silently so they don't trip
+    // the "neither handler nor llm" warning below on every startup.
+    if (decl.connector) continue;
     if (!decl.handler) {
       // LLM-backed worker (schema `oneOf` handler|llm): synthesise a handler that runs
       // the job through the bound LLM (and optional decision rails) instead of loading a

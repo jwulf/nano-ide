@@ -104,11 +104,22 @@ export async function addConnector(opts: AddConnectorOptions): Promise<AddConnec
   if (!(await io.exists(appManifestPath))) {
     throw new Error(`no ${manifestFile} at ${appManifestPath} — run this inside an Urban app.`);
   }
-  const app = JSON.parse(await io.readText(appManifestPath)) as {
-    workers?: { taskType?: string; connector?: string; connection?: string }[];
+  let app: {
+    workers?: { taskType?: string; connector?: string; connection?: string; handler?: string; llm?: string }[];
     connections?: Record<string, Record<string, unknown>>;
     [k: string]: unknown;
   };
+  try {
+    app = JSON.parse(await io.readText(appManifestPath));
+  } catch (err) {
+    throw new Error(`failed to parse ${appManifestPath}: ${(err as Error).message}`);
+  }
+  if (app === null || typeof app !== "object" || Array.isArray(app)) {
+    throw new Error(`${appManifestPath} is not a JSON object.`);
+  }
+  if (app.workers !== undefined && !Array.isArray(app.workers)) {
+    throw new Error(`${appManifestPath} "workers" must be an array.`);
+  }
   const workers = (app.workers ??= []);
 
   // Required env across the pack's workers (env-pointer fields without a default).
@@ -142,9 +153,25 @@ export async function addConnector(opts: AddConnectorOptions): Promise<AddConnec
   for (const spec of specs) {
     const existing = workers.find((w) => w.taskType === spec.type);
     if (existing) {
+      // A same-taskType worker backed by a handler/llm or a different connector is
+      // a real conflict — enabling this pack would not take effect. Fail loudly
+      // instead of reporting a false success.
+      if (existing.connector !== pack.id) {
+        const backing = existing.handler
+          ? `handler "${existing.handler}"`
+          : existing.llm
+            ? `llm "${existing.llm}"`
+            : existing.connector
+              ? `connector "${existing.connector}"`
+              : "another backing";
+        throw new Error(
+          `worker "${spec.type}" is already declared with ${backing}; ` +
+            `remove it before enabling connector "${pack.id}" for that taskType.`,
+        );
+      }
       wired.push({ taskType: spec.type, alreadyPresent: true });
       // Heal an entry that references the pack but predates the connection.
-      if (existing.connector === pack.id && connection && !existing.connection) {
+      if (connection && !existing.connection) {
         existing.connection = connection;
       }
       continue;

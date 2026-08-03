@@ -77,9 +77,32 @@ test("addConnector is idempotent — re-running does not duplicate entries", asy
   assert.equal(Object.keys(app.connections).length, 1);
 });
 
+test("addConnector throws on a taskType already backed by a handler (conflict)", async () => {
+  const io = memIO(
+    baseFiles({
+      schemaVersion: 1,
+      id: "t",
+      name: "T",
+      workers: [{ taskType: "slack:send-message", handler: "handlers/slack.ts" }],
+    }),
+  );
+  await assert.rejects(() => addConnector({ root: "app", pkg: PKG, io }), /already declared with handler/);
+});
+
 test("addConnector throws when the package is not an Urban connector", async () => {
   const io = memIO({ "app/nano.app.json": JSON.stringify({ schemaVersion: 1, id: "t", name: "T" }) });
   await assert.rejects(() => addConnector({ root: "app", pkg: PKG, io }), /not an Urban connector/);
+});
+
+test("addConnector reports which app manifest fails to parse", async () => {
+  const io = memIO({
+    "app/nano.app.json": "{ not json",
+    [`app/node_modules/${PKG}/nano-ide.ext.json`]: JSON.stringify({
+      id: PACK_ID,
+      workers: [{ type: "slack:send-message", entry: "worker.ts" }],
+    }),
+  });
+  await assert.rejects(() => addConnector({ root: "app", pkg: PKG, io }), /failed to parse .*nano\.app\.json/);
 });
 
 test("addConnector omits a connection when the pack needs no env credentials", async () => {

@@ -157,6 +157,19 @@ test("sdkDecisionEvaluator throws a clear error when the SDK lacks evaluateDecis
   await assert.rejects(evaluate("risk", {}), /does not support evaluateDecision.*"risk"/);
 });
 
+test("mountWorkers silently skips a connector-backed worker (mountConnectors owns it)", async () => {
+  const engine = new MiniEngine();
+  const { ctx, logs } = makeCtx(
+    { workers: [{ taskType: "slack:send-message", connector: "nano-ide-connector-slack" }] },
+    engine,
+  );
+  const handle = await mountWorkers(ctx, makeApp());
+  assert.deepEqual(handle.jobTypes, []);
+  assert.equal(engine.workers.size, 0);
+  // No spurious "neither a handler nor an llm" warning for a connector worker.
+  assert.ok(!logs.some((l) => l.msg.includes("neither a handler nor an llm")));
+});
+
 // ── AppJobHandler generics: optional In/Out type parameters ──────────────────────────────
 // These are primarily compile-time assertions (the suite is typechecked by `tsc --noEmit`),
 // with a runtime smoke that a typed handler still returns its output when delivered a job.

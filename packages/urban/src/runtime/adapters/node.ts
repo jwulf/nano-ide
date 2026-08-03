@@ -47,10 +47,13 @@ let connectorHooksRegistered = false;
  *   - a **resolve** hook aliasing the bare `@nanobpm/worker` specifier the pack
  *     imports to the runtime's shim, so its `defineWorker(...)` registers into the
  *     registry the runtime drains;
- *   - a **load** hook that strips TypeScript from a pack's `.ts` entry under
- *     `node_modules` (Node refuses to type-strip there by default), supplying the
- *     transpiled source directly while keeping the module's real URL so its own
- *     bare imports (npm deps) still resolve.
+ *   - a **load** hook that strips TypeScript from ANY `.ts` module resolved under
+ *     `node_modules` (Node refuses to type-strip there by default). In practice
+ *     only a connector pack's `.ts` entry and its `.ts` imports travel this path,
+ *     but the hook is process-global once registered, so it applies to every
+ *     subsequent `node_modules` `.ts` import — a safe superset (Node would
+ *     otherwise throw on such a file). The module's real URL is preserved so its
+ *     own bare imports (npm deps) still resolve.
  * The hooks run on a separate thread, so the shim URL is baked into the hook
  * source; the shim itself loads on the main thread (shared registry instance).
  */
@@ -121,8 +124,12 @@ export function createNodeHost(opts: NodeHostOptions = {}): HostContext {
     async importConnectorModule(entry) {
       ensureConnectorHooks();
       // Import for side effects only: the pack's top-level `defineWorker(...)` runs
-      // and registers into the shim registry, which the caller drains.
-      await import(pathToFileURL(abs(entry)).href);
+      // and registers into the shim registry, which the caller drains. Apply the
+      // dev `importNonce` cache-buster (as importModule does) so a hot-reloaded
+      // pack entry is re-evaluated instead of served stale from the ESM cache.
+      const href =
+        pathToFileURL(abs(entry)).href + (opts.importNonce ? `?v=${opts.importNonce}` : "");
+      await import(href);
     },
     async serveHttp(port, handler) {
       return await startNodeServer(port, handler);

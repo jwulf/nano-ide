@@ -240,10 +240,14 @@ export class SdkEngineClient implements EngineClient {
         } catch (err) {
           // A handler-raised BPMN error is a modelled, non-retryable outcome:
           // report it as a BPMN error (routed to an error boundary/event) rather
-          // than a plain failure. Falls back to `fail` when the transport does not
-          // expose `error` (older SDK) so the job is still acknowledged.
+          // than a plain failure. If the transport lacks `error` (older SDK) — or
+          // the `error` call itself fails — fall through to the `fail` path below
+          // so the job is still acknowledged rather than left to lock-timeout.
           if (isBpmnError(err) && typeof job.error === "function") {
-            const message = err.message ?? err.errorCode;
+            // `message` is typed loosely (the guard survives module duplication),
+            // so coerce to a string before slicing to avoid a secondary crash.
+            const raw = (err as { message?: unknown }).message;
+            const message = typeof raw === "string" && raw.length > 0 ? raw : err.errorCode;
             this.log("info", `handler ${jobType} raised BPMN error`, {
               errorCode: err.errorCode,
             });
@@ -252,8 +256,11 @@ export class SdkEngineClient implements EngineClient {
                 errorCode: err.errorCode,
                 errorMessage: message.slice(0, 500),
               });
-            } catch {
-              return undefined;
+            } catch (errReportErr) {
+              this.log("warn", `handler ${jobType}: BPMN error report failed, failing the job`, {
+                err: errReportErr instanceof Error ? errReportErr.message : String(errReportErr),
+              });
+              // fall through to the fail path
             }
           }
           const message = err instanceof Error ? err.message : String(err);
