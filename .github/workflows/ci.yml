@@ -36,6 +36,9 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+      # Build the workspace deps the Urban source imports (e.g. @nanobpm/workflow's
+      # dist), which the Deno suite now loads transitively via model derivation.
+      - run: npm run build
       - name: Deno test — @nanobpm/urban
         run: npm run test:deno -w packages/urban
 

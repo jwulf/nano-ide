@@ -83,9 +83,21 @@ import { messagesDeriver } from "./derivers/messages.ts";
 export const DERIVERS = [migrationsDeriver, domainDeriver, workerIoDeriver, metaDeriver, messagesDeriver] as const;
 
 // Gen orchestrator + IO
-export { collectArtifacts, runGen, joinPath, readModels } from "./gen.ts";
+export { collectArtifacts, runGen, joinPath, readModels, expandPattern, previewModels } from "./gen.ts";
 export type { GenIO, GenOptions, GenResult } from "./gen.ts";
 export { createNodeGenIO } from "./fsio.ts";
+
+// Code-first model derivation (workflows/*.ts → BPMN)
+export {
+  deriveModels,
+  isWorkflow,
+  bpmnFilename,
+  processesOutDir,
+  DEFAULT_WORKFLOW_PATTERNS,
+  PROCESSES_DIR,
+  MODEL_PROVENANCE,
+} from "./models.ts";
+export type { DerivedModels, DerivedModelInfo, ModelError, ModelsManifest } from "./models.ts";
 
 // Worker-stub scaffolder (ADR 0056): write-once handler stubs from the model.
 export {
