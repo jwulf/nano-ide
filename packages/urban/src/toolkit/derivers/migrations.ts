@@ -54,6 +54,14 @@ export function assertSqlIdent(kind: string, name: string): string {
   return name;
 }
 
+/** Double-quote an identifier for DDL. `assertSqlIdent` already rejects non-identifier
+ * chars (the injection guard), but quoting is what makes valid-but-reserved words
+ * (`order`, `group`, `select`, …) legal SQL — no reserved-word denylist to maintain.
+ * Embedded double quotes are doubled per the SQL standard (defensive; can't occur here). */
+export function quoteSqlIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
 /** A column in a manifest type's canonical table schema. `sqlType` is the SQLite
  * declared type (the affinity source for both the CREATE TABLE and the row types). */
 export interface DerivedColumn {
@@ -109,15 +117,17 @@ export function groupTypesBySource(
   return bySource;
 }
 
-/** Build the CREATE TABLE statement for one type, from its canonical schema. */
+/** Build the CREATE TABLE statement for one type, from its canonical schema. Table and
+ * column identifiers are quoted so valid-but-reserved names (`order`, `group`, …) emit
+ * legal SQL. */
 export function createTableSql(typeName: string, def: ToolkitType): string {
   const { table, columns } = tableSchemaForType(typeName, def);
   const cols = columns.map((c) =>
     c.primaryKey
-      ? `  ${c.name} ${c.sqlType} PRIMARY KEY AUTOINCREMENT`
-      : `  ${c.name} ${c.sqlType}${c.notNull ? " NOT NULL" : ""}`
+      ? `  ${quoteSqlIdent(c.name)} ${c.sqlType} PRIMARY KEY AUTOINCREMENT`
+      : `  ${quoteSqlIdent(c.name)} ${c.sqlType}${c.notNull ? " NOT NULL" : ""}`
   );
-  return `CREATE TABLE IF NOT EXISTS ${table} (\n${cols.join(",\n")}\n);`;
+  return `CREATE TABLE IF NOT EXISTS ${quoteSqlIdent(table)} (\n${cols.join(",\n")}\n);`;
 }
 
 export function deriveMigrations(manifest: ToolkitManifest): DerivedArtifact[] {
