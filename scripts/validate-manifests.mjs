@@ -47,6 +47,13 @@ for (const dir of readdirSync(pkgRoot)) {
       && !(Array.isArray(m.requires) && m.requires.every((r) => typeof r === "string" && r.trim()))) {
     fail("requires[] must be an array of non-empty lang pack ids");
   }
+  // installDeps (ADR 0052) — mirror of the host's `ExtManifest.install_deps: bool`
+  // in extensions.rs. When set, the host runs a guarded `npm install` inside the
+  // pack after fetch; a mistyped/non-boolean value must fail at publish time
+  // rather than silently disabling the install (keeps the contract drift-free).
+  if (m.installDeps !== undefined && typeof m.installDeps !== "boolean") {
+    fail(`installDeps must be a boolean when present (got ${typeof m.installDeps})`);
+  }
   if (m.kind === "theme") {
     if (!Array.isArray(m.themes) || m.themes.length === 0) fail("theme pack needs themes[]");
     for (const t of m.themes ?? []) {

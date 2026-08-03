@@ -359,6 +359,17 @@ export interface ExtManifest {
    * out of it being a pack journey.
    */
   tours?: TourSpec[];
+  /**
+   * app packs that front an out-of-process CLI (e.g. this Urban pack →
+   * `@nanobpm/urban`'s `urban`/`create-urban-app` bins): opt in to a guarded
+   * `npm install` inside the pack after it is fetched, so its runtime
+   * dependencies' `node_modules/.bin/*` are materialised (an `npm pack` tarball
+   * ships `package.json` but not `node_modules`). Mirrors the host's
+   * `ExtManifest.install_deps: bool`. The host installs `--omit=dev`
+   * `--ignore-scripts` (until the pack is trusted); default/absent is a pure
+   * pack+extract with no network install.
+   */
+  installDeps?: boolean;
 }
 
 /**

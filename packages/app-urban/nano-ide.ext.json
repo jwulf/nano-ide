@@ -1,0 +1,20 @@
+{
+  "id": "urban",
+  "kind": "app",
+  "displayName": "Urban app",
+  "fileTypes": [],
+  "installDeps": true,
+  "templates": [
+    {
+      "id": "urban-model-first",
+      "label": "Urban app (model-first)",
+      "description": "Authored BPMN + forms, run by `urban run` (@nanobpm/urban)"
+    },
+    {
+      "id": "urban-code-first",
+      "label": "Urban app (code-first)",
+      "description": "defineFlow in TypeScript, executable model derived (@nanobpm/urban)"
+    }
+  ],
+  "toolchain": {}
+}
