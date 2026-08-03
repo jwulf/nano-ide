@@ -38,10 +38,13 @@ artifacts + handler files*, run by `runFromEnv`. Concretely the app's own source
 | **Human-owned handlers** | `workers/<slug>/worker.ts` (ADR 0056: scaffolded write-once, then human-owned) | ✅ authored |
 | **Runtime engines** | `@nanobpm/urban` (data / pages / llm / triggers / workers) | ❌ **npm dependency** — materialised by `npm install`, never copied |
 | **Derived typed wrappers** | `nano-generated/*` (worker-io, domain-rows, message-io) | ❌ **derived** — gitignored, reconstituted by `urban gen` (ADR 0053/0055) |
+| **Third-party worker deps** | packages a `workers/*.ts` handler imports (`octokit`, `zod`, native SDKs…) | ⚠️ **declared, not vendored** — named in the app's `package.json` / `deno.json` import map; materialised by `npm install` at the project root (§6) |
 
-So the "bundle" is **only the authored artifacts**, which is already small. The heavy
-parts are either an npm **dependency** or **derived** — neither belongs in the app's
-source tree. *"Fat"* and *"lean"* collapse into the same small payload.
+So the "bundle" is **only the authored artifacts** — including the **dependency
+manifest** (`package.json`/`deno.json`), but never `node_modules`. It is already small:
+the heavy parts are an npm **dependency graph** (installed, §6) or **derived** (`urban
+gen`) — neither belongs in the app's source tree. *"Fat"* and *"lean"* collapse into the
+same small payload.
 
 **The host already has both sourcing mechanisms, over one contract and one run path.**
 An Urban app is a console **project** (ADR 0009/0041), and a project is materialised two
@@ -85,7 +88,9 @@ derived (`urban gen`), the second is npm-managed. Enforce with the pack `files` 
 **and** a `scripts/validate-manifests.mjs` rule that fails a complete-app pack which
 bundles `nano-generated/` or `node_modules/`. This is the no-drift rule made physical: the
 **authored artifacts are the single source of truth**, and everything else is
-reconstituted at install.
+reconstituted at install. The **dependency manifest** (`package.json` + a pinned
+`package-lock.json`) *does* travel — it is authored, not derived — and drives the
+third-party install described in §6.
 
 ### 3. Import-by-reference (ADR 0041) is the complementary **live/private** path — explicitly *not* a distribution format
 
@@ -123,6 +128,44 @@ and **no** bundle format beyond the npm tarball.
 - `list_projects` source-tagging (ADR 0041) gains the `pack` tag so the console shows
   where a project came from.
 
+### 6. Third-party worker dependencies travel as a **manifest**, not as `node_modules`
+
+A complex worker (`workers/<slug>/worker.ts`) may import arbitrary third-party npm
+packages (`octokit`, `zod`, a vendor SDK, …). This is fully supported, and it does **not**
+change the "authored artifacts only" rule — because the host already treats dependencies
+as a *declared manifest*, reconstituted on install:
+
+- **Deps are declared, and derived from one source of truth.** A project carries a
+  Node-first `package.json` "to declare third-party npm dependencies"
+  (`projects.rs:1257`); those entries are **derived** from the app's `deno.json` import
+  map (`npm:` specifiers) by `npm_deps_from_deno_json` — the single source of truth that
+  epic #437 established, so `package.json` never hand-mirrors the import map.
+- **Worker deps resolve up-tree to the project root.** Workers have no own manifest —
+  "every `npm:` import, *including in a worker*, is declared in the ROOT `package.json`;
+  a worker run's `npm install` and `node_modules` resolution walk up-tree to the project
+  root" (`projects.rs:9779`). One project-root install serves every worker.
+- **One install, both runtimes.** The same `npm install` the run/dev loop already performs
+  (the #437 Node-fallback safety net) reconstitutes `node_modules` for Node, while Deno
+  resolves the identical `npm:` specifiers directly (`node_loader.mjs`). The `package.json`
+  travels in the bundle; `node_modules` never does — exactly §2.
+
+Three properties an app-pack **with third-party worker deps** must therefore honour:
+
+1. **Ship a `package-lock.json`** for a deterministic, reproducible install (`npm ci`).
+   This is the deliberate difference from the #520 *toolkit* pack, which shipped no
+   lockfile and used a caret-range `npm install`; a **complete app** with a real
+   dependency graph pins it.
+2. **Trust gates native / lifecycle-script deps.** The host installs `--ignore-scripts`
+   **unless the pack is trusted** (`npm_install_argv`, `extensions.rs:1219`). Pure-JS
+   worker deps install fine untrusted; deps with native addons or `postinstall` builds
+   require the app to be **trusted** first (the supply-chain guardrail is intentional).
+3. **First install needs the registry (or a warm cache).** "Offline after install" holds
+   only once the app's dependency graph — not just `@nanobpm/urban` — has been fetched.
+
+Net: a "complex app with npm-heavy workers" is still distributed as authored artifacts +
+a pinned dependency manifest; the dependency graph is **installed**, never **vendored**,
+preserving the no-drift rule while fully supporting arbitrary worker dependencies.
+
 ## Consequences
 
 - **Almost no new surface.** Distribution reuses: the example/`appDir` copy path, the
@@ -137,10 +180,15 @@ and **no** bundle format beyond the npm tarball.
   (supervisor), one derivation library (`urban gen`). No registry sidecar.
 - **Good distribution properties.** Offline after install, versioned, marketplace-discoverable,
   official-flagged on the `@nanobpm/` scope, provenance-signed by `release.yml`.
-- **Risk.** First install fetches `@nanobpm/urban` from npm (network) and runs `urban gen`;
-  this is the same guarded install already shipped in #532, and reconstitution determinism
-  is guaranteed by ADR 0053 (pure derivers, `--check`). Fully-offline installs require the
-  toolkit pre-cached.
+- **Arbitrary worker dependencies are supported** (§6) without weakening §2: third-party
+  npm packages a worker imports travel as a *pinned dependency manifest* and are installed
+  (up-tree at the project root, serving every worker on both runtimes), never vendored.
+- **Risk.** First install fetches `@nanobpm/urban` **and the app's own dependency graph**
+  from npm (network) and runs `urban gen`; this is the same guarded install already shipped
+  in #532, and reconstitution determinism is guaranteed by ADR 0053 (pure derivers,
+  `--check`) plus a shipped lockfile (§6). Fully-offline installs require the toolkit **and**
+  the app deps pre-cached; native/`postinstall` worker deps require the app to be **trusted**
+  (the `--ignore-scripts`-unless-trusted guardrail).
 
 ## Open questions
 
@@ -156,10 +204,17 @@ and **no** bundle format beyond the npm tarball.
    project: overwrite authored artifacts (clobbers user edits) vs three-way merge vs
    refuse? *(Lean: an app-pack seeds a **new** project; upgrading a **live** project is a
    separate concern, better served by a `git` source than an npm re-copy.)*
+5. **Native / lifecycle-script worker deps & trust** (§6) — an app whose workers need
+   `postinstall`-building or native-addon packages installs those scripts only once the app
+   is **trusted**. Do we (a) require such packs to declare a `nativeDeps`/`trusted`
+   intent so the console prompts for trust up-front, or (b) let the first Run fail-closed
+   with a clear "this app needs to be trusted to install native dependencies" message?
+   *(Lean: (b) first — reuse the existing trust prompt; add (a) as an authoring hint later.)*
 
 ## Status
 
 **Proposed — pending ratification.** Implementation is follow-up work: the host `pack`
 source kind (generalising the `kind: example` copy path + `list_projects` tag), the
-`validate-manifests` guard against bundled `nano-generated/`/`node_modules/`, and the
-optional `kind: "app"` alias.
+`validate-manifests` guard against bundled `nano-generated/`/`node_modules/`, the app
+dependency install (§6: pinned lockfile + trust-gated native deps), and the optional
+`kind: "app"` alias.
