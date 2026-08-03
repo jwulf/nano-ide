@@ -96,13 +96,13 @@ export function collectManifestIssues(m: unknown): ValidationIssue[] {
           message: `worker declares ${backings.join(" + ")} (mutually exclusive)`,
         });
       }
-      // A `connection` must reference a declared top-level connections[] entry.
+      // A `connection` must reference a declared top-level `connections` entry.
       if (typeof w?.connection === "string" && w.connection.length > 0) {
         const conns = man.connections as Record<string, unknown> | undefined;
         if (!conns || !(w.connection in conns)) {
           issues.push({
             path: `workers[${i}].connection`,
-            message: `no such connection "${w.connection}" (add it to connections[])`,
+            message: `no such connection "${w.connection}" (add it to connections)`,
           });
         }
       }

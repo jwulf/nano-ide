@@ -70,8 +70,9 @@ function ensureConnectorHooks(): void {
     `  return next(spec, ctx);\n` +
     `}\n` +
     `export async function load(url, ctx, next) {\n` +
-    `  if (url.endsWith(".ts") && url.includes("/node_modules/")) {\n` +
-    `    const source = stripTypeScriptTypes(readFileSync(fileURLToPath(url), "utf8"), { mode: "strip" });\n` +
+    `  const path = url.split("?")[0];\n` +
+    `  if (path.endsWith(".ts") && path.includes("/node_modules/")) {\n` +
+    `    const source = stripTypeScriptTypes(readFileSync(fileURLToPath(path), "utf8"), { mode: "strip" });\n` +
     `    return { format: "module", source, shortCircuit: true };\n` +
     `  }\n` +
     `  return next(url, ctx);\n` +

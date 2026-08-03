@@ -61,7 +61,9 @@ export interface AddConnectorResult {
 const MANIFEST_FILE = "nano-ide.ext.json";
 
 function joinPath(a: string, b: string): string {
-  return `${a.replace(/\/+$/, "")}/${b.replace(/^\/+/, "")}`;
+  // Trim both slash styles (as toolkit/gen.ts joinPath does) so a Windows-style
+  // root does not produce an invalid path.
+  return `${a.replace(/[/\\]+$/, "")}/${b.replace(/^[/\\]+/, "")}`;
 }
 
 /** A stable, slug-ish connection name for a pack id (kebab, no leading scope). */
@@ -98,6 +100,15 @@ export async function addConnector(opts: AddConnectorOptions): Promise<AddConnec
   const specs = Array.isArray(pack.workers) ? pack.workers : [];
   if (specs.length === 0) {
     throw new Error(`connector pack "${pack.id}" declares no workers[] — nothing to enable.`);
+  }
+  // `type` comes from JSON; a malformed pack must fail loudly rather than wire an
+  // invalid worker entry (or manufacture a confusing conflict).
+  for (const spec of specs) {
+    if (typeof spec.type !== "string" || spec.type.length === 0) {
+      throw new Error(
+        `connector pack "${pack.id}" has a worker with a missing/non-string "type" in ${packManifestPath}.`,
+      );
+    }
   }
 
   const appManifestPath = joinPath(root, manifestFile);
