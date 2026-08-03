@@ -1,10 +1,11 @@
 # nano-ide
 
-Monorepo for the Nano RAD console IDE. It publishes two families of `@nanobpm/*` packages:
+Monorepo for the Nano RAD console IDE. It publishes two families of packages (most
+scoped `@nanobpm/*`; the `create-urban-app` scaffolder is unscoped):
 
 - **Extension packs** — plain npm packages discovered + installed from npm in the console
   UI (ADR 0007/0008/0009). The host parses each pack's `nano-ide.ext.json` manifest
-  (mirror of `server/src/console/extensions.rs`).
+  (mirror of the `nano-bpm` repo's `server/src/console/extensions.rs`).
 - **The Urban code-first stack** — `@nanobpm/urban` (runtime + derivation toolkit + `urban`
   CLI), `@nanobpm/workflow` (the `defineFlow` durable-orchestration library), and the
   `create-urban-app` scaffolder. These are published libraries/CLIs, **not** packs — they
