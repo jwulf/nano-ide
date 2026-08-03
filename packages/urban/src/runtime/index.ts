@@ -55,6 +55,18 @@ export type {
 } from "./core/host.ts";
 export type { AppApi, Mounted, RuntimeContext } from "./core/context.ts";
 
+// BPMN error contract: a handler throws `BpmnError(code)` to raise a modelled
+// error routed to an error boundary (ADR 0050), instead of a retryable failure.
+export { BpmnError, isBpmnError } from "./core/host.ts";
+
+// Connector packs (ADR 0050, in-process port)
+export {
+  adaptConnectorHandler,
+  mountConnectors,
+  resolveInstalledConnectors,
+} from "./core/modules/connectors.ts";
+export type { ConnectorsHandle } from "./core/modules/connectors.ts";
+
 // Data layer
 export { DataLayer, TypeRepo } from "./core/modules/datasource.ts";
 export type { ProvisionedSource } from "./core/modules/datasource.ts";

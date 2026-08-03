@@ -12,6 +12,7 @@ import { makeRouter, type Route } from "./router.ts";
 import { deployModels } from "./modules/deploy.ts";
 import { provisionData, DataLayer } from "./modules/datasource.ts";
 import { mountWorkers } from "./modules/workers.ts";
+import { mountConnectors } from "./modules/connectors.ts";
 import { mountSurfaces } from "./modules/surfaces.ts";
 import { mountTriggers } from "./modules/triggers.ts";
 import { mountSecurity, type SecurityPolicy } from "./modules/security.ts";
@@ -169,6 +170,11 @@ export async function createUrbanApp(opts: CreateUrbanAppOptions): Promise<Urban
           const w = await mountWorkers(ctx, api);
           mounted.push(w);
           describe.workers = w.describe?.();
+          // Connector-pack workers share the `workers` flag: same lifecycle, same
+          // engine, distinguished only by a `connector` field on the declaration.
+          const c = await mountConnectors(ctx, api);
+          mounted.push(c);
+          if (c.jobTypes.length > 0) describe.connectors = c.describe?.();
         }
 
         const routes: Route[] = [];

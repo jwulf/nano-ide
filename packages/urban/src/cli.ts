@@ -20,9 +20,10 @@ import {
   selectHost,
 } from "./runtime/index.ts";
 import { scaffold, slugify } from "create-urban-app";
-import { createNodeGenIO, previewModels, runGen, scaffoldWorkers } from "./toolkit/index.ts";
+import { addConnector, createNodeGenIO, previewModels, runGen, scaffoldWorkers } from "./toolkit/index.ts";
 import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 
 // Read the package version from package.json (one hop up from both src/cli.ts and the
 // compiled dist/cli.js) so `urban --version` never drifts from the published version.
@@ -47,6 +48,7 @@ interface Flags {
   deno: boolean;
   models: boolean;
   stdout: boolean;
+  install: boolean;
   style?: "model" | "code";
   help: boolean;
   version: boolean;
@@ -54,7 +56,7 @@ interface Flags {
 }
 
 function parse(argv: string[]): Flags {
-  const f: Flags = { root: ".", manifest: "nano.app.json", check: false, write: false, deno: false, models: true, stdout: false, help: false, version: false, _: [] };
+  const f: Flags = { root: ".", manifest: "nano.app.json", check: false, write: false, deno: false, models: true, stdout: false, install: true, help: false, version: false, _: [] };
   const need = (i: number, flag: string): string => {
     const v = argv[i];
     if (v === undefined || v.startsWith("-")) throw new Error(`flag ${flag} requires a value`);
@@ -70,6 +72,8 @@ function parse(argv: string[]): Flags {
     else if (a === "--no-models") f.models = false;
     else if (a === "--models") f.models = true;
     else if (a === "--stdout") f.stdout = true;
+    else if (a === "--no-install") f.install = false;
+    else if (a === "--install") f.install = true;
     else if (a === "--code-first") f.style = "code";
     else if (a === "--style") {
       const v = need(++i, a);
@@ -103,6 +107,7 @@ Usage:
   urban derive [--check|--stdout]   derive code-first models only (workflows/*.ts → processes/*.bpmn)
                                     (--stdout: print {models,incomplete} JSON without writing)
   urban stubs [--write]             scaffold write-once handler stubs from the model
+  urban add <pkg> [--no-install]    install a connector pack + wire it into nano.app.json
   urban run                         materialize + serve the app
   urban dev                         run + watch sources, hot-reload on change
   urban deploy                      deploy models only, then exit
@@ -281,6 +286,57 @@ async function cmdNew(f: Flags): Promise<number> {
   return 0;
 }
 
+async function cmdAdd(f: Flags): Promise<number> {
+  const pkg = f._[1];
+  if (!pkg) {
+    console.error("usage: urban add <pkg> [--no-install]");
+    return 1;
+  }
+  // Install the connector pack (a subprocess — the toolkit stays runtime-agnostic).
+  if (f.install) {
+    console.log(`Installing ${pkg} …`);
+    const res = spawnSync("npm", ["install", pkg], {
+      cwd: f.root,
+      stdio: "inherit",
+    });
+    if (res.error) {
+      console.error(`npm install failed: ${res.error.message}`);
+      return 1;
+    }
+    if (res.signal) {
+      console.error(`npm install was terminated by signal ${res.signal}`);
+      return 1;
+    }
+    if (res.status !== 0) {
+      console.error(`npm install exited with code ${res.status}`);
+      return res.status ?? 1;
+    }
+  }
+
+  try {
+    const result = await addConnector({
+      root: f.root,
+      pkg,
+      manifestFile: f.manifest,
+      io: createNodeGenIO(),
+    });
+    const added = result.wired.filter((w) => !w.alreadyPresent);
+    const kept = result.wired.filter((w) => w.alreadyPresent);
+    console.log(`✔ enabled connector "${result.packId}" from ${pkg}`);
+    for (const w of added) console.log(`  + worker ${w.taskType}`);
+    for (const w of kept) console.log(`  = worker ${w.taskType} (already wired)`);
+    if (result.connection) console.log(`  connection: ${result.connection}`);
+    if (result.requiredEnv.length > 0) {
+      console.log(`\nSet these environment variables before \`urban run\`:`);
+      for (const name of result.requiredEnv) console.log(`  ${name}`);
+    }
+    return 0;
+  } catch (err) {
+    console.error(`✖ ${(err as Error).message}`);
+    return 1;
+  }
+}
+
 export async function main(argv: string[]): Promise<number> {
   let f: Flags;
   try {
@@ -310,6 +366,8 @@ export async function main(argv: string[]): Promise<number> {
       return cmdDerive(f);
     case "stubs":
       return cmdStubs(f);
+    case "add":
+      return cmdAdd(f);
     case "run":
       return cmdRun(f);
     case "dev":

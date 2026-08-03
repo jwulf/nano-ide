@@ -115,3 +115,6 @@ export type {
 } from "./scaffold/workers.ts";
 export { scaffoldWorkers } from "./scaffold.ts";
 export type { ScaffoldOptions, ScaffoldRun, StubOutcome, StubStatus } from "./scaffold.ts";
+
+export { addConnector } from "./addConnector.ts";
+export type { AddConnectorOptions, AddConnectorResult } from "./addConnector.ts";

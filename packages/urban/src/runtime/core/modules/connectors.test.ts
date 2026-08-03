@@ -1,0 +1,206 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import type { AppApi, RuntimeContext } from "../context.ts";
+import type { EngineJob, JobHandler, WorkerSubscription } from "../host.ts";
+import { BpmnError } from "../host.ts";
+import type { AppManifest } from "../manifest.ts";
+import { defineWorker } from "../../connector-worker-sdk.ts";
+import { adaptConnectorHandler, mountConnectors, resolveInstalledConnectors } from "./connectors.ts";
+
+/** A tiny engine that records registrations and can deliver a job to a handler. */
+class MiniEngine {
+  workers = new Map<string, JobHandler>();
+  async registerWorker(jobType: string, handler: JobHandler): Promise<WorkerSubscription> {
+    this.workers.set(jobType, handler);
+    return { jobType, unsubscribe: async () => void this.workers.delete(jobType) };
+  }
+  deliver(jobType: string, job: EngineJob) {
+    const h = this.workers.get(jobType);
+    if (!h) throw new Error(`no worker for ${jobType}`);
+    return h(job);
+  }
+}
+
+interface FakeHostOptions {
+  files?: Record<string, string>;
+  env?: Record<string, string>;
+  /** Called on importConnectorModule(entry): register the pack's workers. */
+  onImport?: (entry: string) => void;
+  /** Omit importConnectorModule entirely (host cannot host connectors). */
+  noConnectorHost?: boolean;
+}
+
+function makeCtx(
+  manifest: Partial<AppManifest>,
+  engine: MiniEngine,
+  opts: FakeHostOptions = {},
+): { ctx: RuntimeContext; logs: Array<{ level: string; msg: string }> } {
+  const logs: Array<{ level: string; msg: string }> = [];
+  const files = opts.files ?? {};
+  const host: Record<string, unknown> = {
+    runtime: "node",
+    log: (level: string, msg: string) => logs.push({ level, msg }),
+    exists: async (p: string) => p in files,
+    readTextFile: async (p: string) => {
+      if (!(p in files)) throw new Error(`ENOENT ${p}`);
+      return files[p];
+    },
+    importModule: () => Promise.reject(new Error("no modules in this test")),
+  };
+  if (!opts.noConnectorHost) {
+    host.importConnectorModule = async (entry: string) => {
+      opts.onImport?.(entry);
+    };
+  }
+  const ctx = {
+    root: "/app",
+    manifest: { schemaVersion: 1, id: "t", name: "T", ...manifest } as AppManifest,
+    engine: engine as unknown as RuntimeContext["engine"],
+    host,
+  } as unknown as RuntimeContext;
+  return { ctx, logs };
+}
+
+function makeApp(env: Record<string, string> = {}): AppApi {
+  return { env: (n: string) => env[n], log: () => {} } as unknown as AppApi;
+}
+
+const PKG = "@nanobpm/nano-ide-connector-slack";
+const PACK_ID = "nano-ide-connector-slack";
+
+function slackFiles(): Record<string, string> {
+  return {
+    "/app/package.json": JSON.stringify({ dependencies: { [PKG]: "^1.0.0" } }),
+    [`/app/node_modules/${PKG}/nano-ide.ext.json`]: JSON.stringify({
+      id: PACK_ID,
+      workers: [
+        {
+          type: "slack:send-message",
+          entry: "worker.ts",
+          configFields: [{ key: "botToken", env: "SLACK_BOT_TOKEN" }],
+        },
+      ],
+    }),
+  };
+}
+
+test("resolveInstalledConnectors indexes packs by their manifest id", async () => {
+  const { ctx } = makeCtx({}, new MiniEngine(), { files: slackFiles() });
+  const packs = await resolveInstalledConnectors(ctx);
+  assert.deepEqual([...packs.keys()], [PACK_ID]);
+  assert.equal(packs.get(PACK_ID)?.dir, `node_modules/${PKG}`);
+});
+
+test("mountConnectors imports the pack entry and registers the drained worker", async () => {
+  const engine = new MiniEngine();
+  let importedEntry: string | undefined;
+  const { ctx, logs } = makeCtx(
+    { workers: [{ taskType: "slack:send-message", connector: PACK_ID }] },
+    engine,
+    {
+      files: slackFiles(),
+      onImport: (entry) => {
+        importedEntry = entry;
+        defineWorker({
+          type: "slack:send-message",
+          async handle(job) {
+            await job.complete({ echoed: job.variables.text });
+          },
+        });
+      },
+    },
+  );
+  const handle = await mountConnectors(ctx, makeApp({ SLACK_BOT_TOKEN: "xoxb-1" }));
+  assert.deepEqual(handle.jobTypes, ["slack:send-message"]);
+  assert.equal(importedEntry, `/app/node_modules/${PKG}/worker.ts`);
+  assert.ok(logs.some((l) => l.msg === "connector worker registered"));
+
+  const out = await engine.deliver("slack:send-message", {
+    jobKey: "j1",
+    jobType: "slack:send-message",
+    variables: { text: "hi" },
+  });
+  assert.deepEqual(out, { echoed: "hi" });
+});
+
+test("mountConnectors skips a worker whose required env is unset", async () => {
+  const engine = new MiniEngine();
+  const { ctx, logs } = makeCtx(
+    { workers: [{ taskType: "slack:send-message", connector: PACK_ID }] },
+    engine,
+    { files: slackFiles(), onImport: () => assert.fail("must not import when env is missing") },
+  );
+  const handle = await mountConnectors(ctx, makeApp()); // no SLACK_BOT_TOKEN
+  assert.deepEqual(handle.jobTypes, []);
+  assert.ok(logs.some((l) => l.msg === "skipping connector worker: required env unset"));
+});
+
+test("mountConnectors fails closed when the connector pack is not installed", async () => {
+  const engine = new MiniEngine();
+  const { ctx } = makeCtx(
+    { workers: [{ taskType: "slack:send-message", connector: PACK_ID }] },
+    engine,
+    { files: { "/app/package.json": JSON.stringify({ dependencies: {} }) } },
+  );
+  await assert.rejects(
+    () => mountConnectors(ctx, makeApp({ SLACK_BOT_TOKEN: "x" })),
+    /not installed/,
+  );
+});
+
+test("mountConnectors reports unsupported when the host cannot host connectors", async () => {
+  const engine = new MiniEngine();
+  const { ctx, logs } = makeCtx(
+    { workers: [{ taskType: "slack:send-message", connector: PACK_ID }] },
+    engine,
+    { files: slackFiles(), noConnectorHost: true },
+  );
+  const handle = await mountConnectors(ctx, makeApp({ SLACK_BOT_TOKEN: "x" }));
+  assert.deepEqual(handle.jobTypes, []);
+  assert.ok(logs.some((l) => l.msg === "skipping connector worker: host cannot host connector packs"));
+});
+
+test("resolveInstalledConnectors surfaces a malformed app package.json", async () => {
+  const { ctx } = makeCtx({}, new MiniEngine(), {
+    files: { "/app/package.json": "{ not json" },
+  });
+  await assert.rejects(() => resolveInstalledConnectors(ctx), /failed to parse package\.json/);
+});
+
+test("mountConnectors fails closed on a duplicate worker type in one pack entry", async () => {
+  const engine = new MiniEngine();
+  const { ctx } = makeCtx(
+    { workers: [{ taskType: "slack:send-message", connector: PACK_ID }] },
+    engine,
+    {
+      files: slackFiles(),
+      onImport: () => {
+        defineWorker({ type: "slack:send-message", async handle(job) { await job.complete({}); } });
+        defineWorker({ type: "slack:send-message", async handle(job) { await job.complete({}); } });
+      },
+    },
+  );
+  await assert.rejects(
+    () => mountConnectors(ctx, makeApp({ SLACK_BOT_TOKEN: "x" })),
+    /more than once/,
+  );
+});
+
+test("adaptConnectorHandler maps complete/fail/error(BpmnError) and a returned value", async () => {
+  const job: EngineJob = { jobKey: "j", jobType: "t", variables: {} };
+
+  const completes = adaptConnectorHandler({ type: "t", handle: async (j) => void (await j.complete({ a: 1 })) });
+  assert.deepEqual(await completes(job), { a: 1 });
+
+  const returns = adaptConnectorHandler({ type: "t", handle: async () => ({ b: 2 }) });
+  assert.deepEqual(await returns(job), { b: 2 });
+
+  const fails = adaptConnectorHandler({ type: "t", handle: async (j) => void (await j.fail("nope")) });
+  await assert.rejects(() => Promise.resolve(fails(job)), /nope/);
+
+  const errors = adaptConnectorHandler({ type: "t", handle: async (j) => void (await j.error("CODE", "boom")) });
+  await assert.rejects(
+    () => Promise.resolve(errors(job)),
+    (e: unknown) => e instanceof BpmnError && e.errorCode === "CODE",
+  );
+});

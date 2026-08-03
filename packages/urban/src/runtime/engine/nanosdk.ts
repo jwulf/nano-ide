@@ -17,6 +17,7 @@ import type {
   JobHandler,
   WorkerSubscription,
 } from "../core/host.ts";
+import { isBpmnError } from "../core/host.ts";
 import type { EngineSdkClient } from "./sdk.ts";
 
 /** Coerce an engine response's process-instance key to a non-empty string, or
@@ -38,6 +39,10 @@ export interface NanoSdkActivatedJob {
   variables?: Record<string, unknown>;
   complete(variables?: Record<string, unknown>): Promise<unknown>;
   fail(body: { errorMessage: string; retries?: number }): Promise<unknown>;
+  /** Raise a BPMN error (Zeebe `ThrowError`) routed to an error boundary/event.
+   *  Present on the nano-sdk enriched job at runtime; typed here so the adapter
+   *  can honour a handler's {@link BpmnError} (ADR 0050). */
+  error?(e: { errorCode: string; errorMessage?: string }): Promise<unknown>;
 }
 
 /** Config for a nano-sdk job worker (the subset this adapter sets). */
@@ -233,6 +238,31 @@ export class SdkEngineClient implements EngineClient {
           const out = await handler(engineJob);
           return await job.complete((out as Record<string, unknown> | undefined) ?? {});
         } catch (err) {
+          // A handler-raised BPMN error is a modelled, non-retryable outcome:
+          // report it as a BPMN error (routed to an error boundary/event) rather
+          // than a plain failure. If the transport lacks `error` (older SDK) — or
+          // the `error` call itself fails — fall through to the `fail` path below
+          // so the job is still acknowledged rather than left to lock-timeout.
+          if (isBpmnError(err) && typeof job.error === "function") {
+            // `message` is typed loosely (the guard survives module duplication),
+            // so coerce to a string before slicing to avoid a secondary crash.
+            const raw = (err as { message?: unknown }).message;
+            const message = typeof raw === "string" && raw.length > 0 ? raw : err.errorCode;
+            this.log("info", `handler ${jobType} raised BPMN error`, {
+              errorCode: err.errorCode,
+            });
+            try {
+              return await job.error({
+                errorCode: err.errorCode,
+                errorMessage: message.slice(0, 500),
+              });
+            } catch (errReportErr) {
+              this.log("warn", `handler ${jobType}: BPMN error report failed, failing the job`, {
+                err: errReportErr instanceof Error ? errReportErr.message : String(errReportErr),
+              });
+              // fall through to the fail path
+            }
+          }
           const message = err instanceof Error ? err.message : String(err);
           this.log("error", `handler ${jobType} threw`, { err: message });
           try {

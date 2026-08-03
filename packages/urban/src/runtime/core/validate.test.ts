@@ -72,6 +72,30 @@ test("data.default must reference an existing source", () => {
   assert.ok(issues.some((i) => i.path === "data.default"));
 });
 
+test("a worker connection must reference a declared connections entry", () => {
+  const missing = collectManifestIssues({
+    ...valid,
+    workers: [{ taskType: "a.b", connector: "slack", connection: "slack" }],
+  });
+  assert.ok(missing.some((i) => i.path === "workers[0].connection"));
+
+  const present = collectManifestIssues({
+    ...valid,
+    workers: [{ taskType: "a.b", connector: "slack", connection: "slack" }],
+    connections: { slack: { type: "slack" } },
+  });
+  assert.ok(!present.some((i) => i.path === "workers[0].connection"));
+});
+
+test("a non-object connections does not throw and flags the reference", () => {
+  const issues = collectManifestIssues({
+    ...valid,
+    workers: [{ taskType: "a.b", connector: "slack", connection: "slack" }],
+    connections: "nope",
+  });
+  assert.ok(issues.some((i) => i.path === "workers[0].connection"));
+});
+
 test("validateManifest throws ManifestValidationError with issues", () => {
   assert.throws(() => validateManifest({ schemaVersion: 1 }), (e: unknown) => {
     assert.ok(e instanceof ManifestValidationError);

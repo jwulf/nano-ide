@@ -68,6 +68,16 @@ export interface HostContext {
    * between runtimes, so it lives behind the host seam.
    */
   importModule(path: string): Promise<Record<string, unknown>>;
+  /**
+   * Import a connector pack's worker `entry` (ADR 0050) with the bare
+   * `@nanobpm/worker` specifier the pack imports aliased to the runtime's
+   * in-process shim (`connector-worker-sdk.ts`), so its top-level
+   * `defineWorker(...)` registers into the shared registry. `entry` is an
+   * absolute path (already resolved from the installed pack). Hosts that cannot
+   * alias a bare specifier (or run no connector workers) may omit this; the
+   * connector mount then reports the workers as unsupported rather than crashing.
+   */
+  importConnectorModule?(entry: string): Promise<void>;
   /** Start an HTTP server. Routing is done by the caller inside `handler`. */
   serveHttp(port: number, handler: HttpHandler): Promise<HttpServer>;
   /**
@@ -99,6 +109,36 @@ export interface EngineJob<In extends object = Record<string, unknown>> {
 export type JobHandler = (
   job: EngineJob,
 ) => Promise<Record<string, unknown> | void> | Record<string, unknown> | void;
+
+/**
+ * A BPMN error raised by a job handler. When a handler throws this, the engine
+ * adapter reports it to the engine as a BPMN error (`throwError`) — routed to a
+ * matching error boundary/event subprocess — instead of a plain job failure
+ * (which retries then raises an incident). This is the runtime face of a
+ * connector worker's `job.error(code, message)` (ADR 0050): a non-retryable,
+ * modelled outcome. Handlers that throw any other error are failed (retried).
+ */
+export class BpmnError extends Error {
+  readonly errorCode: string;
+  constructor(errorCode: string, message?: string) {
+    super(message ?? errorCode);
+    this.name = "BpmnError";
+    this.errorCode = errorCode;
+  }
+}
+
+/** Structural guard: true for a {@link BpmnError} or any error carrying a
+ *  non-empty string `errorCode`, so the check survives module-duplication (a
+ *  BpmnError constructed against a different copy of this module still routes as
+ *  a BPMN error rather than a generic failure). */
+export function isBpmnError(err: unknown): err is { errorCode: string; message?: string } {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    typeof (err as { errorCode?: unknown }).errorCode === "string" &&
+    (err as { errorCode: string }).errorCode.length > 0
+  );
+}
 
 /** A registered worker subscription. */
 export interface WorkerSubscription {

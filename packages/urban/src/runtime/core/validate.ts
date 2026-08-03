@@ -76,14 +76,38 @@ export function collectManifestIssues(m: unknown): ValidationIssue[] {
       if (!workerJobType(w)) {
         issues.push({ path: `workers[${i}]`, message: "missing taskType" });
       }
-      // The schema allows a worker backed by either a `handler` file or an `llm`
-      // binding (oneOf). Require exactly one — don't force `handler`.
-      const hasHandler = typeof w?.handler === "string" && w.handler.length > 0;
-      const hasLlm = typeof w?.llm === "string" && w.llm.length > 0;
-      if (!hasHandler && !hasLlm) {
-        issues.push({ path: `workers[${i}]`, message: "worker requires a `handler` or `llm`" });
-      } else if (hasHandler && hasLlm) {
-        issues.push({ path: `workers[${i}]`, message: "worker declares both `handler` and `llm` (mutually exclusive)" });
+      // A worker is backed by exactly one of: a `handler` file, an `llm` binding,
+      // or an installed `connector` pack (ADR 0050). The schema models these as a
+      // oneOf; enforce the "exactly one" here without forcing `handler`. Whether a
+      // `connector` actually resolves to an installed pack is a runtime seam check
+      // (mountConnectors), not something this static manifest check can see.
+      const backings: string[] = [];
+      if (typeof w?.handler === "string" && w.handler.length > 0) backings.push("handler");
+      if (typeof w?.llm === "string" && w.llm.length > 0) backings.push("llm");
+      if (typeof w?.connector === "string" && w.connector.length > 0) backings.push("connector");
+      if (backings.length === 0) {
+        issues.push({
+          path: `workers[${i}]`,
+          message: "worker requires a `handler`, `llm`, or `connector`",
+        });
+      } else if (backings.length > 1) {
+        issues.push({
+          path: `workers[${i}]`,
+          message: `worker declares ${backings.join(" + ")} (mutually exclusive)`,
+        });
+      }
+      // A `connection` must reference a declared top-level `connections` entry.
+      if (typeof w?.connection === "string" && w.connection.length > 0) {
+        const conns =
+          man.connections && typeof man.connections === "object" && !Array.isArray(man.connections)
+            ? (man.connections as Record<string, unknown>)
+            : undefined;
+        if (!conns || !(w.connection in conns)) {
+          issues.push({
+            path: `workers[${i}].connection`,
+            message: `no such connection "${w.connection}" (add it to connections)`,
+          });
+        }
       }
     });
   }
