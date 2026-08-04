@@ -89,6 +89,19 @@ test("GET /app/runtime.js serves the renderer module", async () => {
   assert.match(res.body ?? "", /pc:refresh/);
 });
 
+test("renderer wires a column's linkField to a new-tab anchor", async () => {
+  const res = await dispatch("GET", "/app/runtime.js");
+  const js = res.body ?? "";
+  // A column declaring `linkField` renders its text as a link to that field's
+  // URL, opened safely in a new tab. Guard the whole shape so the feature can't
+  // silently regress: the field is read, http(s) is required, and the anchor
+  // opens in a new tab with a hardened rel.
+  assert.match(js, /col\.linkField/);
+  assert.match(js, /\^https\?:/);
+  assert.match(js, /target: "_blank"/);
+  assert.match(js, /rel: "noopener noreferrer"/);
+});
+
 test("GET /app/pages/<id> returns the page json, 404 for unknown", async () => {
   const ok = await dispatch("GET", "/app/pages/home");
   assert.equal(ok.status, 200);
