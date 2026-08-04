@@ -427,6 +427,27 @@ function renderText(node) {
   return el(v === "heading" ? "h1" : "p", { class: cls }, node.props.text || "");
 }
 
+// A grid td cell. When the column declares linkField, the cell text (the
+// column's own value) becomes a link to the URL held in that other field,
+// opened in a new tab. Only http(s) hrefs are linked — anything else (e.g. a
+// javascript: URL smuggled through row data) falls back to plain text — and
+// external links get rel=noopener noreferrer so the opened page can't reach
+// window.opener. Shared by the top-level grid and child grids.
+function gridCell(col, row) {
+  const text = row[col.field] == null ? "" : String(row[col.field]);
+  if (col.linkField) {
+    const href = row[col.linkField] == null ? "" : String(row[col.linkField]);
+    if (text !== "" && /^https?:\/\//i.test(href)) {
+      return el(
+        "td",
+        {},
+        el("a", { class: "pc-link", href, target: "_blank", rel: "noopener noreferrer" }, text),
+      );
+    }
+  }
+  return el("td", {}, text);
+}
+
 function renderActionForm(node) {
   const p = node.props;
   const card = el("section", { class: "pc-card" });
@@ -587,7 +608,7 @@ function renderDataGrid(node) {
         cbody.append(el("tr", {}, el("td", { colspan: cspan }, "None")));
       }
       for (const cr of rows) {
-        const cells = ccols.map((c) => el("td", {}, cr[c.field] == null ? "" : String(cr[c.field])));
+        const cells = ccols.map((c) => gridCell(c, cr));
         if (cg.lazyField) {
           const lf = cg.lazyField;
           const has = cr[lf.field] != null && String(cr[lf.field]).trim() !== "";
@@ -641,7 +662,7 @@ function renderDataGrid(node) {
   }
 
   function renderRow(row) {
-    const cells = cols.map((c) => el("td", {}, row[c.field] == null ? "" : String(row[c.field])));
+    const cells = cols.map((c) => gridCell(c, row));
     let toggle = null;
     if (hasExtra) {
       const actionCell = el("td", { class: "pc-row-actions" });
