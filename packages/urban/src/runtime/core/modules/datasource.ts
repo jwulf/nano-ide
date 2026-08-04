@@ -188,11 +188,30 @@ async function applyMigrations(
   for (const file of files) {
     if (applied.has(file)) continue;
     const sql = await host.readTextFile(`${dir}/${file}`);
-    db.exec(sql);
-    db.run("INSERT INTO _urban_migrations (name, applied_at) VALUES (?, ?)", [
-      file,
-      new Date(host.now()).toISOString(),
-    ]);
+    // Apply the migration and record it in the ledger atomically. SQLite DDL is
+    // transactional, so wrapping both in one BEGIN/COMMIT makes a migration all-or-nothing:
+    // either the schema change AND its `_urban_migrations` row commit together, or neither
+    // does. Without this, an interruption (or an error later in the file's SQL) can leave the
+    // schema changed but the migration unrecorded — which poisons every future boot, because
+    // the runner then re-applies the "unapplied" migration and hits e.g. "duplicate column".
+    // Migration files must therefore not contain their own transaction-control statements.
+    db.exec("BEGIN");
+    try {
+      db.exec(sql);
+      db.run("INSERT INTO _urban_migrations (name, applied_at) VALUES (?, ?)", [
+        file,
+        new Date(host.now()).toISOString(),
+      ]);
+      db.exec("COMMIT");
+    } catch (err) {
+      db.exec("ROLLBACK");
+      throw new Error(
+        `migration "${file}" failed and was rolled back (no partial schema change, not recorded as applied): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+        { cause: err },
+      );
+    }
     newlyApplied.push(file);
   }
   return newlyApplied;
