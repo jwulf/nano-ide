@@ -45,6 +45,14 @@ human-in-the-loop path), composed with control-flow combinators:
 - `w.branch(condition, { then, else? })` — a two-way choice on a FEEL boolean.
 - `w.loop(body)` — a durable loop (back-edge to the loop head).
 - `w.break()` / `w.continue()` — exit the enclosing loop, or jump back to its head.
+- `w.parallel([blockA, blockB, …])` — a static fork/join: every block runs
+  concurrently on its own branch, rejoined by an AND-join (all branches must
+  arrive before the flow continues).
+- `w.forEach(collection, itemVar, body, opts?)` — a data-driven fan-out over a
+  FEEL `collection`: one child instance of `body` runs per item (the item bound to
+  `itemVar`). `{ sequential }` runs children one at a time; `{ outputCollection,
+  outputElement }` collects each child's result into a list; `{ completionCondition }`
+  completes the body early.
 
 ```ts
 import { defineFlow, WorkflowClient, Worker } from "@nanobpm/workflow";
@@ -89,8 +97,10 @@ const convergence = defineFlow("convergence-loop", (w) => {
 Each combinator compiles to a BPMN primitive the engine already runs: `switch` /
 `branch` → an exclusive gateway (in-order conditions, first match wins, default =
 unconditional flow); `loop` → a convergent gateway whose body falls through back to
-the head; nodes with multiple incoming flows are an implicit XOR merge. See
-**ADR 0047**.
+the head; nodes with multiple incoming flows are an implicit XOR merge; `parallel`
+→ a diverging/converging **parallel gateway** pair (AND fork/join); `forEach` → a
+**parallel multi-instance** activity (a single-step body) or an embedded
+multi-instance sub-process (a multi-step body). See **ADR 0047**.
 
 #### Typed data envelopes (eject to model-first with contracts intact)
 
@@ -178,7 +188,7 @@ once.
 | Export | Purpose |
 | --- | --- |
 | `defineWorkflow(id, orchFn)` | Imperative (replayed) workflow — experimental/internal. |
-| `defineFlow(id, [contracts,] build)` | Declarative flow: `run`/`task`/`signal` + `switch`/`branch`/`loop`/`break`/`continue`, with an optional typed contracts map. |
+| `defineFlow(id, [contracts,] build)` | Declarative flow: `run`/`task`/`signal`/`timer` + `switch`/`branch`/`loop`/`break`/`continue` + `parallel`/`forEach`, with an optional typed contracts map. |
 | `envelope(name, fields)` | A typed data envelope; lifted into the model as a `nano:shape` + `dataEnvelope` wiring. |
 | `externalJobTypes(flow)` | The job types of a flow's external `task` steps (each overridable per-step via `w.task(name, { jobType })`). |
 | `WorkflowClient` | `deploy`, `start`, `signal`, `getInstance` over REST v2. |

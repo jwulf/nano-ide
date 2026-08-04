@@ -775,7 +775,7 @@ test("defineFlow: rejects a non-object contracts arg and a missing build callbac
 });
 
 test("defineFlow: rejects step names that collide with generated BPMN ids", () => {
-  for (const bad of ["Start", "End", "Gw_0", "Loop_0", "Msg_x", "f_0"]) {
+  for (const bad of ["Start", "End", "Gw_0", "Loop_0", "Sub_0", "Msg_x", "f_0"]) {
     assert.throws(
       () => defineFlow("wf", (w) => w.run(bad, async () => ({}))),
       /reserved/,
@@ -791,5 +791,122 @@ test("envelope: rejects a null/invalid field spec with a clear error (not a Type
     // @ts-expect-error null is not a valid field spec
     () => envelope("Bad", { a: null }),
     /must be a scalar type or a \{ type, optional\?, list\? \} object/,
+  );
+});
+
+// --- Parallelism primitives: w.parallel (AND fork/join) + w.forEach (MI) ------
+
+test("declarative emit: parallel emits a fork/join parallel-gateway pair, one branch each", () => {
+  const flow = defineFlow("fan", (w) => {
+    w.task("prep");
+    w.parallel([(b) => b.task("lint"), (b) => b.task("test"), (b) => b.task("build")]);
+    w.task("report");
+  });
+  const xml = toBpmn(flow);
+  // Exactly two parallel gateways (a diverging split + a converging join); no
+  // exclusive gateways are emitted for a parallel block.
+  assert.equal((xml.match(/<bpmn:parallelGateway /g) ?? []).length, 2);
+  assert.doesNotMatch(xml, /<bpmn:exclusiveGateway /);
+  // The split (Gw_0) fans out to all three branches; the join (Gw_1) collects them.
+  assert.equal((xml.match(/sourceRef="Gw_0"/g) ?? []).length, 3);
+  assert.equal((xml.match(/targetRef="Gw_1"/g) ?? []).length, 3);
+  // A parallel branch's flows carry NO condition (unlike switch/branch arms).
+  assert.doesNotMatch(xml, /sourceRef="Gw_0"[^>]*>\s*<bpmn:conditionExpression/);
+  // prep feeds the split; the join feeds report.
+  assert.match(xml, /sourceRef="prep" targetRef="Gw_0"/);
+  assert.match(xml, /sourceRef="Gw_1" targetRef="report"/);
+});
+
+test("declarative emit: parallel requires at least two branches", () => {
+  assert.throws(() => defineFlow("f", (w) => w.parallel([(b) => b.task("a")])), /at least two branch/);
+  // @ts-expect-error a non-array is rejected
+  assert.throws(() => defineFlow("f", (w) => w.parallel("nope")), /at least two branch/);
+});
+
+test("declarative emit: forEach over a single task lifts a PARALLEL multi-instance onto it", () => {
+  const flow = defineFlow("fanout", (w) => {
+    w.task("plan");
+    w.forEach("plan.items", "item", (b) => b.task("handle"));
+    w.task("done");
+  });
+  const xml = toBpmn(flow);
+  // No sub-process for a single-activity body: the MI rides the service task.
+  assert.doesNotMatch(xml, /<bpmn:subProcess/);
+  assert.match(xml, /<bpmn:serviceTask id="handle"[\s\S]*?<bpmn:multiInstanceLoopCharacteristics isSequential="false">/);
+  assert.match(xml, /<zeebe:loopCharacteristics inputCollection="=plan\.items" inputElement="item" \/>/);
+  // The MI activity is wired inline between plan and done.
+  assert.match(xml, /sourceRef="plan" targetRef="handle"/);
+  assert.match(xml, /sourceRef="handle" targetRef="done"/);
+});
+
+test("declarative emit: forEach { sequential } emits a sequential multi-instance", () => {
+  const flow = defineFlow("seq", (w) => w.forEach("xs", "x", (b) => b.task("step"), { sequential: true }));
+  assert.match(toBpmn(flow), /<bpmn:multiInstanceLoopCharacteristics isSequential="true">/);
+});
+
+test("declarative emit: forEach collects an output collection with an output element", () => {
+  const flow = defineFlow("collect", (w) =>
+    w.forEach("items", "item", (b) => b.task("double"), { outputCollection: "results", outputElement: "double.value" }),
+  );
+  const xml = toBpmn(flow);
+  assert.match(
+    xml,
+    /<zeebe:loopCharacteristics inputCollection="=items" inputElement="item" outputCollection="results" outputElement="=double\.value" \/>/,
+  );
+});
+
+test("declarative emit: forEach { completionCondition } lifts a FEEL completion condition", () => {
+  const flow = defineFlow("early", (w) =>
+    w.forEach("items", "item", (b) => b.task("try"), { completionCondition: "count(results) >= 2" }),
+  );
+  assert.match(toBpmn(flow), /<bpmn:completionCondition>=count\(results\) &gt;= 2<\/bpmn:completionCondition>/);
+});
+
+test("declarative emit: a multi-step forEach body becomes an embedded multi-instance sub-process", () => {
+  const flow = defineFlow("waves", (w) => {
+    w.task("plan");
+    w.forEach("agents", "a", (b) => {
+      b.task("spawn");
+      b.task("collect");
+    });
+    w.task("report");
+  });
+  const xml = toBpmn(flow);
+  // The body is wrapped in a sub-process carrying the MI characteristics, with
+  // its own start/end and both inner tasks nested inside it.
+  assert.match(xml, /<bpmn:subProcess id="Sub_0">[\s\S]*<bpmn:multiInstanceLoopCharacteristics isSequential="false">/);
+  assert.match(xml, /<bpmn:startEvent id="Sub_0_start">/);
+  assert.match(xml, /<bpmn:endEvent id="Sub_0_end">/);
+  assert.match(xml, /<bpmn:serviceTask id="spawn"/);
+  assert.match(xml, /<bpmn:serviceTask id="collect"/);
+  // The sub-process is wired inline at the top level between plan and report.
+  assert.match(xml, /sourceRef="plan" targetRef="Sub_0"/);
+  assert.match(xml, /sourceRef="Sub_0" targetRef="report"/);
+});
+
+test("declarative emit: forEach validates its inputs", () => {
+  assert.throws(() => defineFlow("f", (w) => w.forEach("", "x", (b) => b.task("a"))), /non-empty FEEL collection/);
+  assert.throws(() => defineFlow("f", (w) => w.forEach("xs", "1bad", (b) => b.task("a"))), /forEach itemVar/);
+  assert.throws(() => defineFlow("f", (w) => w.forEach("xs", "x", () => {})), /declared no steps/);
+  assert.throws(
+    () => defineFlow("f", (w) => w.forEach("xs", "x", (b) => b.task("a"), { outputElement: "a.v" })),
+    /outputElement needs an outputCollection/,
+  );
+});
+
+test("declarative emit: break/continue cannot cross a forEach scope boundary", () => {
+  // A forEach body runs in its own token scope (the MI sub-process), so the
+  // enclosing loop is unreachable from inside it.
+  assert.throws(
+    () =>
+      defineFlow("f", (w) =>
+        w.loop((l) => {
+          l.forEach("xs", "x", (b) => {
+            b.task("a");
+            b.break();
+          });
+        }),
+      ),
+    /break\(\) is only valid inside a loop/,
   );
 });

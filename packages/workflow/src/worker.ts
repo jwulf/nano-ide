@@ -112,8 +112,9 @@ export class Worker {
     } else {
       // Walk the flow tree; only `run` steps are hosted locally. `signal`
       // (message catch) and `task` (external worker) contribute no in-process
-      // route, and structural combinators (`switch`/`branch`/`loop`) are pure
-      // routing with no job of their own.
+      // route, and structural combinators (`switch`/`branch`/`loop`/`parallel`/
+      // `forEach`) are pure routing with no job of their own — but the `run`
+      // steps NESTED inside them are hosted, since `walkNodes` recurses.
       walkNodes(wf.steps, (s) => {
         if (s.kind !== "run") return;
         const handler = wf.handlers[s.name];
