@@ -186,6 +186,7 @@ test("declarative parallel runs branches concurrently and joins (AND gateway)", 
   await gw.start();
 
   const ran = new Set<string>();
+  let mergeBeforeJoin = false;
   const flow = defineFlow("fan-and", (w) => {
     w.parallel([
       (b) => b.run("left", async () => ({ l: 1 })),
@@ -200,6 +201,11 @@ test("declarative parallel runs branches concurrently and joins (AND gateway)", 
     workflows: [flow],
     pollTimeoutMs: 1500,
     onActivity: (e) => {
+      // The AND-join must gate `merge` until both branches have arrived.
+      // If `merge` runs before we've seen both branch ids, the join regressed.
+      if (e.elementId === "merge" && !(ran.has("left") && ran.has("right"))) {
+        mergeBeforeJoin = true;
+      }
       ran.add(e.elementId);
     },
     onError: () => {},
@@ -214,6 +220,8 @@ test("declarative parallel runs branches concurrently and joins (AND gateway)", 
     await waitFor(() => ran.has("left") && ran.has("right"), "both branches ran", 20000);
     await waitFor(() => ran.has("merge"), "merge ran after the join", 20000);
     await sleep(400);
+
+    assert.equal(mergeBeforeJoin, false, "merge must not run before the AND-join collects both branches");
 
     const final = await client.getInstance(String(inst.processInstanceKey));
     assert.ok(final, "getInstance should return the completed instance");

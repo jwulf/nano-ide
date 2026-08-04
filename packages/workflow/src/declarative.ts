@@ -356,7 +356,11 @@ function makeBuilder<C extends object>(
       for (const fn of branches) {
         if (typeof fn !== "function") throw new Error(`parallel() branches must all be blocks (b) => {…}`);
       }
-      out.push({ kind: "parallel", branches: branches.map((fn) => child(fn, false)) });
+      // Each branch runs in its own token scope up to the AND-join, so a
+      // `break`/`continue` must not escape the fork/join into an enclosing
+      // loop. Scope branches (loopDepth resets to 0) so cross-boundary
+      // break/continue is rejected at build time, matching forEach.
+      out.push({ kind: "parallel", branches: branches.map((fn) => childScoped(fn)) });
       return b as unknown as FlowBuilder<C>;
     },
     forEach(
@@ -373,13 +377,19 @@ function makeBuilder<C extends object>(
       if (typeof collection !== "string" || collection.trim() === "") {
         throw new Error(`forEach() needs a non-empty FEEL collection expression`);
       }
+      // Authors may paste a leading "=" (common in Zeebe FEEL examples). Strip
+      // it so the emitter's own "=" prefix never produces an invalid "==...".
+      const collExpr = collection.trim().replace(/^=/, "").trim();
+      if (collExpr === "") {
+        throw new Error(`forEach() collection expression is empty after stripping the leading "="`);
+      }
       assertIdent("forEach itemVar", itemVar);
       if (typeof body !== "function") throw new Error(`forEach("${itemVar}") needs a body function`);
       const nodes = childScoped(body);
       if (nodes.length === 0) throw new Error(`forEach("${itemVar}") body declared no steps`);
       const node: Extract<FlowNode, { kind: "forEach" }> = {
         kind: "forEach",
-        collection: collection.trim(),
+        collection: collExpr,
         itemVar,
         body: nodes,
       };
@@ -392,13 +402,21 @@ function makeBuilder<C extends object>(
         if (typeof opts.outputElement !== "string" || opts.outputElement.trim() === "") {
           throw new Error(`forEach("${itemVar}") outputElement must be a non-empty FEEL expression`);
         }
-        node.outputElement = opts.outputElement.trim();
+        const outEl = opts.outputElement.trim().replace(/^=/, "").trim();
+        if (outEl === "") {
+          throw new Error(`forEach("${itemVar}") outputElement is empty after stripping the leading "="`);
+        }
+        node.outputElement = outEl;
       }
       if (opts?.completionCondition !== undefined) {
         if (typeof opts.completionCondition !== "string" || opts.completionCondition.trim() === "") {
           throw new Error(`forEach("${itemVar}") completionCondition must be a non-empty FEEL expression`);
         }
-        node.completionCondition = opts.completionCondition.trim();
+        const compCond = opts.completionCondition.trim().replace(/^=/, "").trim();
+        if (compCond === "") {
+          throw new Error(`forEach("${itemVar}") completionCondition is empty after stripping the leading "="`);
+        }
+        node.completionCondition = compCond;
       }
       if (node.outputElement && !node.outputCollection) {
         throw new Error(`forEach("${itemVar}") outputElement needs an outputCollection to collect into`);
