@@ -39,3 +39,26 @@ export const orders = defineFlow(
       return { ok: total > 0 }; // typed ChargeOut
     }),
 );
+
+// (C) Parallelism primitives — `parallel` fans out concurrent branches, `forEach`
+//     fans out over a FEEL collection. Inside their blocks the builder is the
+//     SAME typed builder, so contract typing still flows through.
+export const fanout = defineFlow(
+  "fanout",
+  { charge: { in: ChargeIn, out: ChargeOut } },
+  (w) => {
+    w.parallel([
+      (b) => b.task("audit"),
+      (b) =>
+        b.run("charge", async (job) => {
+          const total: number = job.variables.total; // typed inside a parallel branch
+          return { ok: total > 0 };
+        }),
+    ]);
+    w.forEach("items", "item", (b) => b.task("handle"), {
+      outputCollection: "results",
+      outputElement: "handle.out",
+      sequential: false,
+    });
+  },
+);

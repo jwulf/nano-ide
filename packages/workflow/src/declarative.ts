@@ -3,7 +3,9 @@
 // (`switch`/`branch`/`loop`) that compile to exclusive gateways + back-edges the
 // engine already runs (engine-core supports XOR gateways with in-order condition
 // evaluation and a default flow, and tasks with multiple incoming flows act as
-// an implicit XOR merge).
+// an implicit XOR merge), plus concurrency combinators — `parallel` (an AND
+// fork/join over parallel gateways) and `forEach` (a data-driven fan-out lowering
+// to a parallel/sequential multi-instance activity or sub-process).
 //
 //   const convergence = defineFlow(
 //     "convergence-loop",
@@ -151,6 +153,41 @@ export interface FlowBuilder<C extends object = object> {
    * the loop run once `break()` is reached.
    */
   loop(body: Block<C>): FlowBuilder<C>;
+  /**
+   * A static parallel fork/join (a pair of BPMN parallel gateways). Every block
+   * runs concurrently on its own branch; control continues past `parallel` only
+   * once ALL branches have reached the joining gateway (AND-join). Pass at least
+   * two branch blocks. Unlike `switch`/`branch` (exclusive choice), no branch is
+   * conditional — all of them run.
+   */
+  parallel(branches: Block<C>[]): FlowBuilder<C>;
+  /**
+   * A data-driven fan-out over a runtime collection (a BPMN parallel
+   * multi-instance activity). `collection` is a FEEL expression (no leading `=`)
+   * evaluating to a list; one child instance of `body` runs per item, with the
+   * item bound to the `itemVar` variable in the child's scope. A single-activity
+   * body attaches the multi-instance characteristics to that activity; a
+   * multi-step body is wrapped in an embedded multi-instance sub-process. Options:
+   *  - `sequential` — run children one at a time (a sequential MI) instead of all
+   *    at once (the default: a parallel MI).
+   *  - `outputCollection` / `outputElement` — collect each child's `outputElement`
+   *    (a FEEL expression, no leading `=`) into the `outputCollection` list
+   *    variable, in item order.
+   *  - `completionCondition` — a FEEL boolean (no leading `=`); when it holds
+   *    after a child completes, the remaining children are cancelled and the body
+   *    completes early.
+   */
+  forEach(
+    collection: string,
+    itemVar: string,
+    body: Block<C>,
+    opts?: {
+      sequential?: boolean;
+      outputCollection?: string;
+      outputElement?: string;
+      completionCondition?: string;
+    },
+  ): FlowBuilder<C>;
   /** Exit the enclosing loop (routes to whatever follows it). Only valid inside
    *  a `loop`. */
   break(): FlowBuilder<C>;
@@ -171,7 +208,7 @@ interface BuilderCtx {
 /** Ids the emitter generates for structural nodes / flows / messages. A step
  *  name that collides with one of these would produce a duplicate BPMN id and an
  *  invalid model, so reject them at authoring time. */
-const RESERVED_PREFIXES = /^(Gw_|Loop_|Msg_|f_)/;
+const RESERVED_PREFIXES = /^(Gw_|Loop_|Sub_|Msg_|f_)/;
 
 function claimName(ctx: BuilderCtx, id: string, name: string): void {
   assertIdent("step name", name);
@@ -180,7 +217,7 @@ function claimName(ctx: BuilderCtx, id: string, name: string): void {
   }
   if (RESERVED_PREFIXES.test(name)) {
     throw new Error(
-      `step name "${name}" uses a reserved prefix (Gw_/Loop_/Msg_/f_ are generated ids) in flow "${id}"`,
+      `step name "${name}" uses a reserved prefix (Gw_/Loop_/Sub_/Msg_/f_ are generated ids) in flow "${id}"`,
     );
   }
   if (ctx.seen.has(name)) throw new Error(`duplicate step name "${name}" in flow "${id}"`);
@@ -207,6 +244,15 @@ function makeBuilder<C extends object>(
     const body: FlowNode[] = [];
     const depth = inLoop ? ctx.loopDepth + 1 : ctx.loopDepth;
     fn(makeBuilder<C>(id, body, { ...ctx, loopDepth: depth }));
+    return body;
+  };
+  // A body that runs in its OWN token scope (an embedded sub-process): the
+  // enclosing loop is not reachable across the scope boundary, so `break`/
+  // `continue` inside it are rejected (loopDepth resets to 0). A `loop` declared
+  // INSIDE the body still works — it creates its own scope.
+  const childScoped = (fn: Block<C>): FlowNode[] => {
+    const body: FlowNode[] = [];
+    fn(makeBuilder<C>(id, body, { ...ctx, loopDepth: 0 }));
     return body;
   };
   const b = {
@@ -303,6 +349,63 @@ function makeBuilder<C extends object>(
       out.push({ kind: "loop", body: child(body, true) });
       return b as unknown as FlowBuilder<C>;
     },
+    parallel(branches: Block<C>[]): FlowBuilder<C> {
+      if (!Array.isArray(branches) || branches.length < 2) {
+        throw new Error(`parallel() needs at least two branch blocks`);
+      }
+      for (const fn of branches) {
+        if (typeof fn !== "function") throw new Error(`parallel() branches must all be blocks (b) => {…}`);
+      }
+      out.push({ kind: "parallel", branches: branches.map((fn) => child(fn, false)) });
+      return b as unknown as FlowBuilder<C>;
+    },
+    forEach(
+      collection: string,
+      itemVar: string,
+      body: Block<C>,
+      opts?: {
+        sequential?: boolean;
+        outputCollection?: string;
+        outputElement?: string;
+        completionCondition?: string;
+      },
+    ): FlowBuilder<C> {
+      if (typeof collection !== "string" || collection.trim() === "") {
+        throw new Error(`forEach() needs a non-empty FEEL collection expression`);
+      }
+      assertIdent("forEach itemVar", itemVar);
+      if (typeof body !== "function") throw new Error(`forEach("${itemVar}") needs a body function`);
+      const nodes = childScoped(body);
+      if (nodes.length === 0) throw new Error(`forEach("${itemVar}") body declared no steps`);
+      const node: Extract<FlowNode, { kind: "forEach" }> = {
+        kind: "forEach",
+        collection: collection.trim(),
+        itemVar,
+        body: nodes,
+      };
+      if (opts?.sequential) node.sequential = true;
+      if (opts?.outputCollection !== undefined) {
+        assertIdent("forEach outputCollection", opts.outputCollection);
+        node.outputCollection = opts.outputCollection;
+      }
+      if (opts?.outputElement !== undefined) {
+        if (typeof opts.outputElement !== "string" || opts.outputElement.trim() === "") {
+          throw new Error(`forEach("${itemVar}") outputElement must be a non-empty FEEL expression`);
+        }
+        node.outputElement = opts.outputElement.trim();
+      }
+      if (opts?.completionCondition !== undefined) {
+        if (typeof opts.completionCondition !== "string" || opts.completionCondition.trim() === "") {
+          throw new Error(`forEach("${itemVar}") completionCondition must be a non-empty FEEL expression`);
+        }
+        node.completionCondition = opts.completionCondition.trim();
+      }
+      if (node.outputElement && !node.outputCollection) {
+        throw new Error(`forEach("${itemVar}") outputElement needs an outputCollection to collect into`);
+      }
+      out.push(node);
+      return b as unknown as FlowBuilder<C>;
+    },
     break(): FlowBuilder<C> {
       if (ctx.loopDepth === 0) throw new Error(`break() is only valid inside a loop`);
       out.push({ kind: "break" });
@@ -371,6 +474,12 @@ export function walkNodes(nodes: FlowNode[], visit: (n: FlowNode) => void): void
       case "loop":
         walkNodes(n.body, visit);
         break;
+      case "parallel":
+        for (const branch of n.branches) walkNodes(branch, visit);
+        break;
+      case "forEach":
+        walkNodes(n.body, visit);
+        break;
       default:
         break;
     }
@@ -402,6 +511,9 @@ interface RenderNode {
   render(incoming: string[], outgoing: string[]): string;
   /** For exclusive gateways: the flow id of the unconditional default edge. */
   defaultFlow?: string;
+  /** Id of the embedded sub-process this node lives in, or undefined at the
+   *  top level (the root process). */
+  scope?: string;
 }
 
 interface Edge {
@@ -410,6 +522,9 @@ interface Edge {
   to?: string;
   condition?: string;
   name?: string;
+  /** The scope (sub-process id, or undefined = root process) this flow is
+   *  nested in — so it renders inside the right container. */
+  scope?: string;
 }
 
 interface LoopCtx {
@@ -422,13 +537,29 @@ class Compiler {
   private readonly edges: Edge[] = [];
   /** envelope name → its fields, deduped for lifting to a single nano:shape. */
   private readonly envelopes = new Map<string, EnvelopeField[]>();
+  /** The stack of open sub-process scopes; `.at(-1)` is the current scope (a
+   *  node/edge created now nests inside it). Empty at the top level. */
+  private readonly scopeStack: string[] = [];
+  /** Edges with a resolved target, indexed in `compile()` before rendering so a
+   *  sub-process can render its own nested scope. */
+  private live: Edge[] = [];
   private seq = 0;
   private gw = 0;
 
   constructor(private readonly flow: DeclarativeFlow) {}
 
+  private currentScope(): string | undefined {
+    return this.scopeStack.length ? this.scopeStack[this.scopeStack.length - 1] : undefined;
+  }
+
   private newEdge(from: string, opts: { condition?: string; name?: string } = {}): Edge {
-    const e: Edge = { id: `f_${this.seq++}`, from, condition: opts.condition, name: opts.name };
+    const e: Edge = {
+      id: `f_${this.seq++}`,
+      from,
+      condition: opts.condition,
+      name: opts.name,
+      scope: this.currentScope(),
+    };
     this.edges.push(e);
     return e;
   }
@@ -451,7 +582,7 @@ class Compiler {
     this.envelopes.set(env.name, env.fields);
   }
 
-  private addServiceTask(node: { name: string; envelopes?: NodeEnvelopes; jobType?: string }): void {
+  private addServiceTask(node: { name: string; envelopes?: NodeEnvelopes; jobType?: string }, mi = ""): void {
     const type = node.jobType ?? jobType(this.flow.id, node.name);
     this.recordEnvelope(node.envelopes?.in);
     this.recordEnvelope(node.envelopes?.out);
@@ -466,11 +597,13 @@ class Compiler {
     const id = node.name;
     this.nodes.push({
       id,
+      scope: this.currentScope(),
       render: (inc, outg) =>
         `    <bpmn:serviceTask id="${escapeXml(id)}" name="${escapeXml(id)}">\n` +
         ext +
         "\n" +
         incomingOutgoing(inc, outg) +
+        mi +
         `    </bpmn:serviceTask>`,
     });
   }
@@ -480,6 +613,7 @@ class Compiler {
     const msgId = `Msg_${id}`;
     this.nodes.push({
       id,
+      scope: this.currentScope(),
       render: (inc, outg) =>
         `    <bpmn:intermediateCatchEvent id="${escapeXml(id)}" name="${escapeXml(id)}">\n` +
         incomingOutgoing(inc, outg) +
@@ -496,6 +630,7 @@ class Compiler {
         : `        <bpmn:timeDate>${escapeXml(node.at as string)}</bpmn:timeDate>\n`;
     this.nodes.push({
       id,
+      scope: this.currentScope(),
       render: (inc, outg) =>
         `    <bpmn:intermediateCatchEvent id="${escapeXml(id)}" name="${escapeXml(id)}">\n` +
         incomingOutgoing(inc, outg) +
@@ -509,6 +644,7 @@ class Compiler {
   private addGateway(id: string, name?: string): RenderNode {
     const gwNode: RenderNode = {
       id,
+      scope: this.currentScope(),
       render: (inc, outg) => {
         const def = gwNode.defaultFlow ? ` default="${gwNode.defaultFlow}"` : "";
         const nm = name ? ` name="${escapeXml(name)}"` : "";
@@ -521,6 +657,73 @@ class Compiler {
     };
     this.nodes.push(gwNode);
     return gwNode;
+  }
+
+  private addParallelGateway(id: string): RenderNode {
+    const node: RenderNode = {
+      id,
+      scope: this.currentScope(),
+      render: (inc, outg) =>
+        `    <bpmn:parallelGateway id="${id}">\n` + incomingOutgoing(inc, outg) + `    </bpmn:parallelGateway>`,
+    };
+    this.nodes.push(node);
+    return node;
+  }
+
+  private addPlainStart(id: string): void {
+    this.nodes.push({
+      id,
+      scope: this.currentScope(),
+      render: (_inc, outg) => `    <bpmn:startEvent id="${escapeXml(id)}">${outgoingOnly(outg)}</bpmn:startEvent>`,
+    });
+  }
+
+  private addPlainEnd(id: string): void {
+    this.nodes.push({
+      id,
+      scope: this.currentScope(),
+      render: (inc) => `    <bpmn:endEvent id="${escapeXml(id)}">${incomingOnly(inc)}</bpmn:endEvent>`,
+    });
+  }
+
+  /** An embedded sub-process whose body renders nested in its own scope, with the
+   *  given multi-instance characteristics lifted onto it. */
+  private addSubProcess(id: string, mi: string): RenderNode {
+    const node: RenderNode = {
+      id,
+      scope: this.currentScope(),
+      render: (inc, outg) =>
+        `    <bpmn:subProcess id="${escapeXml(id)}">\n` +
+        incomingOutgoing(inc, outg) +
+        mi +
+        this.renderScope(id) +
+        `\n    </bpmn:subProcess>`,
+    };
+    this.nodes.push(node);
+    return node;
+  }
+
+  /** The `<bpmn:multiInstanceLoopCharacteristics>` block for a `forEach` node —
+   *  the same shape whether lifted onto a leaf service task or a sub-process. */
+  private miCharacteristics(node: Extract<FlowNode, { kind: "forEach" }>): string {
+    const seq = node.sequential ? "true" : "false";
+    const attrs = [
+      `inputCollection="${escapeXml(`=${node.collection}`)}"`,
+      `inputElement="${escapeXml(node.itemVar)}"`,
+    ];
+    if (node.outputCollection) attrs.push(`outputCollection="${escapeXml(node.outputCollection)}"`);
+    if (node.outputElement) attrs.push(`outputElement="${escapeXml(`=${node.outputElement}`)}"`);
+    const completion = node.completionCondition
+      ? `      <bpmn:completionCondition>${escapeXml(`=${node.completionCondition}`)}</bpmn:completionCondition>\n`
+      : "";
+    return (
+      `      <bpmn:multiInstanceLoopCharacteristics isSequential="${seq}">\n` +
+      `        <bpmn:extensionElements>\n` +
+      `          <zeebe:loopCharacteristics ${attrs.join(" ")} />\n` +
+      `        </bpmn:extensionElements>\n` +
+      completion +
+      `      </bpmn:multiInstanceLoopCharacteristics>\n`
+    );
   }
 
   private emitList(list: FlowNode[], incoming: Edge[], loop: LoopCtx | null): Edge[] {
@@ -598,7 +801,63 @@ class Compiler {
         this.connect(incoming, loop.headId);
         return [];
       }
+      case "parallel": {
+        // A diverging parallel gateway forks a token onto every branch; a
+        // converging one joins them (AND-join) into a single continuation.
+        const splitId = `Gw_${this.gw++}`;
+        this.addParallelGateway(splitId);
+        this.connect(incoming, splitId);
+        const joinId = `Gw_${this.gw++}`;
+        this.addParallelGateway(joinId);
+        for (const branch of node.branches) {
+          const e = this.newEdge(splitId);
+          const branchOut = this.emitList(branch, [e], loop);
+          this.connect(branchOut, joinId);
+        }
+        return [this.newEdge(joinId)];
+      }
+      case "forEach": {
+        const mi = this.miCharacteristics(node);
+        const only = node.body.length === 1 ? node.body[0] : undefined;
+        // A single service-task body carries the MI characteristics directly; a
+        // multi-step body is wrapped in an embedded MI sub-process (its own token
+        // scope, with its own start/end).
+        if (only && (only.kind === "run" || only.kind === "task")) {
+          this.addServiceTask(only, mi);
+          this.connect(incoming, only.name);
+          return [this.newEdge(only.name)];
+        }
+        const subId = `Sub_${this.gw++}`;
+        this.addSubProcess(subId, mi);
+        this.connect(incoming, subId);
+        this.scopeStack.push(subId);
+        const startId = `${subId}_start`;
+        this.addPlainStart(startId);
+        const innerOut = this.emitList(node.body, [this.newEdge(startId)], null);
+        const endId = `${subId}_end`;
+        this.addPlainEnd(endId);
+        this.connect(innerOut, endId);
+        this.scopeStack.pop();
+        return [this.newEdge(subId)];
+      }
     }
+  }
+
+  /** Render every node + sequence flow that belongs to `scope` (undefined = the
+   *  root process, a sub-process id otherwise). Called for the process body and,
+   *  recursively, from each sub-process's render closure. */
+  private renderScope(scope: string | undefined): string {
+    const incomingOf = (id: string) => this.live.filter((e) => e.to === id).map((e) => e.id);
+    const outgoingOf = (id: string) => this.live.filter((e) => e.from === id).map((e) => e.id);
+    const nodeXml = this.nodes
+      .filter((n) => n.scope === scope)
+      .map((n) => n.render(incomingOf(n.id), outgoingOf(n.id)))
+      .join("\n");
+    const flowXml = this.live
+      .filter((e) => e.scope === scope)
+      .map((e) => sequenceFlow(e))
+      .join("\n");
+    return nodeXml + (nodeXml && flowXml ? "\n" : "") + flowXml;
   }
 
   /** Render the Start event — a plain none start, or a timer start when the
@@ -637,12 +896,9 @@ class Compiler {
     this.connect(finalDanglers, "End");
 
     // A sequence flow needs both ends; drop any edge that never got a target.
-    const live = this.edges.filter((e) => e.to !== undefined);
-    const incomingOf = (id: string) => live.filter((e) => e.to === id).map((e) => e.id);
-    const outgoingOf = (id: string) => live.filter((e) => e.from === id).map((e) => e.id);
+    this.live = this.edges.filter((e) => e.to !== undefined);
 
-    const nodeXml = this.nodes.map((n) => n.render(incomingOf(n.id), outgoingOf(n.id))).join("\n");
-    const flowXml = live.map((e) => sequenceFlow(e)).join("\n");
+    const bodyXml = this.renderScope(undefined);
     const messageXml = this.emitMessages();
     const shapeXml = this.emitShapes();
 
@@ -654,9 +910,7 @@ class Compiler {
       `id="Definitions_${escapeXml(this.flow.id)}" targetNamespace="http://bpmn.io/schema/bpmn">\n` +
       `  <bpmn:process id="${escapeXml(this.flow.id)}" name="${escapeXml(this.flow.id)}" isExecutable="true">\n` +
       (shapeXml ? shapeXml + "\n" : "") +
-      nodeXml +
-      "\n" +
-      flowXml +
+      bodyXml +
       "\n" +
       `  </bpmn:process>\n` +
       messageXml +

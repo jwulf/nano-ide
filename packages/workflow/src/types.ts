@@ -21,8 +21,9 @@ export interface Job<V extends JsonObject = JsonObject> {
 // --- Declarative surface (Strategy A: compile a step tree to a BPMN model) ----
 //
 // A flow is a TREE of nodes, not a flat list: leaf activities (`run`/`task`/
-// `signal`) plus structural combinators (`switch`/`branch`/`loop`) that compile
-// to real XOR gateways and back-edges. See declarative.ts for the compiler.
+// `signal`) plus structural combinators (`switch`/`branch`/`loop` — XOR gateways
+// + back-edges — and `parallel`/`forEach` — parallel gateways + multi-instance)
+// that compile to real BPMN the engine runs. See declarative.ts for the compiler.
 
 /** The input/output data envelopes lifted onto an activity node. */
 export interface NodeEnvelopes {
@@ -58,7 +59,24 @@ export type FlowNode =
   | { kind: "branch"; condition: string; then: FlowNode[]; else?: FlowNode[] }
   | { kind: "loop"; body: FlowNode[] }
   | { kind: "break" }
-  | { kind: "continue" };
+  | { kind: "continue" }
+  | { kind: "parallel"; branches: FlowNode[][] }
+  | {
+      kind: "forEach";
+      /** FEEL expression evaluating to the list to fan out over. */
+      collection: string;
+      /** Variable each item is bound to in the child's scope (`inputElement`). */
+      itemVar: string;
+      body: FlowNode[];
+      /** Run children one at a time (sequential MI) instead of all at once. */
+      sequential?: boolean;
+      /** List variable that each child's `outputElement` is collected into. */
+      outputCollection?: string;
+      /** FEEL expression producing each child's contribution to `outputCollection`. */
+      outputElement?: string;
+      /** FEEL boolean that, once true, completes the body early. */
+      completionCondition?: string;
+    };
 
 /** A timer intermediate-catch definition: exactly one of `after` (an ISO-8601
  *  delay or FEEL expression) or `at` (an absolute instant or FEEL expression).

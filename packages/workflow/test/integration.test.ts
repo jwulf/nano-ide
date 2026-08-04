@@ -133,3 +133,96 @@ test("declarative flow parks at a signal and resumes via a correlated message", 
     await gw.stop();
   }
 });
+
+test("declarative forEach fans out one child per item and joins (parallel multi-instance)", { skip }, async () => {
+  const scratch = join(HERE, ".it", "foreach");
+  const gw = await Gateway.create(scratch);
+  await gw.start();
+
+  const doubled: number[] = [];
+  const flow = defineFlow("fan-mi", (w) => {
+    w.forEach("items", "item", (b) => b.run("double", async (job) => ({ out: (job.variables.item as number) * 2 })), {
+      outputCollection: "results",
+      outputElement: "out",
+    });
+  });
+
+  const client = new WorkflowClient({ baseUrl: gw.baseUrl, transport: "rest" });
+  const worker = new Worker({
+    baseUrl: gw.baseUrl,
+    workflows: [flow],
+    pollTimeoutMs: 1500,
+    onActivity: (e) => {
+      if (e.elementId === "double") doubled.push(1);
+    },
+    onError: () => {},
+  });
+
+  try {
+    await client.deploy(flow);
+    const inst = await client.start(flow, { items: [1, 2, 3] });
+    worker.start();
+
+    // One child activation per item — the fan-out guarantee.
+    await waitFor(() => doubled.length >= 3, "three MI children ran", 20000);
+    await sleep(500);
+
+    const final = await client.getInstance(String(inst.processInstanceKey));
+    assert.ok(final, "getInstance should return the completed instance");
+    const state = (final?.state ?? (final as { processInstance?: { state?: string } })?.processInstance?.state) as
+      | string
+      | undefined;
+    assert.ok(state === "COMPLETED" || state === undefined, `instance should complete after the join (state=${state})`);
+    assert.equal(doubled.length, 3, "exactly one child per item");
+  } finally {
+    await worker.stop();
+    await gw.stop();
+  }
+});
+
+test("declarative parallel runs branches concurrently and joins (AND gateway)", { skip }, async () => {
+  const scratch = join(HERE, ".it", "parallel");
+  const gw = await Gateway.create(scratch);
+  await gw.start();
+
+  const ran = new Set<string>();
+  const flow = defineFlow("fan-and", (w) => {
+    w.parallel([
+      (b) => b.run("left", async () => ({ l: 1 })),
+      (b) => b.run("right", async () => ({ r: 2 })),
+    ]);
+    w.run("merge", async () => ({ done: true }));
+  });
+
+  const client = new WorkflowClient({ baseUrl: gw.baseUrl, transport: "rest" });
+  const worker = new Worker({
+    baseUrl: gw.baseUrl,
+    workflows: [flow],
+    pollTimeoutMs: 1500,
+    onActivity: (e) => {
+      ran.add(e.elementId);
+    },
+    onError: () => {},
+  });
+
+  try {
+    await client.deploy(flow);
+    const inst = await client.start(flow, {});
+    worker.start();
+
+    // Both branches run; merge only fires after the AND-join collects both.
+    await waitFor(() => ran.has("left") && ran.has("right"), "both branches ran", 20000);
+    await waitFor(() => ran.has("merge"), "merge ran after the join", 20000);
+    await sleep(400);
+
+    const final = await client.getInstance(String(inst.processInstanceKey));
+    assert.ok(final, "getInstance should return the completed instance");
+    const state = (final?.state ?? (final as { processInstance?: { state?: string } })?.processInstance?.state) as
+      | string
+      | undefined;
+    assert.ok(state === "COMPLETED" || state === undefined, `instance should complete (state=${state})`);
+  } finally {
+    await worker.stop();
+    await gw.stop();
+  }
+});
