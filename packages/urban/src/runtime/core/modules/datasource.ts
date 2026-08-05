@@ -8,9 +8,83 @@ import type { HostContext, SqliteDb } from "../host.ts";
 import type { AppManifest, DataSource, DomainType } from "../manifest.ts";
 import { makeGateway, Table, type DataSource as GatewayDataSource } from "./gateway.ts";
 
-function sqlitePathFromUrl(url: string): string {
+export function sqlitePathFromUrl(url: string): string {
   // Accept "file:./x.db", "file:x.db", "sqlite:./x.db" or a bare path.
   return url.replace(/^(file|sqlite):(\/\/)?/, "");
+}
+
+/** True when `p` is already an absolute path on any host `urban data` targets. `urban data` runs
+ * on a Node host that may be Windows, so absolute-path detection can't assume POSIX: this matches
+ * a POSIX root ("/…"), a Windows drive-letter root ("C:\…" or "C:/…"), a Windows drive-root path
+ * that starts with a single backslash ("\data\app.db") and a Windows UNC path
+ * ("\\\\server\\share"). A single leading backslash covers both the drive-root and UNC cases,
+ * matching Node's `path.win32.isAbsolute`. Used by `resolveAppPath` so a caller-supplied absolute
+ * path is never incorrectly prefixed with the app root. */
+export function isAbsolutePath(p: string): boolean {
+  return /^(\/|\\|[A-Za-z]:[/\\])/.test(p);
+}
+
+/** Resolve `p` against the app `root`: an absolute `p` (see `isAbsolutePath`) is returned as-is;
+ * a relative `p` is joined onto `root`. Trims a trailing separator of either kind off `root` so
+ * we never emit a doubled separator. The join separator matches the root's own style so we never
+ * emit a mixed-separator path (e.g. "C:\\srv\\app/app.db" or "\\\\server\\share/db\\migrations"),
+ * which Windows/UNC resolution and some tooling mishandle: a root that already uses backslashes is
+ * Windows-style and joins with "\\" — normalizing the relative segment's forward slashes to match —
+ * while everything else (POSIX, a "C:/…" forward-slash root, or a relative ".") joins with "/" —
+ * normalizing the relative segment's backslashes to match. Both `root` AND the relative segment are
+ * rewritten to the chosen separator, so the result is never mixed even when `root` itself is mixed
+ * (e.g. "C:/srv\\app") or `p` is. The single canonical implementation shared by `resolveSqlitePath`
+ * (datasource urls) and `resolveManifestPath` (`--manifest`) — and by `applyMigrations` to join each
+ * migration file onto its dir — so those path resolutions can never drift and all behave the same
+ * cross-platform. */
+export function resolveAppPath(root: string, p: string): string {
+  if (isAbsolutePath(p)) return p;
+  const sep = root.includes("\\") ? "\\" : "/";
+  const norm = (s: string): string => (sep === "\\" ? s.replace(/\//g, "\\") : s.replace(/\\/g, "/"));
+  const base = norm(root).replace(/[/\\]+$/, "");
+  const rel = norm(p);
+  return `${base}${sep}${rel}`;
+}
+
+/** Name of the SQLite ledger table that records applied migrations. The single source of truth
+ * for this identifier: `applyMigrations` writes it and `dataops`' `migrations` op reads it, so
+ * both import this constant and the ledger name can never drift between application and listing. */
+export const MIGRATIONS_TABLE = "_urban_migrations";
+
+/** Resolve a datasource `url` to its on-disk SQLite path against `root`. The result is absolute
+ * when the resolved path is absolute (either because `url` names an absolute path or `root` is
+ * absolute); if `root` is relative (e.g. "." as used by the CLI/tests) a relative `url` stays
+ * correspondingly relative. The single source of truth for this resolution, shared by
+ * `openSqliteSource` (to open the file) and `provisionSqlite` (to report where it provisioned),
+ * so the opened path and the logged path can never drift. */
+export function resolveSqlitePath(root: string, url: string): string {
+  return resolveAppPath(root, sqlitePathFromUrl(url));
+}
+
+/**
+ * Open (creating if needed) the SQLite file a `file:`/`sqlite:` URL points at, resolved against
+ * `root`, with WAL journalling — but WITHOUT applying migrations. Provisioning (`provisionSqlite`)
+ * layers migrations on top; the `urban data` DB-manager gateway (dataops.ts) wants the raw handle
+ * so read/`migrations`-list ops don't silently mutate the schema on open.
+ */
+export async function openSqliteSource(
+  host: HostContext,
+  root: string,
+  url: string,
+): Promise<SqliteDb> {
+  const abs = resolveSqlitePath(root, url);
+  const dir = parentDir(abs);
+  if (dir && !(await host.exists(dir))) {
+    // The host API doesn't expose mkdir and openSqlite won't create parent dirs,
+    // so fail fast with a clear, actionable message instead of a low-level
+    // "cannot open" error.
+    throw new Error(
+      `directory "${dir}" does not exist — create it before running (the SQLite file cannot be opened otherwise)`,
+    );
+  }
+  const db = host.openSqlite(abs);
+  db.exec("PRAGMA journal_mode=WAL");
+  return db;
 }
 
 /** A safe unquoted SQL identifier. Table/column names are interpolated directly into SQL,
@@ -23,9 +97,20 @@ function assertSqlIdent(kind: string, name: string): string {
   return name;
 }
 
-function parentDir(path: string): string {
-  const i = path.lastIndexOf("/");
-  return i > 0 ? path.slice(0, i) : "";
+/** The parent directory of `path`, or `""` when it has none (a bare filename or a filesystem
+ * root, for which the existence check in `openSqliteSource` is intentionally skipped). Splits on
+ * either separator so a Windows-style absolute path (e.g. "C:\data\app.db") yields a real parent
+ * dir rather than being treated as having none. Preserves the trailing separator on a Windows
+ * drive root so "C:\app.db" -> "C:\" (and "C:/app.db" -> "C:/"), not the bare volume "C:" — the
+ * latter is a drive-relative reference, not the drive root, and would make `openSqliteSource`
+ * fail fast against the wrong location. */
+export function parentDir(path: string): string {
+  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  if (i <= 0) return "";
+  // A Windows drive root ("C:\…" / "C:/…"): the separator sits right after the "C:" volume, so
+  // keep it — dropping it would yield the drive-relative "C:" rather than the drive root.
+  if (i === 2 && /^[A-Za-z]:$/.test(path.slice(0, 2))) return path.slice(0, i + 1);
+  return path.slice(0, i);
 }
 
 /** A typed accessor over a table declared in manifest `types`. */
@@ -169,25 +254,28 @@ export class DataLayer {
   }
 }
 
-async function applyMigrations(
+export async function applyMigrations(
   host: HostContext,
   db: SqliteDb,
   root: string,
   migrationsDir: string,
 ): Promise<string[]> {
-  const dir = `${root.replace(/\/+$/, "")}/${migrationsDir.replace(/^\/+/, "")}`;
+  const dir = resolveAppPath(root, migrationsDir);
   if (!(await host.exists(dir))) return [];
   const files = (await host.listDir(dir)).filter((f) => f.endsWith(".sql")).sort();
   db.exec(
-    "CREATE TABLE IF NOT EXISTS _urban_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)",
+    `CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`,
   );
   const applied = new Set(
-    db.all<{ name: string }>("SELECT name FROM _urban_migrations").map((r) => r.name),
+    db.all<{ name: string }>(`SELECT name FROM ${MIGRATIONS_TABLE}`).map((r) => r.name),
   );
   const newlyApplied: string[] = [];
   for (const file of files) {
     if (applied.has(file)) continue;
-    const sql = await host.readTextFile(`${dir}/${file}`);
+    // Join via `resolveAppPath` (not a literal "/") so the migration file path adopts `dir`'s own
+    // separator style; a Windows/UNC-style `dir` (backslashes) would otherwise reintroduce a
+    // mixed-separator path (e.g. "C:\\app\\db\\migrations/001.sql") that breaks reads on Windows.
+    const sql = await host.readTextFile(resolveAppPath(dir, file));
     // Apply the migration and record it in the ledger atomically. SQLite DDL is
     // transactional, so wrapping both in one BEGIN/COMMIT makes a migration all-or-nothing:
     // either the schema change AND its `_urban_migrations` row commit together, or neither
@@ -198,7 +286,7 @@ async function applyMigrations(
     db.exec("BEGIN");
     try {
       db.exec(sql);
-      db.run("INSERT INTO _urban_migrations (name, applied_at) VALUES (?, ?)", [
+      db.run(`INSERT INTO ${MIGRATIONS_TABLE} (name, applied_at) VALUES (?, ?)`, [
         file,
         new Date(host.now()).toISOString(),
       ]);
@@ -222,25 +310,19 @@ async function provisionSqlite(
   name: string,
   src: DataSource,
 ): Promise<ProvisionedSource> {
-  const dbPath = sqlitePathFromUrl(src.url);
-  const abs = dbPath.startsWith("/") ? dbPath : `${ctx.root.replace(/\/+$/, "")}/${dbPath}`;
-  const dir = parentDir(abs);
-  if (dir && !(await ctx.host.exists(dir))) {
-    // The host API doesn't expose mkdir and openSqlite won't create parent dirs,
-    // so fail fast with a clear, actionable message instead of a low-level
-    // "cannot open" error.
-    throw new Error(
-      `datasource "${name}": directory "${dir}" does not exist — create it before running (the SQLite file cannot be opened otherwise)`,
-    );
+  let db: SqliteDb;
+  try {
+    db = await openSqliteSource(ctx.host, ctx.root, src.url);
+  } catch (err) {
+    // Prefix the source name onto openSqliteSource's runtime-agnostic message.
+    throw new Error(`datasource "${name}": ${err instanceof Error ? err.message : String(err)}`);
   }
-  const db = ctx.host.openSqlite(abs);
-  db.exec("PRAGMA journal_mode=WAL");
   const migrationsApplied = src.migrations
     ? await applyMigrations(ctx.host, db, ctx.root, src.migrations)
     : [];
   ctx.host.log("info", `datasource: provisioned "${name}"`, {
     driver: "sqlite",
-    path: abs,
+    path: resolveSqlitePath(ctx.root, src.url),
     migrationsApplied,
   });
   return {
