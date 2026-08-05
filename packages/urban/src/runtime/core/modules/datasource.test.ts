@@ -48,6 +48,10 @@ test("resolveAppPath trims a trailing separator of either kind off root before j
   assert.equal(resolveAppPath("\\\\server\\share", "db/migrations"), "\\\\server\\share\\db\\migrations");
   // A drive-letter root that already uses forward slashes stays forward-slash (also non-mixed).
   assert.equal(resolveAppPath("C:/srv/app/", "app.db"), "C:/srv/app/app.db");
+  // A forward-slash root joined with a backslash-containing relative segment normalizes the
+  // segment to "/", so the result is never mixed-separator ("C:/srv/app/db\\migrations").
+  assert.equal(resolveAppPath("C:/srv/app", "db\\migrations"), "C:/srv/app/db/migrations");
+  assert.equal(resolveAppPath(".", "db\\migrations"), "./db/migrations");
 });
 
 test("parentDir keeps the trailing separator on a Windows drive root", () => {

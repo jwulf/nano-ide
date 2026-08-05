@@ -30,7 +30,9 @@ export function isAbsolutePath(p: string): boolean {
  * emit a mixed-separator path (e.g. "C:\\srv\\app/app.db" or "\\\\server\\share/db\\migrations"),
  * which Windows/UNC resolution and some tooling mishandle: a root that already uses backslashes is
  * Windows-style and joins with "\\" — normalizing the relative segment's forward slashes to match —
- * while everything else (POSIX, a "C:/…" forward-slash root, or a relative ".") joins with "/".
+ * while everything else (POSIX, a "C:/…" forward-slash root, or a relative ".") joins with "/" —
+ * normalizing the relative segment's backslashes to match. Either way the relative segment is
+ * rewritten to the chosen separator, so the result is never mixed even when `p` itself is mixed.
  * The single canonical implementation shared by `resolveSqlitePath` (datasource urls) and
  * `resolveManifestPath` (`--manifest`), so those two path resolutions can never drift and both
  * behave the same cross-platform. */
@@ -38,7 +40,7 @@ export function resolveAppPath(root: string, p: string): string {
   if (isAbsolutePath(p)) return p;
   const sep = root.includes("\\") ? "\\" : "/";
   const base = root.replace(/[/\\]+$/, "");
-  const rel = sep === "\\" ? p.replace(/\//g, "\\") : p;
+  const rel = sep === "\\" ? p.replace(/\//g, "\\") : p.replace(/\\/g, "/");
   return `${base}${sep}${rel}`;
 }
 
