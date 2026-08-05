@@ -119,7 +119,7 @@ test("resolveTemplates reads a glob source, keying by file stem", async () => {
     {},
   );
   const map = await resolveTemplates(ctx.host, ROOT, [["prompts/*.md"]]);
-  assert.deepEqual(map, { review: "REVIEW", "fix-ci": "FIXCI" });
+  assert.deepEqual({ ...map }, { review: "REVIEW", "fix-ci": "FIXCI" });
 });
 
 test("resolveTemplates scans a bare directory entry", async () => {
@@ -128,13 +128,13 @@ test("resolveTemplates scans a bare directory entry", async () => {
     {},
   );
   const map = await resolveTemplates(ctx.host, ROOT, [["prompts"]]);
-  assert.deepEqual(map, { a: "A", b: "B" });
+  assert.deepEqual({ ...map }, { a: "A", b: "B" });
 });
 
 test("resolveTemplates resolves a literal file entry", async () => {
   const { ctx } = makeHarness({ "/app/prompts/one.md": "ONE" }, {});
   const map = await resolveTemplates(ctx.host, ROOT, [["prompts/one.md"]]);
-  assert.deepEqual(map, { one: "ONE" });
+  assert.deepEqual({ ...map }, { one: "ONE" });
 });
 
 test("resolveTemplates ignores a directory with no readable files without warning", async () => {
@@ -142,7 +142,7 @@ test("resolveTemplates ignores a directory with no readable files without warnin
   // non-glob fallback treated it as a literal file and logged a misleading "unreadable entry" warn.
   const { ctx, logs } = makeHarness({ "/app/prompts/nested/x.md": "X" }, {});
   const map = await resolveTemplates(ctx.host, ROOT, [["prompts"]]);
-  assert.deepEqual(map, {});
+  assert.deepEqual({ ...map }, {});
   assert.equal(logs.filter((l) => l.level === "warn").length, 0);
 });
 
@@ -152,7 +152,35 @@ test("resolveTemplates merges a programmatic map, letting later sources win", as
     ["prompts/*.md"],
     { review: "FROM-MAP", extra: "X" },
   ]);
-  assert.deepEqual(map, { review: "FROM-MAP", extra: "X" });
+  assert.deepEqual({ ...map }, { review: "FROM-MAP", extra: "X" });
+});
+
+test("resolveTemplates returns a null-prototype map so `__proto__` keys can't pollute", async () => {
+  // A template file literally named `__proto__.md`, or a programmatic map keyed by `__proto__`,
+  // must set a plain own property rather than trip the magic prototype setter on `{}`.
+  const { ctx } = makeHarness({ "/app/prompts/__proto__.md": "PWN" }, {});
+  const map = await resolveTemplates(ctx.host, ROOT, [
+    ["prompts/__proto__.md"],
+    { extra: "X" },
+  ]);
+  assert.equal(Object.getPrototypeOf(map), null);
+  assert.equal(Object.getPrototypeOf({}), Object.prototype, "global prototype untouched");
+  assert.equal(map.extra, "X");
+  assert.equal(Object.prototype.hasOwnProperty.call(map, "__proto__"), true);
+});
+
+test("resolveTemplates skips a file whose stem is not a valid placeholder name, with a warning", async () => {
+  // `spaced name.md` yields the stem `spaced name`, which the `{{…}}` placeholder charset (`[\w.-]`)
+  // can never match — so it would be unreferenceable and silently ignored. Fail loudly instead.
+  const { ctx, logs } = makeHarness(
+    { "/app/prompts/spaced name.md": "NOPE", "/app/prompts/ok.md": "YES" },
+    {},
+  );
+  const map = await resolveTemplates(ctx.host, ROOT, [["prompts/*.md"]]);
+  assert.deepEqual({ ...map }, { ok: "YES" });
+  const warn = logs.find((l) => l.level === "warn" && l.msg === "template: skipped unsupported name");
+  assert.ok(warn, "expected an unsupported-name warning");
+  assert.equal(warn?.fields?.name, "spaced name");
 });
 
 // ── deployModels integration ─────────────────────────────────────────────────

@@ -25,6 +25,11 @@ function stem(path: string): string {
   return dot > 0 ? base.slice(0, dot) : base;
 }
 
+// A template name is referenceable only if it matches the placeholder charset (`[\w.-]`, see
+// `PLACEHOLDER`). A file stem outside that set (e.g. containing spaces) could be loaded but never
+// referenced, and its `{{…}}` would not even be detected as unresolved — so we reject it loudly.
+const VALID_NAME = /^[\w.-]+$/;
+
 /** Files contributed by one entry: a glob (`prompts/*.md`), a bare directory (scanned, non-glob),
  *  or a literal file. Returns root-prefixed paths, matching `expandPatterns`. */
 async function filesFor(host: HostContext, root: string, entry: string): Promise<string[]> {
@@ -55,7 +60,10 @@ export async function resolveTemplates(
   root: string,
   sources: ReadonlyArray<TemplateSource | undefined>,
 ): Promise<Record<string, string>> {
-  const map: Record<string, string> = {};
+  // A null-prototype dictionary: template names (file stems or caller-supplied map keys) are
+  // untrusted, so a name like `__proto__` must set a plain own property rather than trip the
+  // magic prototype setter that a normal `{}` inherits from `Object.prototype`.
+  const map: Record<string, string> = Object.create(null);
   for (const source of sources) {
     if (!source) continue;
     if (Array.isArray(source)) {
@@ -64,8 +72,14 @@ export async function resolveTemplates(
         for (const file of await filesFor(host, root, entry)) {
           if (seen.has(file)) continue;
           seen.add(file);
+          const name = stem(file);
+          if (!VALID_NAME.test(name)) {
+            // Loud failure for a misnamed template file rather than a silently unreferenceable entry.
+            host.log("warn", "template: skipped unsupported name", { file, name });
+            continue;
+          }
           try {
-            map[stem(file)] = await host.readTextFile(file);
+            map[name] = await host.readTextFile(file);
           } catch (err) {
             // A directory path that slipped through the file fallback, or an unreadable file.
             host.log("warn", "template: skipped unreadable entry", { file, error: String(err) });
