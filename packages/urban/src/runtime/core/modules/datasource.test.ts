@@ -33,6 +33,7 @@ test("isAbsolutePath recognises POSIX, drive-letter and UNC roots (and rejects r
   assert.equal(isAbsolutePath("C:\\data\\app.db"), true);
   assert.equal(isAbsolutePath("c:/data/app.db"), true);
   assert.equal(isAbsolutePath("\\\\server\\share\\app.db"), true);
+  assert.equal(isAbsolutePath("\\data\\app.db"), true); // Windows drive-root, single leading backslash
   assert.equal(isAbsolutePath("db/app.db"), false);
   assert.equal(isAbsolutePath("./db/app.db"), false);
   assert.equal(isAbsolutePath("C:relative.db"), false); // drive-relative, no root separator

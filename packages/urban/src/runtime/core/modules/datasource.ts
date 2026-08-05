@@ -15,11 +15,13 @@ export function sqlitePathFromUrl(url: string): string {
 
 /** True when `p` is already an absolute path on any host `urban data` targets. `urban data` runs
  * on a Node host that may be Windows, so absolute-path detection can't assume POSIX: this matches
- * a POSIX root ("/…"), a Windows drive-letter root ("C:\…" or "C:/…") and a Windows UNC path
- * ("\\\\server\\share"). Used by `resolveAppPath` so a caller-supplied absolute path is never
- * incorrectly prefixed with the app root. */
+ * a POSIX root ("/…"), a Windows drive-letter root ("C:\…" or "C:/…"), a Windows drive-root path
+ * that starts with a single backslash ("\data\app.db") and a Windows UNC path
+ * ("\\\\server\\share"). A single leading backslash covers both the drive-root and UNC cases,
+ * matching Node's `path.win32.isAbsolute`. Used by `resolveAppPath` so a caller-supplied absolute
+ * path is never incorrectly prefixed with the app root. */
 export function isAbsolutePath(p: string): boolean {
-  return /^(\/|[A-Za-z]:[/\\]|\\\\)/.test(p);
+  return /^(\/|\\|[A-Za-z]:[/\\])/.test(p);
 }
 
 /** Resolve `p` against the app `root`: an absolute `p` (see `isAbsolutePath`) is returned as-is;
