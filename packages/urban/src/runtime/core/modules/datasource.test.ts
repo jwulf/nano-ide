@@ -2,10 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { resolveSqlitePath, sqlitePathFromUrl } from "./datasource.ts";
 
-// `resolveSqlitePath` is the single source of truth for turning a datasource `url` into the
-// absolute on-disk SQLite path, shared by `openSqliteSource` (which opens the file) and
-// `provisionSqlite` (which logs `path`). These guard that the two can never drift: the logged
-// path must be exactly the path that was opened.
+// `resolveSqlitePath` is the single source of truth for turning a datasource `url` into its
+// on-disk SQLite path (absolute when `root` is absolute, relative when `root` is relative, e.g.
+// `root === "."`), shared by `openSqliteSource` (which opens the file) and `provisionSqlite`
+// (which logs `path`). These guard that the two can never drift: the logged path must be exactly
+// the path that was opened.
 test("resolveSqlitePath joins a relative url verbatim against root", () => {
   assert.equal(resolveSqlitePath("/srv/app", "file:./db/app.db"), "/srv/app/./db/app.db");
   assert.equal(resolveSqlitePath("/srv/app", "sqlite:db/app.db"), "/srv/app/db/app.db");

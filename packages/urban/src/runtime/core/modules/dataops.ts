@@ -12,9 +12,11 @@
 //
 //   Request:  { op, source?, sql?, params?, statements? }
 //   op = "sources" | "schema" | "query" | "exec" | "script" | "migrations" | "migrate"
+//      | "domaintypes"
 //
-// `domaintypes` (live-schema reification + shape resolution) is intentionally NOT handled here
-// yet — it is ported to `urban data` in a follow-up (PR 2 of #576) and errors clearly for now.
+// `domaintypes` (live-schema reification + shape resolution) is a known protocol op but is
+// intentionally NOT handled here yet — it is ported to `urban data` in a follow-up (PR 2 of
+// #576) and errors clearly for now.
 
 import type { HostContext, SqliteDb } from "../host.ts";
 import type { AppManifest, DataSource as ManifestDataSource } from "../manifest.ts";
@@ -23,8 +25,22 @@ import { validateManifest } from "../validate.ts";
 import { makeGateway, type DataSource as GatewayDataSource } from "./gateway.ts";
 import { applyMigrations, openSqliteSource } from "./datasource.ts";
 
+/** The DB-manager op protocol's known op set. `domaintypes` is part of the protocol but is not
+ * yet handled here (it errors clearly — see the file header); every other op is dispatched by
+ * `runDataOp`. Typing `op` as this union (instead of `string`) gives SDK/console callers
+ * type-safety and catches typos at compile time. */
+export type DataOp =
+  | "sources"
+  | "schema"
+  | "query"
+  | "exec"
+  | "script"
+  | "migrations"
+  | "migrate"
+  | "domaintypes";
+
 export interface DataRequest {
-  op: string;
+  op: DataOp;
   source?: string;
   sql?: string;
   params?: unknown[];

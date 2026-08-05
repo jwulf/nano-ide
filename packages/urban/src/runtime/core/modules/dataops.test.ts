@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createNodeHost } from "../../adapters/node.ts";
-import { runDataOp } from "./dataops.ts";
+import { runDataOp, type DataOp } from "./dataops.ts";
 
 // A project fixture: nano.app.json declaring one sqlite source with a migrations dir, plus a
 // couple of migration files. runDataOp is called with root "." against a host anchored at `dir`
@@ -204,7 +204,10 @@ test("domaintypes is not yet implemented and errors clearly", async () => {
 test("an unknown op and an unknown source error", async () => {
   const { dir, cleanup } = await fixture();
   try {
-    await assert.rejects(run(dir, { op: "nope" }), /unknown op/);
+    // "nope" is deliberately not a member of DataOp — cast past the compile-time union to
+    // exercise runDataOp's runtime `default` guard against unknown ops reaching it (e.g. a
+    // hand-rolled JSON request off the wire).
+    await assert.rejects(run(dir, { op: "nope" as DataOp }), /unknown op/);
     await assert.rejects(run(dir, { op: "schema", source: "ghost" }), /no such data source/);
   } finally {
     await cleanup();

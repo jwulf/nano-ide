@@ -13,10 +13,11 @@ export function sqlitePathFromUrl(url: string): string {
   return url.replace(/^(file|sqlite):(\/\/)?/, "");
 }
 
-/** Resolve a datasource `url` to its absolute on-disk SQLite path against `root`. The single
- * source of truth for this resolution, shared by `openSqliteSource` (to open the file) and
- * `provisionSqlite` (to report where it provisioned), so the opened path and the logged path
- * can never drift. */
+/** Resolve a datasource `url` to its on-disk SQLite path against `root`. The result is absolute
+ * when `root` is absolute; if `root` is relative (e.g. "." as used by the CLI/tests) the result
+ * is correspondingly relative. The single source of truth for this resolution, shared by
+ * `openSqliteSource` (to open the file) and `provisionSqlite` (to report where it provisioned),
+ * so the opened path and the logged path can never drift. */
 export function resolveSqlitePath(root: string, url: string): string {
   const dbPath = sqlitePathFromUrl(url);
   return dbPath.startsWith("/") ? dbPath : `${root.replace(/\/+$/, "")}/${dbPath}`;
