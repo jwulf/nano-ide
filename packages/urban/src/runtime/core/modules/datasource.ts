@@ -84,11 +84,20 @@ function assertSqlIdent(kind: string, name: string): string {
   return name;
 }
 
-function parentDir(path: string): string {
-  // Split on either separator so a Windows-style absolute path (e.g. "C:\data\app.db") yields a
-  // real parent dir rather than being treated as having none.
+/** The parent directory of `path`, or `""` when it has none (a bare filename or a filesystem
+ * root, for which the existence check in `openSqliteSource` is intentionally skipped). Splits on
+ * either separator so a Windows-style absolute path (e.g. "C:\data\app.db") yields a real parent
+ * dir rather than being treated as having none. Preserves the trailing separator on a Windows
+ * drive root so "C:\app.db" -> "C:\" (and "C:/app.db" -> "C:/"), not the bare volume "C:" — the
+ * latter is a drive-relative reference, not the drive root, and would make `openSqliteSource`
+ * fail fast against the wrong location. */
+export function parentDir(path: string): string {
   const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  return i > 0 ? path.slice(0, i) : "";
+  if (i <= 0) return "";
+  // A Windows drive root ("C:\…" / "C:/…"): the separator sits right after the "C:" volume, so
+  // keep it — dropping it would yield the drive-relative "C:" rather than the drive root.
+  if (i === 2 && /^[A-Za-z]:$/.test(path.slice(0, 2))) return path.slice(0, i + 1);
+  return path.slice(0, i);
 }
 
 /** A typed accessor over a table declared in manifest `types`. */

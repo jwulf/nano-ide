@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isAbsolutePath, MIGRATIONS_TABLE, resolveAppPath, resolveSqlitePath, sqlitePathFromUrl } from "./datasource.ts";
+import { isAbsolutePath, MIGRATIONS_TABLE, parentDir, resolveAppPath, resolveSqlitePath, sqlitePathFromUrl } from "./datasource.ts";
 
 // `resolveSqlitePath` is the single source of truth for turning a datasource `url` into its
 // on-disk SQLite path (absolute when `root` is absolute, relative when `root` is relative, e.g.
@@ -42,6 +42,17 @@ test("isAbsolutePath recognises POSIX, drive-letter and UNC roots (and rejects r
 test("resolveAppPath trims a trailing separator of either kind off root before joining", () => {
   assert.equal(resolveAppPath("/srv/app/", "app.db"), "/srv/app/app.db");
   assert.equal(resolveAppPath("C:\\srv\\app\\", "app.db"), "C:\\srv\\app/app.db");
+});
+
+test("parentDir keeps the trailing separator on a Windows drive root", () => {
+  // A file directly under a drive root must yield the drive root itself, not the bare volume:
+  // "C:" is a drive-relative reference, "C:\\" / "C:/" is the actual directory.
+  assert.equal(parentDir("C:\\app.db"), "C:\\");
+  assert.equal(parentDir("C:/app.db"), "C:/");
+  // Nested paths and the no-parent cases keep working.
+  assert.equal(parentDir("C:\\data\\app.db"), "C:\\data");
+  assert.equal(parentDir("/var/data/app.db"), "/var/data");
+  assert.equal(parentDir("app.db"), "");
 });
 
 test("resolveSqlitePath strips a trailing slash on root before joining", () => {
