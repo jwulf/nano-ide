@@ -26,11 +26,20 @@ export function isAbsolutePath(p: string): boolean {
 
 /** Resolve `p` against the app `root`: an absolute `p` (see `isAbsolutePath`) is returned as-is;
  * a relative `p` is joined onto `root`. Trims a trailing separator of either kind off `root` so
- * we never emit a doubled separator. The single canonical implementation shared by
- * `resolveSqlitePath` (datasource urls) and `resolveManifestPath` (`--manifest`), so those two
- * path resolutions can never drift and both behave the same cross-platform. */
+ * we never emit a doubled separator. The join separator matches the root's own style so we never
+ * emit a mixed-separator path (e.g. "C:\\srv\\app/app.db" or "\\\\server\\share/db\\migrations"),
+ * which Windows/UNC resolution and some tooling mishandle: a root that already uses backslashes is
+ * Windows-style and joins with "\\" — normalizing the relative segment's forward slashes to match —
+ * while everything else (POSIX, a "C:/…" forward-slash root, or a relative ".") joins with "/".
+ * The single canonical implementation shared by `resolveSqlitePath` (datasource urls) and
+ * `resolveManifestPath` (`--manifest`), so those two path resolutions can never drift and both
+ * behave the same cross-platform. */
 export function resolveAppPath(root: string, p: string): string {
-  return isAbsolutePath(p) ? p : `${root.replace(/[/\\]+$/, "")}/${p}`;
+  if (isAbsolutePath(p)) return p;
+  const sep = root.includes("\\") ? "\\" : "/";
+  const base = root.replace(/[/\\]+$/, "");
+  const rel = sep === "\\" ? p.replace(/\//g, "\\") : p;
+  return `${base}${sep}${rel}`;
 }
 
 /** Name of the SQLite ledger table that records applied migrations. The single source of truth

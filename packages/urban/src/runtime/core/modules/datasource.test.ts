@@ -41,7 +41,13 @@ test("isAbsolutePath recognises POSIX, drive-letter and UNC roots (and rejects r
 
 test("resolveAppPath trims a trailing separator of either kind off root before joining", () => {
   assert.equal(resolveAppPath("/srv/app/", "app.db"), "/srv/app/app.db");
-  assert.equal(resolveAppPath("C:\\srv\\app\\", "app.db"), "C:\\srv\\app/app.db");
+  // A Windows-style root (uses backslashes) joins with "\\" and normalizes the relative segment's
+  // separators to match, so the result is never mixed-separator ("C:\\srv\\app/app.db").
+  assert.equal(resolveAppPath("C:\\srv\\app\\", "app.db"), "C:\\srv\\app\\app.db");
+  assert.equal(resolveAppPath("C:\\srv\\app", "db/app.db"), "C:\\srv\\app\\db\\app.db");
+  assert.equal(resolveAppPath("\\\\server\\share", "db/migrations"), "\\\\server\\share\\db\\migrations");
+  // A drive-letter root that already uses forward slashes stays forward-slash (also non-mixed).
+  assert.equal(resolveAppPath("C:/srv/app/", "app.db"), "C:/srv/app/app.db");
 });
 
 test("parentDir keeps the trailing separator on a Windows drive root", () => {
