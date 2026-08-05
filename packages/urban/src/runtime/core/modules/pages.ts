@@ -453,8 +453,18 @@ function renderActionForm(node) {
   const card = el("section", { class: "pc-card" });
   if (p.title) card.append(el("h2", {}, p.title));
   const inputs = {};
+  const fieldTypes = {};
   for (const f of p.fields || []) {
-    const input = el("input", { type: "text", placeholder: f.label || f.key });
+    const kind = f.type === "number" ? "number" : "text";
+    fieldTypes[f.key] = kind;
+    const attrs = { type: kind, placeholder: f.label || f.key };
+    if (kind === "number") {
+      attrs.inputmode = "numeric";
+      if (f.min != null) attrs.min = String(f.min);
+      if (f.max != null) attrs.max = String(f.max);
+      attrs.step = f.step != null ? String(f.step) : "1";
+    }
+    const input = el("input", attrs);
     inputs[f.key] = input;
     card.append(el("div", { class: "pc-field" }, el("label", {}, f.label || f.key), input));
   }
@@ -462,7 +472,16 @@ function renderActionForm(node) {
   const btn = el("button", { class: "pc-btn" }, p.submitLabel || "Submit");
   btn.addEventListener("click", async () => {
     const variables = {};
-    for (const [k, input] of Object.entries(inputs)) variables[k] = input.value;
+    for (const [k, input] of Object.entries(inputs)) {
+      if (fieldTypes[k] === "number") {
+        const t = String(input.value).trim();
+        if (t === "") continue;
+        const num = Number(t);
+        variables[k] = Number.isFinite(num) ? num : input.value;
+      } else {
+        variables[k] = input.value;
+      }
+    }
     btn.disabled = true; msg.className = "pc-msg"; msg.textContent = "Submitting…";
     try {
       const res = await getJSON("/app/actions/start/" + encodeURIComponent(p.action.process),
