@@ -33,6 +33,7 @@ function makeHarness(
 ): Harness {
   const logs: Harness["logs"] = [];
   const deployed: DeployedResource[] = [];
+  // biome-ignore lint/plugin: HostContext test double implementing only the fs/log members deployModels exercises; the rest are intentionally absent.
   const host: HostContext = {
     runtime: "node",
     log: (level: "info" | "warn" | "error", msg: string, fields?: Record<string, unknown>) =>
@@ -54,9 +55,12 @@ function makeHarness(
       return { deployed: resources.length };
     },
   };
+  // biome-ignore lint/plugin: RuntimeContext test double assembled from the mock host/engine/manifest below for deployModels.
   const ctx = {
     root: ROOT,
+    // biome-ignore lint/plugin: inline AppManifest fixture — a Partial<AppManifest> spread over the required base fields.
     manifest: { schemaVersion: 1, id: "t", name: "T", ...manifest } as AppManifest,
+    // biome-ignore lint/plugin: EngineClient test double implementing only deployResources (the sole method deployModels calls).
     engine: engine as unknown as RuntimeContext["engine"],
     host,
     templates,
