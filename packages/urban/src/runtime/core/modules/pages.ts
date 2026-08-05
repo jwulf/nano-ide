@@ -522,6 +522,14 @@ function renderDataGrid(node) {
   // old (collapse-on-refresh) behavior.
   const expanded = new Set();
   const detailNodes = new Map();
+  // A row only participates in expansion/detail-node caching if it has a real
+  // (non-null) rowKey. Coercing a missing key through String() would yield the
+  // literal "undefined"/"null" and collide unrelated rows, so treat it as keyless.
+  const rowKeyOf = (row) => {
+    if (!p.rowKey) return null;
+    const v = row[p.rowKey];
+    return v == null ? null : String(v);
+  };
 
   function dataUrl(source, tbl, filters, order) {
     let u = "/app/data/" + encodeURIComponent(source) + "/" + encodeURIComponent(tbl);
@@ -672,7 +680,7 @@ function renderDataGrid(node) {
 
   function renderRow(row) {
     const cells = cols.map((c) => gridCell(c, row));
-    const key = p.rowKey ? String(row[p.rowKey]) : null;
+    const key = rowKeyOf(row);
     let toggle = null;
     if (hasExtra) {
       const actionCell = el("td", { class: "pc-row-actions" });
@@ -724,7 +732,8 @@ function renderDataGrid(node) {
       // Forget expansion / cached detail nodes for rows no longer present so the maps
       // don't grow without bound and a stale answer can't resurface on a key reuse.
       if (p.rowKey) {
-        const live = new Set(rows.map((r) => String(r[p.rowKey])));
+        const live = new Set();
+        for (const r of rows) { const k = rowKeyOf(r); if (k != null) live.add(k); }
         for (const k of [...detailNodes.keys()]) if (!live.has(k)) detailNodes.delete(k);
         for (const k of [...expanded]) if (!live.has(k)) expanded.delete(k);
       }

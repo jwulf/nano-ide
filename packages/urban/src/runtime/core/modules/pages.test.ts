@@ -99,6 +99,10 @@ test("renderer preserves grid row-detail expansion across refreshes", async () =
   assert.match(js, /const detailNodes = new Map\(\)/);
   assert.match(js, /expanded\.add\(key\)/);
   assert.match(js, /expanded\.delete\(key\)/);
+  // A missing/null rowKey must be treated as keyless (null) rather than coerced to
+  // the string "undefined"/"null", which would collide unrelated rows in the caches.
+  assert.match(js, /rowKeyOf/);
+  assert.match(js, /v == null \? null : String\(v\)/);
 });
 
 test("renderer wires a column's linkField to a new-tab anchor", async () => {
