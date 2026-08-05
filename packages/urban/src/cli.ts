@@ -7,6 +7,7 @@
 //   urban run            materialize + serve the app (deploy, data, workers, surfaces, triggers)
 //   urban dev            like run, plus watch sources and hot-reload on change
 //   urban deploy         deploy models only, then exit
+//   urban data           DB-manager op gateway (stdin JSON → stdout JSON)
 //
 // Global flags: --root <dir> (default "."), --manifest <file> (default nano.app.json),
 //               --port <n>, -h/--help, -v/--version.
@@ -15,11 +16,13 @@ import {
   collectManifestIssues,
   installSignalHandlers,
   loadManifest,
+  runDataOp,
   runDev,
   runFromEnv,
   selectHost,
 } from "./runtime/index.ts";
 import { scaffold, slugify } from "create-urban-app";
+import type { DataRequest } from "./runtime/index.ts";
 import { addConnector, createNodeGenIO, previewModels, runGen, scaffoldWorkers } from "./toolkit/index.ts";
 import { pathToFileURL } from "node:url";
 import { readFileSync } from "node:fs";
@@ -111,6 +114,9 @@ Usage:
   urban run                         materialize + serve the app
   urban dev                         run + watch sources, hot-reload on change
   urban deploy                      deploy models only, then exit
+  urban data                        DB-manager op gateway: read a JSON request on stdin
+                                    ({op:sources|schema|query|exec|script|migrations|migrate,…}),
+                                    write a JSON result on stdout
 
 Global flags:
   --root <dir>        app root (default ".")
@@ -270,6 +276,56 @@ async function cmdDeploy(f: Flags): Promise<number> {
   return 0;
 }
 
+/** Read all of stdin as UTF-8 text (Node or Deno). Returns "" if stdin is empty/closed. */
+async function readStdin(): Promise<string> {
+  const g = globalThis as {
+    Deno?: { stdin?: { readable?: ReadableStream<Uint8Array> } };
+    process?: { stdin: AsyncIterable<Uint8Array | string> & { setEncoding?(e: string): void } };
+  };
+  const chunks: string[] = [];
+  const dec = new TextDecoder();
+  if (g.Deno?.stdin?.readable) {
+    for await (const chunk of g.Deno.stdin.readable) chunks.push(dec.decode(chunk, { stream: true }));
+    chunks.push(dec.decode());
+    return chunks.join("");
+  }
+  if (g.process?.stdin) {
+    for await (const chunk of g.process.stdin) {
+      chunks.push(typeof chunk === "string" ? chunk : dec.decode(chunk, { stream: true }));
+    }
+    chunks.push(dec.decode());
+    return chunks.join("");
+  }
+  return "";
+}
+
+/**
+ * `urban data` — the DB-manager op gateway. Reads a single JSON request from stdin
+ * (`{ op, source?, sql?, params?, statements? }`) and writes a single JSON response to stdout
+ * (`{ ok: true, ...result }` or `{ ok: false, error }`). Handled errors still exit 0 so the caller
+ * can parse them; only an unreadable request exits non-zero. This is the seam the Nano console
+ * re-points its Data panel at (host dry-out nano-bpm#576), replacing the vendored data-cli.ts.
+ */
+async function cmdData(f: Flags): Promise<number> {
+  let req: DataRequest;
+  try {
+    req = JSON.parse(await readStdin());
+  } catch (err) {
+    console.log(JSON.stringify({ ok: false, error: `bad request: ${(err as Error).message}` }));
+    return 1;
+  }
+  const host = selectHost({ cwd: f.root });
+  try {
+    // Mirror runFromEnv: the host is anchored at f.root, so pass root "." to avoid
+    // double-prefixing every manifest/db path (host.abs already resolves against f.root).
+    const result = await runDataOp(host, ".", f.manifest, req);
+    console.log(JSON.stringify({ ok: true, ...result }));
+  } catch (err) {
+    console.log(JSON.stringify({ ok: false, error: (err as Error).message }));
+  }
+  return 0;
+}
+
 async function cmdNew(f: Flags): Promise<number> {
   const name = f._[1];
   if (!name) {
@@ -368,6 +424,8 @@ export async function main(argv: string[]): Promise<number> {
       return cmdStubs(f);
     case "add":
       return cmdAdd(f);
+    case "data":
+      return cmdData(f);
     case "run":
       return cmdRun(f);
     case "dev":

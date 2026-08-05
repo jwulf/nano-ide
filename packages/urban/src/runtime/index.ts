@@ -70,6 +70,8 @@ export type { ConnectorsHandle } from "./core/modules/connectors.ts";
 // Data layer
 export { DataLayer, TypeRepo } from "./core/modules/datasource.ts";
 export type { ProvisionedSource } from "./core/modules/datasource.ts";
+export { runDataOp } from "./core/modules/dataops.ts";
+export type { DataRequest, ResolvedSource } from "./core/modules/dataops.ts";
 export { makeGateway, Table } from "./core/modules/gateway.ts";
 export type {
   ColumnMeta,

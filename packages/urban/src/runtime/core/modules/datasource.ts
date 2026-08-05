@@ -8,9 +8,36 @@ import type { HostContext, SqliteDb } from "../host.ts";
 import type { AppManifest, DataSource, DomainType } from "../manifest.ts";
 import { makeGateway, Table, type DataSource as GatewayDataSource } from "./gateway.ts";
 
-function sqlitePathFromUrl(url: string): string {
+export function sqlitePathFromUrl(url: string): string {
   // Accept "file:./x.db", "file:x.db", "sqlite:./x.db" or a bare path.
   return url.replace(/^(file|sqlite):(\/\/)?/, "");
+}
+
+/**
+ * Open (creating if needed) the SQLite file a `file:`/`sqlite:` URL points at, resolved against
+ * `root`, with WAL journalling — but WITHOUT applying migrations. Provisioning (`provisionSqlite`)
+ * layers migrations on top; the `urban data` DB-manager gateway (dataops.ts) wants the raw handle
+ * so read/`migrations`-list ops don't silently mutate the schema on open.
+ */
+export async function openSqliteSource(
+  host: HostContext,
+  root: string,
+  url: string,
+): Promise<SqliteDb> {
+  const dbPath = sqlitePathFromUrl(url);
+  const abs = dbPath.startsWith("/") ? dbPath : `${root.replace(/\/+$/, "")}/${dbPath}`;
+  const dir = parentDir(abs);
+  if (dir && !(await host.exists(dir))) {
+    // The host API doesn't expose mkdir and openSqlite won't create parent dirs,
+    // so fail fast with a clear, actionable message instead of a low-level
+    // "cannot open" error.
+    throw new Error(
+      `directory "${dir}" does not exist — create it before running (the SQLite file cannot be opened otherwise)`,
+    );
+  }
+  const db = host.openSqlite(abs);
+  db.exec("PRAGMA journal_mode=WAL");
+  return db;
 }
 
 /** A safe unquoted SQL identifier. Table/column names are interpolated directly into SQL,
@@ -169,7 +196,7 @@ export class DataLayer {
   }
 }
 
-async function applyMigrations(
+export async function applyMigrations(
   host: HostContext,
   db: SqliteDb,
   root: string,
@@ -222,25 +249,18 @@ async function provisionSqlite(
   name: string,
   src: DataSource,
 ): Promise<ProvisionedSource> {
-  const dbPath = sqlitePathFromUrl(src.url);
-  const abs = dbPath.startsWith("/") ? dbPath : `${ctx.root.replace(/\/+$/, "")}/${dbPath}`;
-  const dir = parentDir(abs);
-  if (dir && !(await ctx.host.exists(dir))) {
-    // The host API doesn't expose mkdir and openSqlite won't create parent dirs,
-    // so fail fast with a clear, actionable message instead of a low-level
-    // "cannot open" error.
-    throw new Error(
-      `datasource "${name}": directory "${dir}" does not exist — create it before running (the SQLite file cannot be opened otherwise)`,
-    );
+  let db: SqliteDb;
+  try {
+    db = await openSqliteSource(ctx.host, ctx.root, src.url);
+  } catch (err) {
+    // Prefix the source name onto openSqliteSource's runtime-agnostic message.
+    throw new Error(`datasource "${name}": ${err instanceof Error ? err.message : String(err)}`);
   }
-  const db = ctx.host.openSqlite(abs);
-  db.exec("PRAGMA journal_mode=WAL");
   const migrationsApplied = src.migrations
     ? await applyMigrations(ctx.host, db, ctx.root, src.migrations)
     : [];
   ctx.host.log("info", `datasource: provisioned "${name}"`, {
     driver: "sqlite",
-    path: abs,
     migrationsApplied,
   });
   return {
