@@ -514,6 +514,23 @@ function renderDataGrid(node) {
   card.append(table);
   const span = String((cols.length || 1) + (hasExtra ? 1 : 0));
 
+  // Expansion state has to outlive the poll: refresh() rebuilds the whole tbody
+  // every refreshMs, so without this an open detail row (where you answer an
+  // escalation) would collapse on the next tick. We remember which rowKeys are
+  // open, and reuse the already-built detail <tr> for them across refreshes so a
+  // half-typed answer survives too. Keyed by p.rowKey; grids without one keep the
+  // old (collapse-on-refresh) behavior.
+  const expanded = new Set();
+  const detailNodes = new Map();
+  // A row only participates in expansion/detail-node caching if it has a real
+  // (non-null) rowKey. Coercing a missing key through String() would yield the
+  // literal "undefined"/"null" and collide unrelated rows, so treat it as keyless.
+  const rowKeyOf = (row) => {
+    if (!p.rowKey) return null;
+    const v = row[p.rowKey];
+    return v == null ? null : String(v);
+  };
+
   function dataUrl(source, tbl, filters, order) {
     let u = "/app/data/" + encodeURIComponent(source) + "/" + encodeURIComponent(tbl);
     const qs = [];
@@ -663,6 +680,7 @@ function renderDataGrid(node) {
 
   function renderRow(row) {
     const cells = cols.map((c) => gridCell(c, row));
+    const key = rowKeyOf(row);
     let toggle = null;
     if (hasExtra) {
       const actionCell = el("td", { class: "pc-row-actions" });
@@ -679,16 +697,29 @@ function renderDataGrid(node) {
     const tr = el("tr", {}, ...cells);
     tbody.append(tr);
     if (detail && toggle) {
-      const dtr = el("tr", { hidden: "" }, el("td", { colspan: span }));
-      let built = false;
+      const isOpen = key != null && expanded.has(key);
+      // Reuse an already-built detail row for an open PR across refreshes so its
+      // expanded state — and any half-typed escalation answer in the form — survives
+      // the poll. A closed (or keyless) row always gets a fresh, lazily-built panel.
+      let entry = key != null ? detailNodes.get(key) : null;
+      if (!(isOpen && entry && entry.built)) {
+        const dtr = el("tr", { hidden: isOpen ? null : "" }, el("td", { colspan: span }));
+        entry = { dtr, built: false };
+        if (key != null) detailNodes.set(key, entry);
+        if (isOpen) { entry.built = true; dtr.firstChild.append(detailPanel(row)); }
+      }
+      const dtr = entry.dtr;
+      toggle.textContent = dtr.hidden ? "▸" : "▾";
       toggle.addEventListener("click", (ev) => {
         ev.stopPropagation();
         const open = dtr.hidden;
         dtr.hidden = !open;
         toggle.textContent = open ? "▾" : "▸";
-        if (open && !built) {
-          built = true;
-          dtr.firstChild.append(detailPanel(row));
+        if (open) {
+          if (key != null) expanded.add(key);
+          if (!entry.built) { entry.built = true; dtr.firstChild.append(detailPanel(row)); }
+        } else if (key != null) {
+          expanded.delete(key);
         }
       });
       tbody.append(dtr);
@@ -698,6 +729,14 @@ function renderDataGrid(node) {
   async function refresh() {
     try {
       const { rows } = await getJSON(dataUrl(p.data.source, p.data.table, activeFilter, p.data.orderBy));
+      // Forget expansion / cached detail nodes for rows no longer present so the maps
+      // don't grow without bound and a stale answer can't resurface on a key reuse.
+      if (p.rowKey) {
+        const live = new Set();
+        for (const r of rows) { const k = rowKeyOf(r); if (k != null) live.add(k); }
+        for (const k of [...detailNodes.keys()]) if (!live.has(k)) detailNodes.delete(k);
+        for (const k of [...expanded]) if (!live.has(k)) expanded.delete(k);
+      }
       tbody.replaceChildren();
       for (const row of rows) renderRow(row);
       if (!rows.length) tbody.append(el("tr", {}, el("td", { colspan: span }, "No rows")));
