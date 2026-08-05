@@ -161,6 +161,36 @@ test("opening a read op does not apply migrations (schema stays empty until migr
   }
 });
 
+test("listing migrations is side-effect-free (does not create the ledger table)", async () => {
+  const { dir, cleanup } = await fixture();
+  try {
+    // Listing must not mutate the schema — the ledger table stays absent until `migrate`.
+    await run(dir, { op: "migrations" });
+    const ledger = (await run(dir, {
+      op: "query",
+      sql: "SELECT name FROM sqlite_master WHERE type='table' AND name='_urban_migrations'",
+    })) as { rows: unknown[] };
+    assert.deepEqual(ledger.rows, [], "listing migrations must not create the ledger table");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("migrations treats a missing migrations dir as an empty list", async () => {
+  const { dir, cleanup } = await fixture();
+  try {
+    await rm(join(dir, "db", "migrations"), { recursive: true, force: true });
+    const mig = (await run(dir, { op: "migrations" })) as {
+      dir: string;
+      entries: unknown[];
+    };
+    assert.equal(mig.dir, "db/migrations");
+    assert.deepEqual(mig.entries, [], "a missing dir lists no migrations instead of throwing");
+  } finally {
+    await cleanup();
+  }
+});
+
 test("domaintypes is not yet implemented and errors clearly", async () => {
   const { dir, cleanup } = await fixture();
   try {

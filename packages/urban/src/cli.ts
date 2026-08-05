@@ -311,7 +311,12 @@ async function cmdData(f: Flags): Promise<number> {
   try {
     req = JSON.parse(await readStdin());
   } catch (err) {
-    console.log(JSON.stringify({ ok: false, error: `bad request: ${(err as Error).message}` }));
+    console.log(
+      JSON.stringify({
+        ok: false,
+        error: `bad request: ${err instanceof Error ? err.message : String(err)}`,
+      }),
+    );
     return 1;
   }
   const host = selectHost({ cwd: f.root });
@@ -321,7 +326,9 @@ async function cmdData(f: Flags): Promise<number> {
     const result = await runDataOp(host, ".", f.manifest, req);
     console.log(JSON.stringify({ ok: true, ...result }));
   } catch (err) {
-    console.log(JSON.stringify({ ok: false, error: (err as Error).message }));
+    console.log(
+      JSON.stringify({ ok: false, error: err instanceof Error ? err.message : String(err) }),
+    );
   }
   return 0;
 }

@@ -192,18 +192,29 @@ export async function runDataOp(
       const { name, src } = pickSource(manifest, req.source);
       const relDir = src.migrations ?? DEFAULT_MIGRATIONS_DIR;
       const absDir = `${root.replace(/\/+$/, "")}/${relDir.replace(/^\/+/, "")}`;
-      const files = (await host.listDir(absDir)).filter((f) => f.endsWith(".sql")).sort();
+      // `migrations` is a read/list op: treat a missing dir as no migrations (mirrors
+      // applyMigrations) instead of throwing on host.listDir.
+      const files = (await host.exists(absDir))
+        ? (await host.listDir(absDir)).filter((f) => f.endsWith(".sql")).sort()
+        : [];
       const { gw, db } = await openGateway(host, root, manifest, name);
       try {
-        await gw.exec(
-          `CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`,
-        );
-        const applied = new Map<string, string>(
-          (await gw.query(`SELECT name, applied_at FROM ${MIGRATIONS_TABLE}`)).map((r) => [
-            String(r.name),
-            String(r.applied_at),
-          ]),
-        );
+        // Do not create the ledger table here — listing migrations must not mutate the
+        // schema. If the ledger doesn't exist yet, nothing has been applied.
+        const ledgerExists =
+          (
+            await gw.query(
+              `SELECT name FROM sqlite_master WHERE type='table' AND name='${MIGRATIONS_TABLE}'`,
+            )
+          ).length > 0;
+        const applied = ledgerExists
+          ? new Map<string, string>(
+              (await gw.query(`SELECT name, applied_at FROM ${MIGRATIONS_TABLE}`)).map((r) => [
+                String(r.name),
+                String(r.applied_at),
+              ]),
+            )
+          : new Map<string, string>();
         return {
           dir: relDir,
           entries: files.map((name) => ({
