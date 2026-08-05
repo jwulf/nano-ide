@@ -13,14 +13,32 @@ export function sqlitePathFromUrl(url: string): string {
   return url.replace(/^(file|sqlite):(\/\/)?/, "");
 }
 
+/** True when `p` is already an absolute path on any host `urban data` targets. `urban data` runs
+ * on a Node host that may be Windows, so absolute-path detection can't assume POSIX: this matches
+ * a POSIX root ("/…"), a Windows drive-letter root ("C:\…" or "C:/…") and a Windows UNC path
+ * ("\\\\server\\share"). Used by `resolveAppPath` so a caller-supplied absolute path is never
+ * incorrectly prefixed with the app root. */
+export function isAbsolutePath(p: string): boolean {
+  return /^(\/|[A-Za-z]:[/\\]|\\\\)/.test(p);
+}
+
+/** Resolve `p` against the app `root`: an absolute `p` (see `isAbsolutePath`) is returned as-is;
+ * a relative `p` is joined onto `root`. Trims a trailing separator of either kind off `root` so
+ * we never emit a doubled separator. The single canonical implementation shared by
+ * `resolveSqlitePath` (datasource urls) and `resolveManifestPath` (`--manifest`), so those two
+ * path resolutions can never drift and both behave the same cross-platform. */
+export function resolveAppPath(root: string, p: string): string {
+  return isAbsolutePath(p) ? p : `${root.replace(/[/\\]+$/, "")}/${p}`;
+}
+
 /** Resolve a datasource `url` to its on-disk SQLite path against `root`. The result is absolute
- * when `root` is absolute; if `root` is relative (e.g. "." as used by the CLI/tests) the result
- * is correspondingly relative. The single source of truth for this resolution, shared by
+ * when the resolved path is absolute (either because `url` names an absolute path or `root` is
+ * absolute); if `root` is relative (e.g. "." as used by the CLI/tests) a relative `url` stays
+ * correspondingly relative. The single source of truth for this resolution, shared by
  * `openSqliteSource` (to open the file) and `provisionSqlite` (to report where it provisioned),
  * so the opened path and the logged path can never drift. */
 export function resolveSqlitePath(root: string, url: string): string {
-  const dbPath = sqlitePathFromUrl(url);
-  return dbPath.startsWith("/") ? dbPath : `${root.replace(/\/+$/, "")}/${dbPath}`;
+  return resolveAppPath(root, sqlitePathFromUrl(url));
 }
 
 /**
@@ -60,7 +78,9 @@ function assertSqlIdent(kind: string, name: string): string {
 }
 
 function parentDir(path: string): string {
-  const i = path.lastIndexOf("/");
+  // Split on either separator so a Windows-style absolute path (e.g. "C:\data\app.db") yields a
+  // real parent dir rather than being treated as having none.
+  const i = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
   return i > 0 ? path.slice(0, i) : "";
 }
 

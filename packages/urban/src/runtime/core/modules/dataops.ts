@@ -23,7 +23,7 @@ import type { AppManifest, DataSource as ManifestDataSource } from "../manifest.
 import { loadManifest } from "../manifest.ts";
 import { validateManifest } from "../validate.ts";
 import { makeGateway, type DataSource as GatewayDataSource } from "./gateway.ts";
-import { applyMigrations, openSqliteSource } from "./datasource.ts";
+import { applyMigrations, openSqliteSource, resolveAppPath } from "./datasource.ts";
 
 /** The DB-manager op protocol's known op set. `domaintypes` is part of the protocol but is not
  * yet handled here (it errors clearly — see the file header); every other op is dispatched by
@@ -150,14 +150,13 @@ async function openGateway(
 }
 
 /**
- * Resolve a `--manifest` argument against the app `root`. An absolute path (`/abs/nano.app.json`)
- * is honoured as-is; a relative path is joined onto `root`. Mirrors `resolveSqlitePath` so manifest
- * and datasource path resolution stay consistent.
+ * Resolve a `--manifest` argument against the app `root`. An absolute path (POSIX `/abs/…`, a
+ * Windows drive-letter `C:\…` or a UNC `\\host\share\…`) is honoured as-is; a relative path is
+ * joined onto `root`. Delegates to `resolveAppPath` so manifest and datasource path resolution
+ * share one cross-platform implementation and can't drift.
  */
 function resolveManifestPath(root: string, manifestPath: string): string {
-  return manifestPath.startsWith("/")
-    ? manifestPath
-    : `${root.replace(/\/+$/, "")}/${manifestPath}`;
+  return resolveAppPath(root, manifestPath);
 }
 
 /**
