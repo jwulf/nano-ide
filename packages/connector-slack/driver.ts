@@ -60,7 +60,7 @@ interface Connection {
 }
 
 function isConnection(value: unknown): value is Connection {
-  if (!value || typeof value !== "object") return false;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   return !("appToken" in value) || value.appToken === undefined || typeof value.appToken === "string";
 }
 
