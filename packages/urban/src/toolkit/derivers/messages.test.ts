@@ -134,10 +134,12 @@ const XML = `<?xml version="1.0"?>
 
 test("scanModelMessages extracts message name + envelope; a self-closing message is name-only", () => {
   const m = scanModelMessages(XML);
-  const placed = m.find((x) => x.messageName === "OrderPlaced") as MessageIo;
+  const placed = m.find((x) => x.messageName === "OrderPlaced");
+  assert.ok(placed);
   assert.ok(placed);
   assert.equal(placed.inputType, "Order");
-  const ping = m.find((x) => x.messageName === "Ping") as MessageIo;
+  const ping = m.find((x) => x.messageName === "Ping");
+  assert.ok(ping);
   assert.ok(ping);
   assert.equal(ping.inputType, undefined);
 });

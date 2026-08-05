@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AppApi, RuntimeContext } from "../context.ts";
-import type { HttpRequest } from "../host.ts";
+import type { EngineClient, HostContext, HttpRequest } from "../host.ts";
 import { makeRouter } from "../router.ts";
 import { mountActions, resolveActionHandler, type ActionHandler } from "./actions.ts";
+import { DataLayer } from "./datasource.ts";
 
 function req(method: string, path: string, opts: { query?: string; body?: string } = {}): HttpRequest {
   return {
@@ -21,28 +22,68 @@ interface Built {
   logs: Array<{ level: string; msg: string }>;
 }
 
+const engine: EngineClient = {
+  deployResources: async () => ({ deployed: 0 }),
+  createInstance: async () => ({ processInstanceKey: "pi" }),
+  cancelInstance: async () => {},
+  publishMessage: async () => {},
+  searchUserTasks: async () => [],
+  completeUserTask: async () => {},
+  registerWorker: async (jobType) => ({ jobType, unsubscribe: async () => {} }),
+  close: async () => {},
+};
+
+const data = new DataLayer(new Map(), undefined, {});
+
+function appFixture(over: Partial<AppApi> = {}): AppApi {
+  return {
+    manifest: { schemaVersion: 1, id: "t", name: "T" },
+    data,
+    engine,
+    env: () => undefined,
+    log: () => {},
+    ...over,
+  };
+}
+
+function route(router: ReturnType<typeof makeRouter>): Built["router"] {
+  return async (r) => router(r);
+}
+
 function build(
   actions: RuntimeContext["manifest"]["actions"],
   modules: Record<string, Record<string, unknown>>,
-  app: AppApi = {} as AppApi,
+  app: AppApi = appFixture(),
 ): Built {
   const imported: string[] = [];
   const logs: Array<{ level: string; msg: string }> = [];
-  const ctx = {
-    root: "/app",
-    manifest: { schemaVersion: 1, id: "t", name: "T", actions } as RuntimeContext["manifest"],
-    host: {
-      importModule: (path: string) => {
-        imported.push(path);
-        const mod = modules[path];
-        if (!mod) return Promise.reject(new Error(`no module at ${path}`));
-        return Promise.resolve(mod);
-      },
-      log: (level: string, msg: string) => logs.push({ level, msg }),
+  const host: HostContext = {
+    runtime: "node",
+    env: () => undefined,
+    readTextFile: async () => "",
+    listDir: async () => [],
+    exists: async () => false,
+    openSqlite: () => {
+      throw new Error("sqlite not used in this test");
     },
-  } as unknown as RuntimeContext;
+    importModule: (path: string) => {
+      imported.push(path);
+      const mod = modules[path];
+      if (!mod) return Promise.reject(new Error(`no module at ${path}`));
+      return Promise.resolve(mod);
+    },
+    serveHttp: async () => ({ port: 0, stop: async () => {} }),
+    now: () => 0,
+    log: (level: string, msg: string) => logs.push({ level, msg }),
+  };
+  const ctx: RuntimeContext = {
+    root: "/app",
+    manifest: { schemaVersion: 1, id: "t", name: "T", actions },
+    engine,
+    host,
+  };
   const handle = mountActions(ctx, app);
-  const router = makeRouter(handle.routes) as unknown as Built["router"];
+  const router = route(makeRouter(handle.routes));
   return { router, imported, logs };
 }
 
@@ -56,7 +97,7 @@ test("resolveActionHandler prefers default, then handler", () => {
 
 test("routes an action to its handler with parsed body + injected app", async () => {
   const seen: unknown[] = [];
-  const app = { id: "myApp" } as unknown as AppApi;
+  const app = appFixture({ manifest: { schemaVersion: 1, id: "myApp", name: "My App" } });
   const handler: ActionHandler = (input, a) => {
     seen.push({ body: input.body, method: input.req.method, app: a });
     return { status: 201, body: { ok: true } };
@@ -177,7 +218,7 @@ test("an absolute module path is used as-is (not joined to root)", async () => {
 
 test("declarations missing path or module are skipped with a warning", () => {
   const { router, logs } = build(
-    [{ path: "/a" } as unknown as { path: string; module: string }],
+    JSON.parse('[{"path":"/a"}]'),
     {},
   );
   void router;
@@ -196,22 +237,32 @@ test("a manifest path without a leading slash is normalized to match", async () 
 test("a rejected import is evicted from the cache so a later load can succeed", async () => {
   let attempt = 0;
   const imported: string[] = [];
-  const ctx = {
+  const host: HostContext = {
+    runtime: "node",
+    env: () => undefined,
+    readTextFile: async () => "",
+    listDir: async () => [],
+    exists: async () => false,
+    openSqlite: () => {
+      throw new Error("sqlite not used in this test");
+    },
+    importModule: (path: string) => {
+      imported.push(path);
+      attempt += 1;
+      if (attempt === 1) return Promise.reject(new Error("transient"));
+      return Promise.resolve({ default: () => ({ body: "ok" }) });
+    },
+    serveHttp: async () => ({ port: 0, stop: async () => {} }),
+    now: () => 0,
+    log: () => {},
+  };
+  const ctx: RuntimeContext = {
     root: "/app",
     manifest: { schemaVersion: 1, id: "t", name: "T", actions: [{ path: "/a", module: "m.ts" }] },
-    host: {
-      importModule: (path: string) => {
-        imported.push(path);
-        attempt += 1;
-        if (attempt === 1) return Promise.reject(new Error("transient"));
-        return Promise.resolve({ default: () => ({ body: "ok" }) });
-      },
-      log: () => {},
-    },
-  } as unknown as import("../context.ts").RuntimeContext;
-  const router = makeRouter(mountActions(ctx, {} as import("../context.ts").AppApi).routes) as unknown as (
-    r: HttpRequest,
-  ) => Promise<{ status?: number; body?: string }>;
+    engine,
+    host,
+  };
+  const router = route(makeRouter(mountActions(ctx, appFixture()).routes));
   const first = await router(req("POST", "/a", { body: "{}" }));
   assert.equal(first.status, 500); // transient failure surfaces
   const second = await router(req("POST", "/a", { body: "{}" }));

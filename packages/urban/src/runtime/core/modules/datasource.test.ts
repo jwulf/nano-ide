@@ -93,7 +93,9 @@ test("applyMigrations joins each migration file onto its dir without reintroduci
   // "C:\\app\\db\\migrations/001.sql", which breaks reads on Windows. `applyMigrations` routes the
   // join through `resolveAppPath`, so we assert the exact path handed to `readTextFile`.
   const readPaths: string[] = [];
-  const host = {
+  const host: HostContext = {
+    runtime: "node",
+    env: () => undefined,
     now: () => 0,
     exists: async () => true,
     listDir: async () => ["002_b.sql", "001_a.sql"],
@@ -101,12 +103,22 @@ test("applyMigrations joins each migration file onto its dir without reintroduci
       readPaths.push(path);
       return "";
     },
-  } as unknown as HostContext;
-  const db = {
+    openSqlite: () => {
+      throw new Error("sqlite not used in this test");
+    },
+    importModule: async () => ({}),
+    serveHttp: async () => ({ port: 0, stop: async () => {} }),
+    log: () => {},
+  };
+  const db: SqliteDb = {
     exec: () => {},
     run: () => ({ changes: 0, lastInsertRowid: 0 }),
-    all: <T>() => [] as T[],
-  } as unknown as SqliteDb;
+    all: <T>() => {
+      const rows: T[] = [];
+      return rows;
+    },
+    close: () => {},
+  };
   // A backslash root makes `resolveAppPath` pick "\\", so the migrations dir is backslash-style.
   const applied = await applyMigrations(host, db, "C:\\srv\\app", "db\\migrations");
   assert.deepEqual(applied, ["001_a.sql", "002_b.sql"]);

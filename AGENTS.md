@@ -27,3 +27,7 @@ There are no pre-existing failures or warnings, and you will not allow any to en
 ## BPMN Models need DI
 
 All BPMN Models need DI for rendering for humans.
+
+## No `as T` Type Assertions
+
+Type assertions (`as T`) bypass the type system and are banned across the authored TypeScript source. This is enforced in CI by a Biome GritQL plugin (`plugins/no-unsafe-type-assertion.grit`, wired via `biome.json`; run `npm run lint`). Use a type guard, declaration-site annotation, narrowing, or `satisfies` instead. Exceptions: `as const` and `import`/`export` renames are allowed. If a cast is genuinely unavoidable (e.g. an untyped host/runtime boundary), add a `// biome-ignore lint/plugin: <reason>` comment with a concrete justification.

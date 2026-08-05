@@ -70,6 +70,10 @@ export type WorkerOptions =
 
 type Handler = (job: Job) => Promise<{ variables: JsonObject; step?: string }>;
 
+function isJsonObject(v: unknown): v is JsonObject {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 export class Worker {
   private readonly client: WorkflowClient;
   private readonly name: string;
@@ -101,12 +105,16 @@ export class Worker {
       this.addRoute(wf.orchestrateType, {
         workflowId: wf.id,
         handle: async (job) => {
-          const input = (job.variables.input as JsonObject) ?? {};
-          const journal = (job.variables.journal as JsonObject) ?? {};
+          const input = isJsonObject(job.variables.input) ? job.variables.input : {};
+          const journal = isJsonObject(job.variables.journal) ? job.variables.journal : {};
           const step = await replayOnce(wf, input, journal);
-          if (step.done) return { variables: { wfDone: true } as JsonObject, step: "__done" };
+          if (step.done) {
+            const variables: JsonObject = { wfDone: true };
+            return { variables, step: "__done" };
+          }
           const next = { ...journal, [step.frontier.key]: step.frontier.result };
-          return { variables: { journal: next, wfDone: false } as JsonObject, step: step.frontier.key };
+          const variables: JsonObject = { journal: next, wfDone: false };
+          return { variables, step: step.frontier.key };
         },
       });
     } else {
@@ -129,7 +137,10 @@ export class Worker {
         }
         this.addRoute(jobType(wf.id, s.name), {
           workflowId: wf.id,
-          handle: async (job) => ({ variables: ((await handler(job)) ?? {}) as JsonObject }),
+          handle: async (job) => {
+            const variables: JsonObject = (await handler(job)) ?? {};
+            return { variables };
+          },
         });
       });
     }

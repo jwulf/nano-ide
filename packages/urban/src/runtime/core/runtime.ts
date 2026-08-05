@@ -32,8 +32,16 @@ export function resolvePort(explicit: number | undefined, envPort: string | unde
 /** Read the underlying nano-sdk client off an engine when it exposes one (the
  *  `SdkEngineClient` does). Non-SDK engines (e.g. an in-memory test double) have no
  *  `sdk`, so handlers get `undefined` and fall back to the transport-agnostic seam. */
+interface EngineWithSdk extends EngineClient {
+  sdk?: EngineSdkClient;
+}
+
+function hasEngineSdk(engine: EngineClient): engine is EngineWithSdk {
+  return "sdk" in engine;
+}
+
 function engineSdk(engine: EngineClient): EngineSdkClient | undefined {
-  return (engine as { sdk?: EngineSdkClient }).sdk;
+  return hasEngineSdk(engine) ? engine.sdk : undefined;
 }
 
 export interface MountFlags {

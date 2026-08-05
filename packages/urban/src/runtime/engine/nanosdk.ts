@@ -19,6 +19,7 @@ import type {
 } from "../core/host.ts";
 import { isBpmnError } from "../core/host.ts";
 import type { EngineSdkClient } from "./sdk.ts";
+import { isRecord } from "../core/guards.ts";
 
 /** Coerce an engine response's process-instance key to a non-empty string, or
  * throw — a missing key means a malformed/partial response, not a real instance. */
@@ -32,7 +33,7 @@ export function requireProcessInstanceKey(key: string | number | null | undefine
 /** A job as delivered to a nano-sdk job handler: the frame fields plus the
  *  acknowledgement actions the handler must call. */
 export interface NanoSdkActivatedJob {
-  jobKey: string;
+  jobKey: string | number;
   type?: string;
   processInstanceKey?: string | number;
   elementId?: string;
@@ -134,7 +135,8 @@ export class SdkEngineClient implements EngineClient {
    * the same connection. Surfaced to handlers as `AppApi.sdk`.
    */
   get sdk(): EngineSdkClient {
-    return this.client as unknown as EngineSdkClient;
+    // biome-ignore lint/plugin: `this.client` is the same `@nanobpm/nano-sdk` client at runtime; exposing its full EngineSdkClient surface is the adapter boundary (see EngineSdkClient in ./sdk.ts).
+    return this.client as NanoSdkClient & EngineSdkClient;
   }
 
   async deployResources(
@@ -155,12 +157,13 @@ export class SdkEngineClient implements EngineClient {
       variables: input.variables ?? {},
       awaitCompletion: input.awaitCompletion ?? false,
     });
+    const rawKey = body.processInstanceKey ?? body.key;
     const key =
-      (body.processInstanceKey as string | number | undefined) ??
-      (body.key as string | number | undefined);
+      typeof rawKey === "string" || typeof rawKey === "number" ? rawKey : undefined;
+    const variables = isRecord(body.variables) ? body.variables : undefined;
     return {
       processInstanceKey: requireProcessInstanceKey(key),
-      variables: (body.variables as Record<string, unknown> | undefined) ?? undefined,
+      variables,
     };
   }
 
@@ -188,10 +191,10 @@ export class SdkEngineClient implements EngineClient {
     // User tasks are an eventually consistent read; ask for zero-wait consistency so
     // the search reflects what is currently visible without blocking.
     const body = await this.client.searchUserTasks(
-      { filter: (filter ?? {}) as Record<string, unknown> },
+      { filter: { ...(filter ?? {}) } },
       { consistency: { waitUpToMs: 0 } },
     );
-    const items = (body.items as Record<string, unknown>[] | undefined) ?? [];
+    const items = Array.isArray(body.items) ? body.items.filter(isRecord) : [];
     return items.flatMap((it) => {
       const userTaskKey = it.userTaskKey ?? it.key;
       if (userTaskKey == null || userTaskKey === "") {
@@ -200,8 +203,8 @@ export class SdkEngineClient implements EngineClient {
       }
       return [{
         userTaskKey: String(userTaskKey),
-        elementId: it.elementId as string | undefined,
-        variables: it.variables as Record<string, unknown> | undefined,
+        elementId: typeof it.elementId === "string" ? it.elementId : undefined,
+        variables: isRecord(it.variables) ? it.variables : undefined,
       }];
     });
   }
@@ -236,7 +239,7 @@ export class SdkEngineClient implements EngineClient {
         };
         try {
           const out = await handler(engineJob);
-          return await job.complete((out as Record<string, unknown> | undefined) ?? {});
+          return await job.complete(out ?? {});
         } catch (err) {
           // A handler-raised BPMN error is a modelled, non-retryable outcome:
           // report it as a BPMN error (routed to an error boundary/event) rather
@@ -246,7 +249,7 @@ export class SdkEngineClient implements EngineClient {
           if (isBpmnError(err) && typeof job.error === "function") {
             // `message` is typed loosely (the guard survives module duplication),
             // so coerce to a string before slicing to avoid a secondary crash.
-            const raw = (err as { message?: unknown }).message;
+            const raw = err.message;
             const message = typeof raw === "string" && raw.length > 0 ? raw : err.errorCode;
             this.log("info", `handler ${jobType} raised BPMN error`, {
               errorCode: err.errorCode,
@@ -339,13 +342,17 @@ async function importNanoSdk(): Promise<
   // Indirect the specifier so the (lazily loaded) module is not resolved at
   // typecheck time and stays out of the import graph for injected-client paths.
   const spec = "@nanobpm/nano-sdk";
-  const mod = (await import(spec)) as {
-    createCamundaClient?: (opts: Record<string, unknown>) => NanoSdkClient;
-  };
-  if (typeof mod.createCamundaClient !== "function") {
+  const mod: unknown = await import(spec);
+  if (!isNanoSdkModule(mod)) {
     throw new Error("@nanobpm/nano-sdk does not export createCamundaClient");
   }
   return mod.createCamundaClient;
+}
+
+function isNanoSdkModule(value: unknown): value is {
+  createCamundaClient: (opts: Record<string, unknown>) => NanoSdkClient;
+} {
+  return isRecord(value) && typeof value.createCamundaClient === "function";
 }
 
 /**

@@ -52,13 +52,14 @@ export function expandEnvString(input: string, lookup: (name: string) => string 
 }
 
 /** Recursively expand env placeholders across every string in a JSON-ish value. */
-export function expandEnv<T>(value: T, lookup: (name: string) => string | undefined): T {
-  if (typeof value === "string") return expandEnvString(value, lookup) as unknown as T;
-  if (Array.isArray(value)) return value.map((v) => expandEnv(v, lookup)) as unknown as T;
+export function expandEnv<T>(value: T, lookup: (name: string) => string | undefined): T;
+export function expandEnv(value: unknown, lookup: (name: string) => string | undefined): unknown {
+  if (typeof value === "string") return expandEnvString(value, lookup);
+  if (Array.isArray(value)) return value.map((v) => expandEnv(v, lookup));
   if (value && typeof value === "object") {
     const out: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value)) out[k] = expandEnv(v, lookup);
-    return out as T;
+    return out;
   }
   return value;
 }
@@ -68,7 +69,7 @@ export function parseManifest(
   json: string,
   lookup: (name: string) => string | undefined = () => undefined,
 ): AppManifest {
-  const raw = JSON.parse(json) as AppManifest;
+  const raw: AppManifest = JSON.parse(json);
   return expandEnv(raw, lookup);
 }
 

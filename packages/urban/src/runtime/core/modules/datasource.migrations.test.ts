@@ -10,7 +10,16 @@ import type { EngineClient } from "../host.ts";
 import type { AppManifest } from "../manifest.ts";
 
 // provisionData never touches the engine — a bare stub is enough for these datasource tests.
-const noEngine = {} as EngineClient;
+const noEngine: EngineClient = {
+  deployResources: async () => ({ deployed: 0 }),
+  createInstance: async () => ({ processInstanceKey: "pi" }),
+  cancelInstance: async () => {},
+  publishMessage: async () => {},
+  searchUserTasks: async () => [],
+  completeUserTask: async () => {},
+  registerWorker: async (jobType) => ({ jobType, unsubscribe: async () => {} }),
+  close: async () => {},
+};
 
 async function fixture(migrations: Record<string, string>): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "urban-mig-"));
@@ -22,7 +31,7 @@ async function fixture(migrations: Record<string, string>): Promise<string> {
 }
 
 function ctx(dir: string): RuntimeContext {
-  const manifest = {
+  const manifest: AppManifest = {
     schemaVersion: 1,
     id: "mig-fixture",
     name: "Migration Fixture",
@@ -30,7 +39,7 @@ function ctx(dir: string): RuntimeContext {
       default: "app",
       sources: { app: { driver: "sqlite", url: "file:./app.db", migrations: "db/migrations" } },
     },
-  } as unknown as AppManifest;
+  };
   return { manifest, host: createNodeHost({ cwd: dir, log: () => {} }), engine: noEngine, root: "." };
 }
 

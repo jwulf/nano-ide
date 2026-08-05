@@ -7,6 +7,20 @@ on:
     branches: [main]
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # Biome + the no-unsafe-type-assertion GritQL plugin (plugins/*.grit):
+      # bans `as T` type assertions across the authored TS source. Regenerate
+      # locally with `npm run lint`.
+      - run: npm run lint
+
   build:
     runs-on: ubuntu-latest
     steps:

@@ -13,6 +13,7 @@
 
 import { runFromEnv } from "./run.ts";
 import { selectHost } from "./adapters/detect.ts";
+import { errorMessage } from "./core/guards.ts";
 import type { HostContext, WatchHandle } from "./core/host.ts";
 import type { UrbanApp } from "./core/runtime.ts";
 import { createNodeGenIO, runGen } from "../toolkit/index.ts";
@@ -136,7 +137,7 @@ export async function runDev(opts: DevOptions = {}, deps?: Partial<DevDeps>): Pr
       log("✔ reloaded");
     } catch (err) {
       // Keep the dev server alive on a bad edit; the next save will retry.
-      log(`✖ reload failed: ${String((err as Error)?.message ?? err)}`);
+      log(`✖ reload failed: ${errorMessage(err)}`);
     } finally {
       reloading = false;
       if (queued && !stopped) {

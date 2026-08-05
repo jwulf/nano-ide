@@ -27,19 +27,11 @@ function matchRule(rules: Record<string, string[]> | undefined, key: string): st
 }
 
 export function mountSecurity(ctx: RuntimeContext): SecurityPolicy {
-  const sec = (ctx.manifest.security ?? {}) as {
-    mode?: string;
-    roles?: string[];
-    rules?: {
-      actions?: Record<string, string[]>;
-      surfaces?: Record<string, string[]>;
-      data?: Record<string, unknown>;
-    };
-  };
-  const mode = sec.mode ?? "local";
-  const roles = sec.roles ?? [];
-  const surfaces = sec.rules?.surfaces;
-  const actions = sec.rules?.actions;
+  const sec = ctx.manifest.security;
+  const mode = typeof sec?.mode === "string" ? sec.mode : "local";
+  const roles = Array.isArray(sec?.roles) ? sec.roles.filter((role) => typeof role === "string") : [];
+  const surfaces = sec?.rules?.surfaces;
+  const actions = sec?.rules?.actions;
 
   ctx.host.log("info", "security policy loaded", { mode, roles });
 

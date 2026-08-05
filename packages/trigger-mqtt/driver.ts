@@ -19,11 +19,19 @@
 import mqtt from "mqtt";
 import type { IClientOptions, IClientSubscribeOptions } from "mqtt";
 
+interface DenoRuntime {
+  env: { get(k: string): string | undefined };
+  exit(code: number): never;
+  addSignalListener?: (sig: string, cb: () => void) => void;
+}
+
+declare const Deno: DenoRuntime | undefined;
+
 /** Read an env var portably across Node (`process.env`) and Deno (`Deno.env`). */
 function env(name: string): string | undefined {
-  const g = globalThis as { Deno?: { env: { get(k: string): string | undefined } }; process?: { env: Record<string, string | undefined> } };
-  if (g.Deno) return g.Deno.env.get(name);
-  return g.process?.env?.[name];
+  if (typeof Deno !== "undefined") return Deno.env.get(name);
+  if (typeof process !== "undefined") return process.env[name];
+  return undefined;
 }
 
 function log(msg: string): void {
@@ -33,9 +41,20 @@ function log(msg: string): void {
 
 function fail(msg: string): never {
   console.error(`[mqtt] ${msg}`);
-  const g = globalThis as { Deno?: { exit(code: number): never }; process?: { exit(code: number): never } };
-  (g.Deno ?? g.process)?.exit(1);
+  exit(1);
   throw new Error(msg);
+}
+
+function requiredEnv(name: string, message: string): string {
+  const value = env(name);
+  if (!value) fail(message);
+  return value;
+}
+
+function exit(code: number): never {
+  if (typeof Deno !== "undefined") Deno.exit(code);
+  if (typeof process !== "undefined") process.exit(code);
+  throw new Error(`exit(${code}) is not available`);
 }
 
 interface Config {
@@ -53,22 +72,25 @@ interface Connection {
   [k: string]: unknown;
 }
 
-const hookUrl = env("NANOBPMN_HOOK_URL");
-if (!hookUrl) fail("NANOBPMN_HOOK_URL is not set; refusing to start");
+const hookUrl = requiredEnv("NANOBPMN_HOOK_URL", "NANOBPMN_HOOK_URL is not set; refusing to start");
 
 const token = env("NANOBPMN_WEBHOOK_TOKEN");
 
 let config: Config = {};
 try {
-  config = JSON.parse(env("NANOBPMN_TRIGGER_CONFIG") || "{}") as Config;
+  config = JSON.parse(env("NANOBPMN_TRIGGER_CONFIG") || "{}");
 } catch {
   fail("NANOBPMN_TRIGGER_CONFIG is not valid JSON");
 }
 
+function isConnection(v: unknown): v is Connection {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 let connection: Connection = {};
 try {
-  const raw = JSON.parse(env("NANOBPMN_TRIGGER_CONNECTION") || "null");
-  if (raw && typeof raw === "object") connection = raw as Connection;
+  const raw: unknown = JSON.parse(env("NANOBPMN_TRIGGER_CONNECTION") || "null");
+  if (isConnection(raw)) connection = raw;
 } catch {
   fail("NANOBPMN_TRIGGER_CONNECTION is not valid JSON");
 }
@@ -119,7 +141,7 @@ async function emit(topic: string, payloadRaw: Uint8Array): Promise<void> {
   // idempotency key makes the retry safe.
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
-      const res = await fetch(hookUrl as string, { method: "POST", headers, body });
+      const res = await fetch(hookUrl, { method: "POST", headers, body });
       if (res.ok) return;
       // 401/403 => auth misconfigured; retrying won't help.
       if (res.status === 401 || res.status === 403) {
@@ -128,7 +150,7 @@ async function emit(topic: string, payloadRaw: Uint8Array): Promise<void> {
       }
       log(`ingress returned ${res.status} for ${topic} (attempt ${attempt})`);
     } catch (e) {
-      log(`POST failed for ${topic} (attempt ${attempt}): ${(e as Error).message}`);
+      log(`POST failed for ${topic} (attempt ${attempt}): ${e instanceof Error ? e.message : String(e)}`);
     }
     await sleep(Math.min(250 * 2 ** (attempt - 1), 4000));
   }
@@ -140,7 +162,7 @@ function sleep(ms: number): Promise<void> {
 }
 
 const RESERVED_CONN_KEYS = new Set(["url", "username", "password", "clientId"]);
-const options: IClientOptions = {
+const options: IClientOptions & Record<string, unknown> = {
   reconnectPeriod: 2000,
   connectTimeout: 30000,
 };
@@ -148,7 +170,7 @@ const options: IClientOptions = {
 // (e.g. `rejectUnauthorized`, `ca`, `keepalive`), excluding the ones we map
 // explicitly and `url` (used to dial, not an option).
 for (const [k, v] of Object.entries(connection)) {
-  if (!RESERVED_CONN_KEYS.has(k) && v !== undefined) (options as Record<string, unknown>)[k] = v;
+  if (!RESERVED_CONN_KEYS.has(k) && v !== undefined) options[k] = v;
 }
 if (connection.username) options.username = connection.username;
 if (connection.password) options.password = connection.password;
@@ -174,7 +196,8 @@ const client = mqtt.connect(brokerUrl, options);
 
 client.on("connect", () => {
   log("connected");
-  client.subscribe(topics, { qos } as IClientSubscribeOptions, (err, granted) => {
+  const subscribeOptions: IClientSubscribeOptions = { qos };
+  client.subscribe(topics, subscribeOptions, (err, granted) => {
     if (err) {
       log(`subscribe failed: ${err.message}`);
       return;
@@ -197,18 +220,13 @@ client.on("close", () => log("connection closed"));
 const shutdown = () => {
   log("shutting down");
   client.end(true, {}, () => {
-    const g = globalThis as { Deno?: { exit(code: number): never }; process?: { exit(code: number): never } };
-    (g.Deno ?? g.process)?.exit(0);
+    exit(0);
   });
 };
-const g = globalThis as {
-  process?: { on(ev: string, cb: () => void): void };
-  Deno?: { addSignalListener(sig: string, cb: () => void): void };
-};
-if (g.Deno?.addSignalListener) {
-  g.Deno.addSignalListener("SIGTERM", shutdown);
-  g.Deno.addSignalListener("SIGINT", shutdown);
-} else if (g.process) {
-  g.process.on("SIGTERM", shutdown);
-  g.process.on("SIGINT", shutdown);
+if (typeof Deno !== "undefined" && Deno.addSignalListener) {
+  Deno.addSignalListener("SIGTERM", shutdown);
+  Deno.addSignalListener("SIGINT", shutdown);
+} else if (typeof process !== "undefined") {
+  process.on("SIGTERM", shutdown);
+  process.on("SIGINT", shutdown);
 }

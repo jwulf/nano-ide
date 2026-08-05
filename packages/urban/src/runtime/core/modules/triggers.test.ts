@@ -1,9 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AppApi, RuntimeContext } from "../context.ts";
-import type { HttpRequest } from "../host.ts";
+import type { EngineClient, HostContext, HttpRequest } from "../host.ts";
 import type { Trigger } from "../manifest.ts";
 import { makeRouter } from "../router.ts";
+import { DataLayer } from "./datasource.ts";
 import { evalCorrelation, mountTriggers, runTriggerAction, type SchedulerDeps } from "./triggers.ts";
 
 interface EngineCall {
@@ -13,33 +14,64 @@ interface EngineCall {
   correlationKey?: string;
 }
 
+class MiniEngine implements EngineClient {
+  private readonly calls: EngineCall[];
+  constructor(calls: EngineCall[]) {
+    this.calls = calls;
+  }
+  async deployResources(): Promise<{ deployed: number }> { return { deployed: 0 }; }
+  async createInstance(input: { processDefinitionId: string; variables?: Record<string, unknown> }): Promise<{ processInstanceKey: string }> {
+    this.calls.push({ kind: "start", target: input.processDefinitionId, variables: input.variables });
+    return { processInstanceKey: "pi-1" };
+  }
+  async cancelInstance(): Promise<void> {}
+  async publishMessage(input: { name: string; correlationKey?: string; variables?: Record<string, unknown> }): Promise<void> {
+    this.calls.push({ kind: "message", target: input.name, correlationKey: input.correlationKey, variables: input.variables });
+  }
+  async searchUserTasks(): Promise<[]> { return []; }
+  async completeUserTask(): Promise<void> {}
+  async registerWorker(jobType: string): Promise<{ jobType: string; unsubscribe(): Promise<void> }> {
+    return { jobType, unsubscribe: async () => {} };
+  }
+  async close(): Promise<void> {}
+}
+
 function fakeApp(): { app: AppApi; calls: EngineCall[]; logs: Array<{ level: string; msg: string }> } {
   const calls: EngineCall[] = [];
   const logs: Array<{ level: string; msg: string }> = [];
-  const app = {
+  const engine = new MiniEngine(calls);
+  const app: AppApi = {
+    manifest: { schemaVersion: 1, id: "t", name: "T" },
+    data: new DataLayer(new Map(), undefined, {}),
+    engine,
     env: () => undefined,
     log: (level: string, msg: string) => logs.push({ level, msg }),
-    engine: {
-      createInstance: (input: { processDefinitionId: string; variables?: Record<string, unknown> }) => {
-        calls.push({ kind: "start", target: input.processDefinitionId, variables: input.variables });
-        return Promise.resolve({ processInstanceKey: "pi-1" });
-      },
-      publishMessage: (input: { name: string; correlationKey?: string; variables?: Record<string, unknown> }) => {
-        calls.push({ kind: "message", target: input.name, correlationKey: input.correlationKey, variables: input.variables });
-        return Promise.resolve();
-      },
-    },
-  } as unknown as AppApi;
+  };
   return { app, calls, logs };
 }
 
 function fakeCtx(triggers: Trigger[]): { ctx: RuntimeContext; hostLogs: Array<{ level: string; msg: string }> } {
   const hostLogs: Array<{ level: string; msg: string }> = [];
-  const ctx = {
+  const host: HostContext = {
+    runtime: "node",
+    env: () => undefined,
+    readTextFile: async () => "",
+    listDir: async () => [],
+    exists: async () => false,
+    openSqlite: () => {
+      throw new Error("sqlite not used in this test");
+    },
+    importModule: async () => ({}),
+    serveHttp: async () => ({ port: 0, stop: async () => {} }),
+    now: () => 0,
+    log: (level: string, msg: string) => hostLogs.push({ level, msg }),
+  };
+  const ctx: RuntimeContext = {
     root: "/app",
-    manifest: { schemaVersion: 1, id: "t", name: "T", triggers } as RuntimeContext["manifest"],
-    host: { log: (level: string, msg: string) => hostLogs.push({ level, msg }) },
-  } as unknown as RuntimeContext;
+    manifest: { schemaVersion: 1, id: "t", name: "T", triggers },
+    engine: new MiniEngine([]),
+    host,
+  };
   return { ctx, hostLogs };
 }
 
@@ -56,7 +88,7 @@ function fakeScheduler(startMs: number): SchedulerDeps & { advance: (ms: number)
       return id;
     },
     clearTimer: (h) => {
-      timers.delete(h as number);
+      if (typeof h === "number") timers.delete(h);
     },
     pending: () => timers.size,
     // Advance the clock, firing every timer whose deadline has passed (in order), letting
@@ -255,7 +287,7 @@ test("webhook trigger still routes and publishes", async () => {
     { id: "hook", type: "webhook", action: { message: "got-it", correlationKey: "= body.id" } },
   ]);
   const handle = mountTriggers(ctx, app);
-  const router = makeRouter(handle.routes) as unknown as (r: HttpRequest) => Promise<{ status?: number; body?: string }>;
+  const router = async (r: HttpRequest) => makeRouter(handle.routes)(r);
   const res = await router({
     method: "POST",
     path: "/hooks/hook",

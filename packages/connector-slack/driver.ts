@@ -17,14 +17,27 @@
 // Runs on Node >=22.6 (`--experimental-strip-types`, global WebSocket + fetch)
 // or Deno. Erasable TypeScript, no build step.
 
+interface DenoRuntime {
+  env: { get(k: string): string | undefined };
+  exit(c: number): never;
+  addSignalListener?: (sig: string, cb: () => void) => void;
+}
+
+declare const Deno: DenoRuntime | undefined;
+
+function denoRuntime(): DenoRuntime | undefined {
+  return typeof Deno === "undefined" ? undefined : Deno;
+}
+
+function nodeRuntime(): NodeJS.Process | undefined {
+  return typeof process === "undefined" ? undefined : process;
+}
+
 /** Read an env var portably across Node (`process.env`) and Deno (`Deno.env`). */
 function env(name: string): string | undefined {
-  const g = globalThis as {
-    Deno?: { env: { get(k: string): string | undefined } };
-    process?: { env: Record<string, string | undefined> };
-  };
-  if (g.Deno) return g.Deno.env.get(name);
-  return g.process?.env?.[name];
+  const deno = denoRuntime();
+  if (deno) return deno.env.get(name);
+  return nodeRuntime()?.env?.[name];
 }
 
 function log(msg: string): void {
@@ -33,8 +46,7 @@ function log(msg: string): void {
 
 function fail(msg: string): never {
   console.error(`[slack] ${msg}`);
-  const g = globalThis as { Deno?: { exit(c: number): never }; process?: { exit(c: number): never } };
-  (g.Deno ?? g.process)?.exit(1);
+  (denoRuntime() ?? nodeRuntime())?.exit(1);
   throw new Error(msg);
 }
 
@@ -47,20 +59,34 @@ interface Connection {
   [k: string]: unknown;
 }
 
-const hookUrl = env("NANOBPMN_HOOK_URL");
-if (!hookUrl) fail("NANOBPMN_HOOK_URL is not set; refusing to start");
+function isConnection(value: unknown): value is Connection {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return !("appToken" in value) || value.appToken === undefined || typeof value.appToken === "string";
+}
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
+function requiredEnv(name: string, message: string): string {
+  const value = env(name);
+  if (!value) fail(message);
+  return value;
+}
+
+const hookUrl = requiredEnv("NANOBPMN_HOOK_URL", "NANOBPMN_HOOK_URL is not set; refusing to start");
 const token = env("NANOBPMN_WEBHOOK_TOKEN");
 
 let config: Config = {};
 try {
-  config = JSON.parse(env("NANOBPMN_TRIGGER_CONFIG") || "{}") as Config;
+  config = JSON.parse(env("NANOBPMN_TRIGGER_CONFIG") || "{}");
 } catch {
   fail("NANOBPMN_TRIGGER_CONFIG is not valid JSON");
 }
 let connection: Connection = {};
 try {
-  const raw = JSON.parse(env("NANOBPMN_TRIGGER_CONNECTION") || "null");
-  if (raw && typeof raw === "object") connection = raw as Connection;
+  const raw: unknown = JSON.parse(env("NANOBPMN_TRIGGER_CONNECTION") || "null");
+  if (isConnection(raw)) connection = raw;
 } catch {
   fail("NANOBPMN_TRIGGER_CONNECTION is not valid JSON");
 }
@@ -94,7 +120,7 @@ async function emit(idem: string, payload: unknown): Promise<void> {
   const body = JSON.stringify(payload);
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
-      const res = await fetch(hookUrl as string, { method: "POST", headers, body });
+      const res = await fetch(hookUrl, { method: "POST", headers, body });
       if (res.ok) return;
       if (res.status === 401 || res.status === 403) {
         log(`ingress rejected event (${res.status}); check the trigger's auth secret`);
@@ -102,7 +128,7 @@ async function emit(idem: string, payload: unknown): Promise<void> {
       }
       log(`ingress returned ${res.status} (attempt ${attempt})`);
     } catch (e) {
-      log(`POST failed (attempt ${attempt}): ${(e as Error).message}`);
+      log(`POST failed (attempt ${attempt}): ${errorMessage(e)}`);
     }
     await sleep(Math.min(250 * 2 ** (attempt - 1), 4000));
   }
@@ -122,7 +148,7 @@ async function openSocketUrl(): Promise<string> {
       "content-type": "application/x-www-form-urlencoded",
     },
   });
-  const data = (await res.json()) as { ok: boolean; url?: string; error?: string };
+  const data: { ok: boolean; url?: string; error?: string } = await res.json();
   if (!data.ok || !data.url) throw new Error(`apps.connections.open failed: ${data.error ?? res.status}`);
   return data.url;
 }
@@ -197,7 +223,7 @@ async function connectLoop(): Promise<void> {
     try {
       url = await openSocketUrl();
     } catch (e) {
-      log(`open failed: ${(e as Error).message}; retrying in ${backoff}ms`);
+      log(`open failed: ${errorMessage(e)}; retrying in ${backoff}ms`);
       await sleep(backoff);
       backoff = Math.min(backoff * 2, 30000);
       continue;
@@ -208,9 +234,10 @@ async function connectLoop(): Promise<void> {
       ws.addEventListener("open", () => log("websocket open"));
       ws.addEventListener("message", (ev: MessageEvent) => {
         try {
-          handleEnvelope(ws, JSON.parse(String(ev.data)) as Envelope);
+          const envelope: Envelope = JSON.parse(String(ev.data));
+          handleEnvelope(ws, envelope);
         } catch (e) {
-          log(`bad frame: ${(e as Error).message}`);
+          log(`bad frame: ${errorMessage(e)}`);
         }
       });
       ws.addEventListener("error", () => log("websocket error"));
@@ -225,19 +252,16 @@ async function connectLoop(): Promise<void> {
 function shutdown(): void {
   log("shutting down");
   stopped = true;
-  const g = globalThis as { Deno?: { exit(c: number): never }; process?: { exit(c: number): never } };
-  (g.Deno ?? g.process)?.exit(0);
+  (denoRuntime() ?? nodeRuntime())?.exit(0);
 }
-const g = globalThis as {
-  process?: { on(ev: string, cb: () => void): void };
-  Deno?: { addSignalListener(sig: string, cb: () => void): void };
-};
-if (g.Deno?.addSignalListener) {
-  g.Deno.addSignalListener("SIGTERM", shutdown);
-  g.Deno.addSignalListener("SIGINT", shutdown);
-} else if (g.process) {
-  g.process.on("SIGTERM", shutdown);
-  g.process.on("SIGINT", shutdown);
+const deno = denoRuntime();
+const node = nodeRuntime();
+if (deno?.addSignalListener) {
+  deno.addSignalListener("SIGTERM", shutdown);
+  deno.addSignalListener("SIGINT", shutdown);
+} else if (node) {
+  node.on("SIGTERM", shutdown);
+  node.on("SIGINT", shutdown);
 }
 
 log(`starting; forwarding ${eventFilter.size === 0 ? "all events" : [...eventFilter].join(", ")}`);

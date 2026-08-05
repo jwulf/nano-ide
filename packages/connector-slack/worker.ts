@@ -21,14 +21,30 @@
 
 import { defineWorker, type WorkerJob } from "@nanobpm/worker";
 
+interface DenoRuntime {
+  env: { get(k: string): string | undefined };
+  exit(c: number): never;
+}
+
+declare const Deno: DenoRuntime | undefined;
+
+function denoRuntime(): DenoRuntime | undefined {
+  return typeof Deno === "undefined" ? undefined : Deno;
+}
+
+function nodeRuntime(): NodeJS.Process | undefined {
+  return typeof process === "undefined" ? undefined : process;
+}
+
+function errorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 /** Read an env var portably across Node (`process.env`) and Deno (`Deno.env`). */
 function env(name: string): string | undefined {
-  const g = globalThis as {
-    Deno?: { env: { get(k: string): string | undefined } };
-    process?: { env: Record<string, string | undefined> };
-  };
-  if (g.Deno) return g.Deno.env.get(name);
-  return g.process?.env?.[name];
+  const deno = denoRuntime();
+  if (deno) return deno.env.get(name);
+  return nodeRuntime()?.env?.[name];
 }
 
 /** Read a positive-integer env var, falling back when unset or malformed. */
@@ -44,8 +60,7 @@ const SLACK_POST_MESSAGE = "https://slack.com/api/chat.postMessage";
 const botToken = env("SLACK_BOT_TOKEN");
 if (!botToken) {
   console.error("[slack:send-message] SLACK_BOT_TOKEN is not set; refusing to start");
-  const g = globalThis as { Deno?: { exit(c: number): never }; process?: { exit(c: number): never } };
-  (g.Deno ?? g.process)?.exit(1);
+  (denoRuntime() ?? nodeRuntime())?.exit(1);
   // exit() may be unavailable or stubbed (e.g. under a test runner); throw so the
   // worker can never fall through and start without credentials.
   throw new Error("[slack:send-message] SLACK_BOT_TOKEN is not set");
@@ -97,7 +112,7 @@ async function handle(job: WorkerJob): Promise<Record<string, unknown>> {
     });
   } catch (e) {
     // Network hiccup — retryable; let the engine re-activate the job.
-    await job.fail(`slack request failed: ${(e as Error).message}`);
+    await job.fail(`slack request failed: ${errorMessage(e)}`);
     return {};
   }
 
@@ -110,7 +125,7 @@ async function handle(job: WorkerJob): Promise<Record<string, unknown>> {
 
   let payload: SlackPostResult;
   try {
-    payload = (await res.json()) as SlackPostResult;
+    payload = await res.json();
   } catch {
     await job.fail(`slack returned non-JSON (${res.status})`);
     return {};

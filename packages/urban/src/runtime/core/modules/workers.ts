@@ -3,6 +3,7 @@
 // with the app's runtime API (datasource + engine + host utils).
 
 import type { AppApi, Mounted, RuntimeContext } from "../context.ts";
+import { isRecord } from "../guards.ts";
 import type { EngineJob, JobHandler, WorkerSubscription } from "../host.ts";
 import { workerJobType, type Worker } from "../manifest.ts";
 import { type DecisionEvaluator, type LlmRuntime, runLlmJob } from "./llm.ts";
@@ -21,15 +22,14 @@ interface DecisionCapableSdk {
  *  SDK shape and adds decision context to a parse failure rather than surfacing a raw
  *  "is not a function" / `JSON.parse` error. */
 export function sdkDecisionEvaluator(sdk: unknown): DecisionEvaluator {
-  const client = sdk as Partial<DecisionCapableSdk>;
   return async (decisionId, variables) => {
-    if (typeof client.evaluateDecision !== "function") {
+    if (!hasDecisionCapableSdk(sdk)) {
       throw new Error(
         `llm worker: the engine SDK does not support evaluateDecision ` +
           `(needed for decision rails "${decisionId}")`,
       );
     }
-    const res = await client.evaluateDecision({ decisionDefinitionId: decisionId, variables });
+    const res = await sdk.evaluateDecision({ decisionDefinitionId: decisionId, variables });
     const out = res?.output;
     if (typeof out !== "string") return out;
     try {
@@ -40,6 +40,10 @@ export function sdkDecisionEvaluator(sdk: unknown): DecisionEvaluator {
       );
     }
   };
+}
+
+function hasDecisionCapableSdk(sdk: unknown): sdk is DecisionCapableSdk {
+  return isRecord(sdk) && typeof sdk.evaluateDecision === "function";
 }
 
 /**
@@ -63,6 +67,10 @@ export type AppJobHandler<In extends object = Record<string, unknown>, Out exten
   app: AppApi,
 ) => Promise<Out | void> | Out | void;
 
+function isAppJobHandler(value: unknown): value is AppJobHandler {
+  return typeof value === "function";
+}
+
 /**
  * Resolve a handler for `jobType` from a loaded module, in priority order:
  *   1. `handlers[jobType]`            (a map keyed by job type — the multi-type module case)
@@ -73,13 +81,13 @@ export function resolveHandler(
   mod: Record<string, unknown>,
   jobType: string,
 ): AppJobHandler | undefined {
-  const map = mod.handlers as Record<string, unknown> | undefined;
-  if (map && typeof map[jobType] === "function") return map[jobType] as AppJobHandler;
+  const map = isRecord(mod.handlers) ? mod.handlers : undefined;
+  if (map && isAppJobHandler(map[jobType])) return map[jobType];
   const seg = jobType.includes(".") ? jobType.slice(jobType.lastIndexOf(".") + 1) : jobType;
-  if (typeof mod[jobType] === "function") return mod[jobType] as AppJobHandler;
-  if (map && typeof map[seg] === "function") return map[seg] as AppJobHandler;
-  if (typeof mod[seg] === "function") return mod[seg] as AppJobHandler;
-  if (typeof mod.default === "function") return mod.default as AppJobHandler;
+  if (isAppJobHandler(mod[jobType])) return mod[jobType];
+  if (map && isAppJobHandler(map[seg])) return map[seg];
+  if (isAppJobHandler(mod[seg])) return mod[seg];
+  if (isAppJobHandler(mod.default)) return mod.default;
   return undefined;
 }
 
@@ -106,7 +114,7 @@ export async function mountWorkers(ctx: RuntimeContext, app: AppApi): Promise<Wo
     return mod;
   };
 
-  for (const decl of decls as Worker[]) {
+  for (const decl of decls) {
     const jobType = workerJobType(decl);
     if (!jobType) continue;
     // Connector-backed workers (a `connector` field, no handler/llm) are mounted

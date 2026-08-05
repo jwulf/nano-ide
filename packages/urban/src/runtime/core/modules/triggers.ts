@@ -4,6 +4,7 @@
 // Node 18+ and Deno), so this stays runtime-agnostic.
 
 import type { AppApi, Mounted, RuntimeContext } from "../context.ts";
+import { isRecord } from "../guards.ts";
 import type { HttpRequest } from "../host.ts";
 import { json, normalizeRoutePath, type Route } from "../router.ts";
 import type { Trigger } from "../manifest.ts";
@@ -35,7 +36,7 @@ export function resolveExpr(expr: string, scope: Scope): unknown {
   let cur: unknown = scope;
   for (const seg of pathExpr.split(".")) {
     if (cur && typeof cur === "object" && Object.prototype.hasOwnProperty.call(cur, seg)) {
-      cur = (cur as Record<string, unknown>)[seg];
+      cur = Object.getOwnPropertyDescriptor(cur, seg)?.value;
     } else {
       return undefined;
     }
@@ -67,7 +68,7 @@ export function resolveActionVariables(
   scope: Scope,
 ): Record<string, unknown> {
   const asRecord = (v: unknown): Record<string, unknown> | undefined =>
-    v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+    isRecord(v) ? v : undefined;
 
   if (typeof expr === "string") {
     return asRecord(resolveExpr(expr, scope)) ?? asRecord(scope.body) ?? {};
@@ -146,7 +147,7 @@ export async function runTriggerAction(
   return { kind: "none" };
 }
 
-const emptyScope = { body: {}, headers: {} as Record<string, string>, query: {} as Record<string, string> };
+const emptyScope: Scope = { body: {}, headers: {}, query: {} };
 
 /** Max delay a single `setTimeout` honours before its 32-bit signed overflow (~24.8 days). */
 const MAX_TIMER_DELAY_MS = 2_147_483_647;
@@ -155,9 +156,15 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647;
 function defaultScheduler(): SchedulerDeps {
   return {
     setTimer: (fn, ms) => globalThis.setTimeout(fn, ms),
-    clearTimer: (h) => globalThis.clearTimeout(h as ReturnType<typeof setTimeout>),
+    clearTimer: (h) => {
+      if (isTimerHandle(h)) globalThis.clearTimeout(h);
+    },
     now: () => Date.now(),
   };
+}
+
+function isTimerHandle(handle: unknown): handle is ReturnType<typeof setTimeout> {
+  return typeof handle === "number" || (typeof handle === "object" && handle !== null);
 }
 
 /** Mount webhook + cron triggers. Webhooks contribute HTTP routes; cron triggers arm
@@ -255,7 +262,7 @@ export function mountTriggers(
     arm();
   };
 
-  for (const trig of (ctx.manifest.triggers ?? []) as Trigger[]) {
+  for (const trig of ctx.manifest.triggers ?? []) {
     if (trig.type === "cron") {
       armCron(trig);
       continue;
@@ -295,7 +302,8 @@ export function mountTriggers(
           if (seenDeliveries.has(delivery)) return json({ ok: true, deduped: true });
           seenDeliveries.add(delivery);
           if (seenDeliveries.size > 10_000) {
-            seenDeliveries.delete(seenDeliveries.values().next().value as string);
+            const oldest = seenDeliveries.values().next().value;
+            if (oldest !== undefined) seenDeliveries.delete(oldest);
           }
         }
 

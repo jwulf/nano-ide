@@ -55,7 +55,7 @@ export interface TableMeta {
  * interchangeable. */
 export interface DataSource {
   /** Run a SELECT (or any row-returning statement) and collect the rows. */
-  query(sql: string, params?: unknown[]): Promise<Row[]>;
+  query<T extends object = Row>(sql: string, params?: unknown[]): Promise<T[]>;
   /** Run a non-row statement (INSERT/UPDATE/DELETE/DDL). */
   exec(sql: string, params?: unknown[]): Promise<ExecResult>;
   /** Run `fn` inside a transaction, committing on success and rolling back on throw. The
@@ -77,11 +77,10 @@ export function quoteIdent(name: string): string {
  * yields an empty clause (matches all rows). Takes `object` (not `Row`) so a `Partial<T>` for a
  * generated `interface` row type (which lacks a string index signature) is accepted. */
 function whereClause(where: object): { clause: string; params: unknown[] } {
-  const w = where as Row;
-  const keys = Object.keys(w);
-  if (keys.length === 0) return { clause: "", params: [] };
-  const clause = " WHERE " + keys.map((k) => `${quoteIdent(k)} = ?`).join(" AND ");
-  return { clause, params: keys.map((k) => w[k]) };
+  const entries = Object.entries(where);
+  if (entries.length === 0) return { clause: "", params: [] };
+  const clause = " WHERE " + entries.map(([k]) => `${quoteIdent(k)} = ?`).join(" AND ");
+  return { clause, params: entries.map(([, v]) => v) };
 }
 
 /** A typed gateway over a single table — the record-oriented data object a handler binds to
@@ -105,20 +104,20 @@ export class Table<T extends object = Row> {
    * `DEFAULT`/`NULL` governs — `undefined` means "not provided, let the schema decide", never
    * a bound value. An explicit `null` is preserved (it stores `NULL`). */
   async insert(row: Partial<T>): Promise<number | bigint> {
-    const provided = Object.keys(row);
-    const keys = provided.filter((k) => (row as Row)[k] !== undefined);
-    if (keys.length === 0) {
+    const provided = Object.entries(row);
+    const entries = provided.filter(([, v]) => v !== undefined);
+    if (entries.length === 0) {
       throw new Error(
         provided.length === 0
           ? `Table(${this.name}).insert: no columns to insert (empty row)`
           : `Table(${this.name}).insert: no columns to insert (all values were undefined)`,
       );
     }
-    const cols = keys.map(quoteIdent).join(", ");
-    const ph = keys.map(() => "?").join(", ");
+    const cols = entries.map(([k]) => quoteIdent(k)).join(", ");
+    const ph = entries.map(() => "?").join(", ");
     const r = await this.#src.exec(
       `INSERT INTO ${quoteIdent(this.name)} (${cols}) VALUES (${ph})`,
-      keys.map((k) => (row as Row)[k]),
+      entries.map(([, v]) => v),
     );
     if (r.lastInsertId == null) {
       // The driver reported no rowid — treat as a failed/ambiguous insert rather than
@@ -130,11 +129,11 @@ export class Table<T extends object = Row> {
 
   /** Fetch the row with the given primary key, or `undefined`. */
   async get(id: unknown): Promise<T | undefined> {
-    const rows = await this.#src.query(
+    const rows = await this.#src.query<T>(
       `SELECT * FROM ${quoteIdent(this.name)} WHERE ${quoteIdent(this.pk)} = ? LIMIT 1`,
       [id],
     );
-    return rows[0] as T | undefined;
+    return rows[0];
   }
 
   /** Every row (optionally capped at `limit`). */
@@ -143,38 +142,38 @@ export class Table<T extends object = Row> {
       typeof limit === "number" && Number.isFinite(limit)
         ? ` LIMIT ${Math.max(0, Math.floor(limit))}`
         : "";
-    return (await this.#src.query(`SELECT * FROM ${quoteIdent(this.name)}${lim}`)) as T[];
+    return this.#src.query<T>(`SELECT * FROM ${quoteIdent(this.name)}${lim}`);
   }
 
   /** Rows matching an equality filter (keys ANDed). An empty filter matches all rows. */
   async find(where: Partial<T> = {}): Promise<T[]> {
-    const { clause, params } = whereClause(where as Row);
-    return (await this.#src.query(
+    const { clause, params } = whereClause(where);
+    return this.#src.query<T>(
       `SELECT * FROM ${quoteIdent(this.name)}${clause}`,
       params,
-    )) as T[];
+    );
   }
 
   /** The first row matching an equality filter, or `undefined`. */
   async findOne(where: Partial<T> = {}): Promise<T | undefined> {
-    const { clause, params } = whereClause(where as Row);
-    const rows = await this.#src.query(
+    const { clause, params } = whereClause(where);
+    const rows = await this.#src.query<T>(
       `SELECT * FROM ${quoteIdent(this.name)}${clause} LIMIT 1`,
       params,
     );
-    return rows[0] as T | undefined;
+    return rows[0];
   }
 
   /** Patch the row with the given primary key; returns rows changed. Keys whose value is
    * `undefined` are skipped (that column is left unchanged); an explicit `null` clears the
    * column to `NULL`. A patch with no defined keys is a no-op. */
   async update(id: unknown, patch: Partial<T>): Promise<number> {
-    const keys = Object.keys(patch).filter((k) => (patch as Row)[k] !== undefined);
-    if (keys.length === 0) return 0;
-    const set = keys.map((k) => `${quoteIdent(k)} = ?`).join(", ");
+    const entries = Object.entries(patch).filter(([, v]) => v !== undefined);
+    if (entries.length === 0) return 0;
+    const set = entries.map(([k]) => `${quoteIdent(k)} = ?`).join(", ");
     const r = await this.#src.exec(
       `UPDATE ${quoteIdent(this.name)} SET ${set} WHERE ${quoteIdent(this.pk)} = ?`,
-      [...keys.map((k) => (patch as Row)[k]), id],
+      [...entries.map(([, v]) => v), id],
     );
     return r.changed;
   }
@@ -190,12 +189,12 @@ export class Table<T extends object = Row> {
 
   /** Count rows matching an equality filter (all rows when omitted). */
   async count(where: Partial<T> = {}): Promise<number> {
-    const { clause, params } = whereClause(where as Row);
-    const rows = await this.#src.query(
+    const { clause, params } = whereClause(where);
+    const rows = await this.#src.query<{ n?: unknown }>(
       `SELECT COUNT(*) AS n FROM ${quoteIdent(this.name)}${clause}`,
       params,
     );
-    return Number((rows[0] as Row)?.n ?? 0);
+    return Number(rows[0]?.n ?? 0);
   }
 }
 
@@ -207,8 +206,8 @@ class SqliteGateway implements DataSource {
     this.#db = db;
   }
 
-  async query(sql: string, params: unknown[] = []): Promise<Row[]> {
-    return this.#db.all<Row>(sql, params);
+  async query<T extends object = Row>(sql: string, params: unknown[] = []): Promise<T[]> {
+    return this.#db.all<T>(sql, params);
   }
 
   async exec(sql: string, params: unknown[] = []): Promise<ExecResult> {

@@ -22,6 +22,7 @@
 
 import type { LlmBinding } from "../manifest.ts";
 import { expandEnvString } from "../manifest.ts";
+import { isRecord } from "../guards.ts";
 
 /** Job variables/headers default to untyped JSON. */
 export type LlmVars = Record<string, unknown>;
@@ -102,8 +103,8 @@ export function buildMessages(vars: LlmVars): ChatMessage[] {
     if (vars.messages.length === 0) {
       throw new Error("llm worker: 'messages' must not be an empty array");
     }
-    msgs = (vars.messages as unknown[]).map((m, i) => {
-      const o = m as { role?: unknown; content?: unknown };
+    msgs = vars.messages.map((m, i) => {
+      const o = isRecord(m) ? m : {};
       if (
         typeof o.content !== "string" ||
         (o.role !== "user" && o.role !== "assistant" && o.role !== "system")
@@ -150,8 +151,11 @@ export async function callLlm(
     const detail = await res.text().catch(() => "");
     throw new Error(`llm provider returned ${res.status}: ${detail.slice(0, 500)}`);
   }
-  const data = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
-  const content = data.choices?.[0]?.message?.content;
+  const data: unknown = await res.json();
+  const choices = isRecord(data) && Array.isArray(data.choices) ? data.choices : [];
+  const firstChoice = choices[0];
+  const message = isRecord(firstChoice) && isRecord(firstChoice.message) ? firstChoice.message : undefined;
+  const content = message?.content;
   if (typeof content !== "string") {
     throw new Error("llm provider returned no message content");
   }
@@ -187,10 +191,10 @@ export async function runLlmJob(
   }
   // response_format asks for a JSON object, but a provider can still return a scalar, array,
   // or null — none of which is a valid variable map (nor valid decision-rails input).
-  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+  if (!isRecord(parsed)) {
     throw new Error(`llm worker: expected a JSON object output but got: ${text.slice(0, 300)}`);
   }
-  const obj = parsed as Record<string, unknown>;
+  const obj = parsed;
 
   const decisionId = binding.output?.decision;
   if (decisionId) {
@@ -201,9 +205,7 @@ export async function runLlmJob(
       );
     }
     const out = await rt.evaluateDecision(decisionId, obj);
-    return out !== null && typeof out === "object" && !Array.isArray(out)
-      ? (out as Record<string, unknown>)
-      : { result: out };
+    return isRecord(out) ? out : { result: out };
   }
   return obj;
 }

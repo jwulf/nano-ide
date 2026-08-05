@@ -40,13 +40,15 @@ const XML = `<?xml version="1.0"?>
 
 test("scanModelWorkers extracts task type, element id, process, and envelope io", () => {
   const w = scanModelWorkers(XML);
-  const charge = w.find((x) => x.taskType === "orders.charge") as WorkerIo;
+  const charge = w.find((x) => x.taskType === "orders.charge");
+  assert.ok(charge);
   assert.ok(charge);
   assert.equal(charge.elementId, "Charge");
   assert.equal(charge.process, "orders");
   assert.equal(charge.in, "Payment");
   assert.equal(charge.out, "Receipt");
-  const notify = w.find((x) => x.taskType === "orders.notify") as WorkerIo;
+  const notify = w.find((x) => x.taskType === "orders.notify");
+  assert.ok(notify);
   assert.equal(notify.in, undefined);
   assert.equal(notify.out, undefined);
 });

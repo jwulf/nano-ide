@@ -15,6 +15,11 @@ interface Parsed {
   help?: boolean;
 }
 
+type RuntimeGlobal = typeof globalThis & {
+  process?: { argv?: string[]; exit?: (c: number) => void };
+  Deno?: { args?: string[]; exit?: (c: number) => void };
+};
+
 function parse(argv: string[]): Parsed {
   const out: Parsed = {};
   const rest: string[] = [];
@@ -94,11 +99,8 @@ export async function main(argv: string[]): Promise<number> {
   return 0;
 }
 
-const meta = import.meta as unknown as { main?: boolean; url: string };
-const g = globalThis as {
-  process?: { argv?: string[]; exit?: (c: number) => void };
-  Deno?: { args?: string[]; exit?: (c: number) => void };
-};
+const meta = import.meta;
+const g: RuntimeGlobal = globalThis;
 const argv0 = g.process?.argv?.[1];
 const nodeMain = argv0 ? meta.url === pathToFileURL(argv0).href : false;
 const isEntry = meta.main === true || nodeMain;
@@ -116,7 +118,7 @@ if (isEntry) {
   main(argv).then(
     (code) => exit(code),
     (err) => {
-      console.error(String((err as Error)?.message ?? err));
+      console.error(String(err instanceof Error ? err.message : err));
       exit(1);
     },
   );

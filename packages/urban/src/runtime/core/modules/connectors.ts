@@ -16,6 +16,7 @@
 // the pack's `@nanobpm/worker` import live behind `host.importConnectorModule`.
 
 import type { AppApi, Mounted, RuntimeContext } from "../context.ts";
+import { errorMessage, isRecord } from "../guards.ts";
 import { BpmnError, type EngineJob, type JobHandler, type WorkerSubscription } from "../host.ts";
 import { workerJobType, type Worker } from "../manifest.ts";
 import {
@@ -85,10 +86,11 @@ async function readJson<T>(
   const path = joinRoot(ctx.root, relPath);
   if (!(await ctx.host.exists(path))) return undefined;
   try {
-    return JSON.parse(await ctx.host.readTextFile(path)) as T;
+    const parsed: T = JSON.parse(await ctx.host.readTextFile(path));
+    return parsed;
   } catch (err) {
     if (opts?.strict) {
-      throw new Error(`failed to parse ${relPath}: ${(err as Error).message}`);
+      throw new Error(`failed to parse ${relPath}: ${errorMessage(err)}`);
     }
     return undefined;
   }
@@ -157,7 +159,7 @@ export function adaptConnectorHandler(worker: DefinedConnectorWorker): JobHandle
     if (outcome?.kind === "fail") throw new Error(outcome.message);
     if (outcome?.kind === "complete") return outcome.vars ?? {};
     // No explicit outcome: fall back to the handle's return value (SDK-style).
-    return ret && typeof ret === "object" ? (ret as Record<string, unknown>) : {};
+    return isRecord(ret) ? ret : {};
   };
 }
 
@@ -169,7 +171,7 @@ export function adaptConnectorHandler(worker: DefinedConnectorWorker): JobHandle
  * the host cannot host connector workers (`importConnectorModule` absent).
  */
 export async function mountConnectors(ctx: RuntimeContext, app: AppApi): Promise<ConnectorsHandle> {
-  const decls = (ctx.manifest.workers ?? []).filter((w) => (w as Worker).connector) as Worker[];
+  const decls: Worker[] = (ctx.manifest.workers ?? []).filter((w) => Boolean(w.connector));
   const subs: WorkerSubscription[] = [];
   const jobTypes: string[] = [];
   if (decls.length === 0) return makeHandle(subs, jobTypes);

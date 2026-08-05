@@ -22,8 +22,9 @@ test("defineWorker records handlers that drainDefinedWorkers returns then clears
 
 test("defineWorker rejects a missing type or non-function handle", () => {
   assert.throws(() => defineWorker({ type: "", handle: async () => ({}) }), /type` is required/);
+  const missingHandle: Parameters<typeof defineWorker>[0] = JSON.parse('{"type":"x"}');
   assert.throws(
-    () => defineWorker({ type: "x" } as unknown as Parameters<typeof defineWorker>[0]),
+    () => defineWorker(missingHandle),
     /handle must be a function/,
   );
   // A failed defineWorker must not leave a partial registration behind.
