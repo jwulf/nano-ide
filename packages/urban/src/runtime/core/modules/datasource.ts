@@ -31,6 +31,11 @@ export function resolveAppPath(root: string, p: string): string {
   return isAbsolutePath(p) ? p : `${root.replace(/[/\\]+$/, "")}/${p}`;
 }
 
+/** Name of the SQLite ledger table that records applied migrations. The single source of truth
+ * for this identifier: `applyMigrations` writes it and `dataops`' `migrations` op reads it, so
+ * both import this constant and the ledger name can never drift between application and listing. */
+export const MIGRATIONS_TABLE = "_urban_migrations";
+
 /** Resolve a datasource `url` to its on-disk SQLite path against `root`. The result is absolute
  * when the resolved path is absolute (either because `url` names an absolute path or `root` is
  * absolute); if `root` is relative (e.g. "." as used by the CLI/tests) a relative `url` stays
@@ -231,14 +236,14 @@ export async function applyMigrations(
   root: string,
   migrationsDir: string,
 ): Promise<string[]> {
-  const dir = `${root.replace(/\/+$/, "")}/${migrationsDir.replace(/^\/+/, "")}`;
+  const dir = resolveAppPath(root, migrationsDir);
   if (!(await host.exists(dir))) return [];
   const files = (await host.listDir(dir)).filter((f) => f.endsWith(".sql")).sort();
   db.exec(
-    "CREATE TABLE IF NOT EXISTS _urban_migrations (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)",
+    `CREATE TABLE IF NOT EXISTS ${MIGRATIONS_TABLE} (name TEXT PRIMARY KEY, applied_at TEXT NOT NULL)`,
   );
   const applied = new Set(
-    db.all<{ name: string }>("SELECT name FROM _urban_migrations").map((r) => r.name),
+    db.all<{ name: string }>(`SELECT name FROM ${MIGRATIONS_TABLE}`).map((r) => r.name),
   );
   const newlyApplied: string[] = [];
   for (const file of files) {
@@ -254,7 +259,7 @@ export async function applyMigrations(
     db.exec("BEGIN");
     try {
       db.exec(sql);
-      db.run("INSERT INTO _urban_migrations (name, applied_at) VALUES (?, ?)", [
+      db.run(`INSERT INTO ${MIGRATIONS_TABLE} (name, applied_at) VALUES (?, ?)`, [
         file,
         new Date(host.now()).toISOString(),
       ]);

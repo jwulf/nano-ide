@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isAbsolutePath, resolveAppPath, resolveSqlitePath, sqlitePathFromUrl } from "./datasource.ts";
+import { isAbsolutePath, MIGRATIONS_TABLE, resolveAppPath, resolveSqlitePath, sqlitePathFromUrl } from "./datasource.ts";
 
 // `resolveSqlitePath` is the single source of truth for turning a datasource `url` into its
 // on-disk SQLite path (absolute when `root` is absolute, relative when `root` is relative, e.g.
@@ -52,4 +52,10 @@ test("resolveSqlitePath resolves the same path openSqliteSource would open", () 
   const url = "file:./db/app.db";
   const bare = sqlitePathFromUrl(url);
   assert.equal(resolveSqlitePath(root, url), `${root}/${bare}`);
+});
+
+test("MIGRATIONS_TABLE is the single canonical ledger name shared by application and listing", () => {
+  // `applyMigrations` (datasource) writes this ledger and dataops' `migrations` op reads it; both
+  // import this constant so the name can never drift between the two sites.
+  assert.equal(MIGRATIONS_TABLE, "_urban_migrations");
 });

@@ -23,7 +23,7 @@ import type { AppManifest, DataSource as ManifestDataSource } from "../manifest.
 import { loadManifest } from "../manifest.ts";
 import { validateManifest } from "../validate.ts";
 import { makeGateway, type DataSource as GatewayDataSource } from "./gateway.ts";
-import { applyMigrations, openSqliteSource, resolveAppPath } from "./datasource.ts";
+import { applyMigrations, MIGRATIONS_TABLE, openSqliteSource, resolveAppPath } from "./datasource.ts";
 
 /** The DB-manager op protocol's known op set. `domaintypes` is part of the protocol but is not
  * yet handled here (it errors clearly — see the file header); every other op is dispatched by
@@ -57,7 +57,6 @@ export interface ResolvedSource {
   migrations?: string;
 }
 
-const MIGRATIONS_TABLE = "_urban_migrations";
 const DEFAULT_MIGRATIONS_DIR = "db/migrations";
 
 /** JSON-safe a value: BigInt → number (when lossless) or string, recursing objects/arrays. SQLite
@@ -227,7 +226,7 @@ export async function runDataOp(
     case "migrations": {
       const { name, src } = pickSource(manifest, req.source);
       const relDir = src.migrations ?? DEFAULT_MIGRATIONS_DIR;
-      const absDir = `${root.replace(/\/+$/, "")}/${relDir.replace(/^\/+/, "")}`;
+      const absDir = resolveAppPath(root, relDir);
       // `migrations` is a read/list op: treat a missing dir as no migrations (mirrors
       // applyMigrations) instead of throwing on host.listDir.
       const files = (await host.exists(absDir))

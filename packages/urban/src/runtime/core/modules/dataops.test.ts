@@ -96,6 +96,50 @@ test("migrations lists pending files, migrate applies them, then schema reflects
   }
 });
 
+test("migrations honours an absolute migrations dir (root is not wrongly prefixed)", async () => {
+  // A manifest may declare an absolute migrations path (e.g. a Node host pointing at a shared
+  // location). It must be used as-is, not joined onto the app root — this guards the
+  // `resolveAppPath` routing in both the `migrations` op and `applyMigrations`.
+  const dir = await mkdtemp(join(tmpdir(), "urban-dataops-abs-"));
+  try {
+    const absMigrations = join(dir, "db", "migrations");
+    await mkdir(absMigrations, { recursive: true });
+    await writeFile(
+      join(dir, "nano.app.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        id: "shop",
+        name: "Shop",
+        data: {
+          default: "app",
+          sources: {
+            app: { driver: "sqlite", url: "file:./db/app.db", migrations: absMigrations },
+          },
+        },
+      }),
+    );
+    await writeFile(
+      join(absMigrations, "001_orders.sql"),
+      "CREATE TABLE orders (id INTEGER PRIMARY KEY, total INTEGER NOT NULL);",
+    );
+
+    const before = (await run(dir, { op: "migrations" })) as {
+      dir: string;
+      entries: { name: string; applied: boolean }[];
+    };
+    assert.equal(before.dir, absMigrations);
+    assert.deepEqual(
+      before.entries.map((e) => [e.name, e.applied]),
+      [["001_orders.sql", false]],
+    );
+
+    const migrated = (await run(dir, { op: "migrate" })) as { applied: string[]; pending: number };
+    assert.deepEqual(migrated, { applied: ["001_orders.sql"], pending: 0 });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test("exec then query round-trips rows with JSON-safe values", async () => {
   const { dir, cleanup } = await fixture();
   try {
