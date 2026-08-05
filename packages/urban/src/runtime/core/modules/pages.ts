@@ -452,11 +452,13 @@ function renderActionForm(node) {
   const p = node.props;
   const card = el("section", { class: "pc-card" });
   if (p.title) card.append(el("h2", {}, p.title));
-  const inputs = {};
-  const fieldTypes = {};
+  // Map/null-proto stores so a schema field keyed __proto__/constructor can't
+  // pollute Object.prototype or shadow inherited props (prototype-pollution class).
+  const inputs = new Map();
+  const fieldTypes = new Map();
   for (const f of p.fields || []) {
     const kind = f.type === "number" ? "number" : "text";
-    fieldTypes[f.key] = kind;
+    fieldTypes.set(f.key, kind);
     const attrs = { type: kind, placeholder: f.label || f.key };
     if (kind === "number") {
       attrs.inputmode = "numeric";
@@ -465,19 +467,23 @@ function renderActionForm(node) {
       attrs.step = f.step != null ? String(f.step) : "1";
     }
     const input = el("input", attrs);
-    inputs[f.key] = input;
+    inputs.set(f.key, input);
     card.append(el("div", { class: "pc-field" }, el("label", {}, f.label || f.key), input));
   }
   const msg = el("p", { class: "pc-msg" });
   const btn = el("button", { class: "pc-btn" }, p.submitLabel || "Submit");
   btn.addEventListener("click", async () => {
-    const variables = {};
-    for (const [k, input] of Object.entries(inputs)) {
-      if (fieldTypes[k] === "number") {
+    const variables = Object.create(null);
+    for (const [k, input] of inputs) {
+      if (fieldTypes.get(k) === "number") {
         const t = String(input.value).trim();
+        // Blank → omit so the action-side default applies; a non-finite parse
+        // (NaN/Infinity) is also omitted rather than smuggling a raw string
+        // process variable through, which would defeat the numeric coercion.
         if (t === "") continue;
         const num = Number(t);
-        variables[k] = Number.isFinite(num) ? num : input.value;
+        if (!Number.isFinite(num)) continue;
+        variables[k] = num;
       } else {
         variables[k] = input.value;
       }
@@ -488,7 +494,7 @@ function renderActionForm(node) {
         { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ variables }) });
       msg.className = "pc-msg ok";
       msg.textContent = "Started (instance " + (res.processInstanceKey ?? "?") + ")";
-      for (const input of Object.values(inputs)) input.value = "";
+      for (const input of inputs.values()) input.value = "";
       document.dispatchEvent(new CustomEvent("pc:refresh"));
     } catch (e) {
       msg.className = "pc-msg err"; msg.textContent = String(e.message || e);

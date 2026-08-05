@@ -125,6 +125,12 @@ test("the renderer honours numeric actionForm fields", async () => {
   // value is coerced to a real number (blank omitted so the action's default applies).
   assert.match(js, /f\.type === "number"/);
   assert.match(js, /Number\.isFinite\(num\)/);
+  // Numeric branch sets inputmode="numeric" so mobile keyboards show a number pad.
+  assert.match(js, /attrs\.inputmode = "numeric"/);
+  // Blank and non-finite numeric values are omitted (continue) rather than sent,
+  // so the action-side default applies and no raw string leaks through as a number.
+  assert.match(js, /if \(t === ""\) continue;/);
+  assert.match(js, /if \(!Number\.isFinite\(num\)\) continue;/);
 });
 
 test("GET /app/pages/<id> returns the page json, 404 for unknown", async () => {
