@@ -45,6 +45,12 @@ function fail(msg: string): never {
   throw new Error(msg);
 }
 
+function requiredEnv(name: string, message: string): string {
+  const value = env(name);
+  if (!value) fail(message);
+  return value;
+}
+
 function exit(code: number): never {
   if (typeof Deno !== "undefined") Deno.exit(code);
   if (typeof process !== "undefined") process.exit(code);
@@ -66,7 +72,7 @@ interface Connection {
   [k: string]: unknown;
 }
 
-const hookUrl = env("NANOBPMN_HOOK_URL") ?? fail("NANOBPMN_HOOK_URL is not set; refusing to start");
+const hookUrl = requiredEnv("NANOBPMN_HOOK_URL", "NANOBPMN_HOOK_URL is not set; refusing to start");
 
 const token = env("NANOBPMN_WEBHOOK_TOKEN");
 
