@@ -224,7 +224,7 @@ test("registerWorker creates a worker the SDK auto-starts, and dispatches + comp
   assert.equal(rec.started, 1);
 
   let completedWith: Record<string, unknown> | undefined;
-  await rec.dispatch({
+  const job: NanoSdkActivatedJob = {
     jobKey: 12,
     processInstanceKey: 34,
     elementId: "e1",
@@ -236,7 +236,8 @@ test("registerWorker creates a worker the SDK auto-starts, and dispatches + comp
     async fail() {
       throw new Error("should not fail");
     },
-  } as unknown as NanoSdkActivatedJob);
+  };
+  await rec.dispatch(job);
   assert.deepEqual(handled, [{ n: 5 }]);
   assert.deepEqual(completedWith, { out: 5 });
 
@@ -252,7 +253,7 @@ test("registerWorker fails the job when the handler throws", async () => {
   });
   const rec = client.workers[0];
   let failBody: { errorMessage: string; retries?: number } | undefined;
-  await rec.dispatch({
+  const job: NanoSdkActivatedJob = {
     jobKey: "j1",
     variables: {},
     async complete() {
@@ -262,7 +263,8 @@ test("registerWorker fails the job when the handler throws", async () => {
       failBody = body;
       return "failed";
     },
-  } as unknown as NanoSdkActivatedJob);
+  };
+  await rec.dispatch(job);
   assert.equal(failBody?.errorMessage, "boom");
   assert.equal(failBody?.retries, 0);
 });
@@ -275,7 +277,7 @@ test("registerWorker routes a thrown BpmnError to the engine's error()", async (
   });
   const rec = client.workers[0];
   let errorBody: { errorCode: string; errorMessage?: string } | undefined;
-  await rec.dispatch({
+  const job: NanoSdkActivatedJob = {
     jobKey: "j1",
     variables: {},
     async complete() {
@@ -288,7 +290,8 @@ test("registerWorker routes a thrown BpmnError to the engine's error()", async (
       errorBody = body;
       return "raised";
     },
-  } as unknown as NanoSdkActivatedJob);
+  };
+  await rec.dispatch(job);
   assert.equal(errorBody?.errorCode, "NOT_FOUND");
   assert.equal(errorBody?.errorMessage, "no such record");
 });
@@ -301,7 +304,7 @@ test("registerWorker falls back to fail() for a BpmnError when the SDK has no er
   });
   const rec = client.workers[0];
   let failBody: { errorMessage: string } | undefined;
-  await rec.dispatch({
+  const job: NanoSdkActivatedJob = {
     jobKey: "j1",
     variables: {},
     async complete() {
@@ -312,7 +315,8 @@ test("registerWorker falls back to fail() for a BpmnError when the SDK has no er
       return "failed";
     },
     // no error() — older transport
-  } as unknown as NanoSdkActivatedJob);
+  };
+  await rec.dispatch(job);
   assert.equal(failBody?.errorMessage, "no such record");
 });
 
@@ -324,7 +328,7 @@ test("registerWorker falls back to fail() when the BPMN error report itself thro
   });
   const rec = client.workers[0];
   let failBody: { errorMessage: string } | undefined;
-  await rec.dispatch({
+  const job: NanoSdkActivatedJob = {
     jobKey: "j1",
     variables: {},
     async complete() {
@@ -337,7 +341,8 @@ test("registerWorker falls back to fail() when the BPMN error report itself thro
       failBody = body;
       return "failed";
     },
-  } as unknown as NanoSdkActivatedJob);
+  };
+  await rec.dispatch(job);
   // The job must still be acknowledged via fail() rather than silently dropped.
   assert.equal(failBody?.errorMessage, "no such record");
 });
@@ -371,7 +376,7 @@ test("close drains the REST-fallback worker via the SDK's stopAllWorkers", async
 
 test("close tolerates a client without stopAllWorkers", async () => {
   const client = fakeSdkClient();
-  delete (client as { stopAllWorkers?: unknown }).stopAllWorkers;
+  delete client.stopAllWorkers;
   const engine = new SdkEngineClient(client);
   await engine.registerWorker("a", async () => ({}));
   await engine.close();

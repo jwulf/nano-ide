@@ -57,7 +57,7 @@ export async function scaffoldWorkers(opts: ScaffoldOptions): Promise<ScaffoldRu
   const manifestFile = opts.manifestFile ?? "nano.app.json";
   const manifestPath = joinPath(root, manifestFile);
 
-  const manifest = JSON.parse(await io.readText(manifestPath)) as ScaffoldManifest;
+  const manifest: ScaffoldManifest = JSON.parse(await io.readText(manifestPath));
   const models = await readModels(root, io, manifest);
   const declaredTypeIds = Object.keys(manifest.types ?? {});
 

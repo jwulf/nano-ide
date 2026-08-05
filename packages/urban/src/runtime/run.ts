@@ -4,6 +4,7 @@
 
 import { createUrbanApp, type CreateUrbanAppOptions, type UrbanApp } from "./core/runtime.ts";
 import { selectHost } from "./adapters/detect.ts";
+import { denoGlobal, processGlobal } from "./adapters/globals.ts";
 import { createNanoSdkEngineClient } from "./engine/nanosdk.ts";
 import type { EngineClient } from "./core/host.ts";
 
@@ -74,19 +75,17 @@ export function installSignalHandlers(stop: () => Promise<void>): void {
         }
       });
   };
-  const g = globalThis as {
-    Deno?: { addSignalListener(sig: string, cb: () => void): void };
-    process?: { on(sig: string, cb: () => void): void };
-  };
-  if (g.Deno) {
+  const deno = denoGlobal();
+  const proc = processGlobal();
+  if (deno?.addSignalListener) {
     try {
-      g.Deno.addSignalListener("SIGINT", onSignal);
-      g.Deno.addSignalListener("SIGTERM", onSignal);
+      deno.addSignalListener("SIGINT", onSignal);
+      deno.addSignalListener("SIGTERM", onSignal);
     } catch {
       /* signal listeners may be unavailable (e.g. Windows) */
     }
-  } else if (g.process) {
-    g.process.on("SIGINT", onSignal);
-    g.process.on("SIGTERM", onSignal);
+  } else if (proc?.on) {
+    proc.on("SIGINT", onSignal);
+    proc.on("SIGTERM", onSignal);
   }
 }

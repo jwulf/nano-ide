@@ -9,7 +9,8 @@
 // silently — the whole point of consuming the package rather than vendoring a copy.
 
 import schema from "@nanobpm/nano-app-schema/schema" with { type: "json" };
-import { workerJobType, type AppManifest } from "./manifest.ts";
+import { isRecord } from "./guards.ts";
+import type { AppManifest } from "./manifest.ts";
 
 export interface ValidationIssue {
   path: string;
@@ -35,15 +36,15 @@ interface JsonSchema {
   $defs?: { slug?: { pattern?: string } };
 }
 
-const S = schema as unknown as JsonSchema;
+const S: JsonSchema = schema;
 
 /** Validate a parsed manifest. Returns the list of issues (empty === valid). */
 export function collectManifestIssues(m: unknown): ValidationIssue[] {
   const issues: ValidationIssue[] = [];
-  if (m === null || typeof m !== "object" || Array.isArray(m)) {
+  if (!isRecord(m)) {
     return [{ path: "$", message: "manifest must be a JSON object" }];
   }
-  const obj = m as Record<string, unknown>;
+  const obj = m;
 
   // — Envelope, driven by the schema —
   for (const req of S.required ?? []) {
@@ -69,11 +70,11 @@ export function collectManifestIssues(m: unknown): ValidationIssue[] {
   }
 
   // — Runtime binding rules —
-  const man = obj as unknown as AppManifest;
-
-  if (Array.isArray(man.workers)) {
-    man.workers.forEach((w, i) => {
-      if (!workerJobType(w)) {
+  const workers = Array.isArray(obj.workers) ? obj.workers : undefined;
+  if (workers) {
+    workers.forEach((w, i) => {
+      const worker = isRecord(w) ? w : undefined;
+      if (typeof worker?.taskType !== "string" || worker.taskType.length === 0) {
         issues.push({ path: `workers[${i}]`, message: "missing taskType" });
       }
       // A worker is backed by exactly one of: a `handler` file, an `llm` binding,
@@ -82,9 +83,9 @@ export function collectManifestIssues(m: unknown): ValidationIssue[] {
       // `connector` actually resolves to an installed pack is a runtime seam check
       // (mountConnectors), not something this static manifest check can see.
       const backings: string[] = [];
-      if (typeof w?.handler === "string" && w.handler.length > 0) backings.push("handler");
-      if (typeof w?.llm === "string" && w.llm.length > 0) backings.push("llm");
-      if (typeof w?.connector === "string" && w.connector.length > 0) backings.push("connector");
+      if (typeof worker?.handler === "string" && worker.handler.length > 0) backings.push("handler");
+      if (typeof worker?.llm === "string" && worker.llm.length > 0) backings.push("llm");
+      if (typeof worker?.connector === "string" && worker.connector.length > 0) backings.push("connector");
       if (backings.length === 0) {
         issues.push({
           path: `workers[${i}]`,
@@ -97,37 +98,41 @@ export function collectManifestIssues(m: unknown): ValidationIssue[] {
         });
       }
       // A `connection` must reference a declared top-level `connections` entry.
-      if (typeof w?.connection === "string" && w.connection.length > 0) {
+      if (typeof worker?.connection === "string" && worker.connection.length > 0) {
         const conns =
-          man.connections && typeof man.connections === "object" && !Array.isArray(man.connections)
-            ? (man.connections as Record<string, unknown>)
+          isRecord(obj.connections)
+            ? obj.connections
             : undefined;
-        if (!conns || !(w.connection in conns)) {
+        if (!conns || !(worker.connection in conns)) {
           issues.push({
             path: `workers[${i}].connection`,
-            message: `no such connection "${w.connection}" (add it to connections)`,
+            message: `no such connection "${worker.connection}" (add it to connections)`,
           });
         }
       }
     });
   }
 
-  if (man.data?.sources) {
-    for (const [name, src] of Object.entries(man.data.sources)) {
-      if (!src || typeof src.driver !== "string") {
+  const data = isRecord(obj.data) ? obj.data : undefined;
+  const sources = isRecord(data?.sources) ? data.sources : undefined;
+  if (sources) {
+    for (const [name, src] of Object.entries(sources)) {
+      const source = isRecord(src) ? src : undefined;
+      if (!source || typeof source.driver !== "string") {
         issues.push({ path: `data.sources.${name}.driver`, message: "missing driver" });
       }
-      if (!src || typeof src.url !== "string") {
+      if (!source || typeof source.url !== "string") {
         issues.push({ path: `data.sources.${name}.url`, message: "missing url" });
       }
     }
-    if (man.data.default && !man.data.sources[man.data.default]) {
-      issues.push({ path: "data.default", message: `no such source "${man.data.default}"` });
+    if (typeof data?.default === "string" && !sources[data.default]) {
+      issues.push({ path: "data.default", message: `no such source "${data.default}"` });
     }
   }
 
-  if (man.types) {
-    for (const [name, t] of Object.entries(man.types)) {
+  const types = isRecord(obj.types) ? obj.types : undefined;
+  if (types) {
+    for (const [name, t] of Object.entries(types)) {
       // `table` is optional in the schema: a type may declare `fields` without a
       // `table` (a transient / non-persisted domain type). Don't require it.
       if (t && typeof t !== "object") {
@@ -136,19 +141,25 @@ export function collectManifestIssues(m: unknown): ValidationIssue[] {
     }
   }
 
-  if (Array.isArray(man.triggers)) {
-    man.triggers.forEach((t, i) => {
-      if (!t?.id) issues.push({ path: `triggers[${i}].id`, message: "missing id" });
-      if (!t?.type) issues.push({ path: `triggers[${i}].type`, message: "missing type" });
+  const triggers = Array.isArray(obj.triggers) ? obj.triggers : undefined;
+  if (triggers) {
+    triggers.forEach((t, i) => {
+      const trigger = isRecord(t) ? t : undefined;
+      if (!trigger?.id) issues.push({ path: `triggers[${i}].id`, message: "missing id" });
+      if (!trigger?.type) issues.push({ path: `triggers[${i}].type`, message: "missing type" });
     });
   }
 
   return issues;
 }
 
-/** Throw ManifestValidationError if the manifest is invalid; otherwise return it typed. */
-export function validateManifest(m: unknown): AppManifest {
+export function assertValidManifest(m: unknown): asserts m is AppManifest {
   const issues = collectManifestIssues(m);
   if (issues.length > 0) throw new ManifestValidationError(issues);
-  return m as AppManifest;
+}
+
+/** Throw ManifestValidationError if the manifest is invalid; otherwise return it typed. */
+export function validateManifest(m: unknown): AppManifest {
+  assertValidManifest(m);
+  return m;
 }

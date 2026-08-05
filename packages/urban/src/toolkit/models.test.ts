@@ -93,7 +93,7 @@ test("deriveModels turns workflows/*.ts into a provenance-stamped processes/<id>
 
 test("deriveModels is a no-op without a module loader (pure/IDE callers)", async () => {
   const io = memIO({ "/app/workflows/greet.ts": "// source" });
-  delete (io as { importModule?: unknown }).importModule;
+  delete io.importModule;
   const d = await deriveModels("/app", io, CODE_FIRST_MANIFEST);
   assert.equal(d.attempted, false);
   assert.equal(d.artifacts.length, 0);

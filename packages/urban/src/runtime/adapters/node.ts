@@ -18,6 +18,24 @@ import type {
   WatchHandle,
 } from "../core/host.ts";
 
+type SqliteParam = string | number | bigint | Uint8Array | null;
+
+function sqliteParams(params: unknown[]): SqliteParam[] {
+  return params.map((param) => {
+    if (
+      param === null ||
+      typeof param === "string" ||
+      typeof param === "number" ||
+      typeof param === "bigint" ||
+      param instanceof Uint8Array
+    ) {
+      return param;
+    }
+    if (typeof param === "boolean") return param ? 1 : 0;
+    throw new TypeError(`unsupported SQLite parameter type: ${typeof param}`);
+  });
+}
+
 export interface NodeHostOptions {
   /** Base directory relative paths resolve against. Default process.cwd(). */
   cwd?: string;
@@ -120,7 +138,8 @@ export function createNodeHost(opts: NodeHostOptions = {}): HostContext {
     importModule: (p) => {
       const href =
         pathToFileURL(abs(p)).href + (opts.importNonce ? `?v=${opts.importNonce}` : "");
-      return import(href) as Promise<Record<string, unknown>>;
+      const mod: Promise<Record<string, unknown>> = import(href);
+      return mod;
     },
     async importConnectorModule(entry) {
       ensureConnectorHooks();
@@ -166,12 +185,13 @@ function wrapNodeSqlite(db: DatabaseSync): SqliteDb {
     exec: (sql) => db.exec(sql),
     run: (sql, params = []) => {
       const stmt = db.prepare(sql);
-      const r = stmt.run(...(params as never[]));
+      const r = stmt.run(...sqliteParams(params));
       return { changes: Number(r.changes), lastInsertRowid: r.lastInsertRowid };
     },
     all: <T>(sql: string, params: unknown[] = []) => {
       const stmt = db.prepare(sql);
-      return stmt.all(...(params as never[])) as T[];
+      // biome-ignore lint/plugin: Node sqlite returns untyped row objects; SqliteDb.all<T> is the host adapter boundary.
+      return stmt.all(...sqliteParams(params)) as T[];
     },
     close: () => db.close(),
   };
@@ -180,7 +200,10 @@ function wrapNodeSqlite(db: DatabaseSync): SqliteDb {
 async function startNodeServer(port: number, handler: HttpHandler): Promise<HttpServer> {
   const server = createServer(async (nreq, nres) => {
     const chunks: Buffer[] = [];
-    for await (const c of nreq) chunks.push(c as Buffer);
+    for await (const c of nreq) {
+      if (Buffer.isBuffer(c)) chunks.push(c);
+      else chunks.push(Buffer.from(c));
+    }
     const bodyText = Buffer.concat(chunks).toString("utf8");
     const url = new URL(nreq.url ?? "/", "http://localhost");
     const headers = new Headers();

@@ -1,15 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AppApi, RuntimeContext } from "../context.ts";
-import type { EngineJob, JobHandler, WorkerSubscription } from "../host.ts";
+import type { EngineClient, EngineJob, HostContext, JobHandler, WorkerSubscription } from "../host.ts";
 import { BpmnError } from "../host.ts";
 import type { AppManifest } from "../manifest.ts";
 import { defineWorker } from "../../connector-worker-sdk.ts";
 import { adaptConnectorHandler, mountConnectors, resolveInstalledConnectors } from "./connectors.ts";
+import { DataLayer } from "./datasource.ts";
 
 /** A tiny engine that records registrations and can deliver a job to a handler. */
-class MiniEngine {
+class MiniEngine implements EngineClient {
   workers = new Map<string, JobHandler>();
+  async deployResources(): Promise<{ deployed: number }> { return { deployed: 0 }; }
+  async createInstance(): Promise<{ processInstanceKey: string }> { return { processInstanceKey: "pi" }; }
+  async cancelInstance(): Promise<void> {}
+  async publishMessage(): Promise<void> {}
+  async searchUserTasks(): Promise<[]> { return []; }
+  async completeUserTask(): Promise<void> {}
   async registerWorker(jobType: string, handler: JobHandler): Promise<WorkerSubscription> {
     this.workers.set(jobType, handler);
     return { jobType, unsubscribe: async () => void this.workers.delete(jobType) };
@@ -19,6 +26,7 @@ class MiniEngine {
     if (!h) throw new Error(`no worker for ${jobType}`);
     return h(job);
   }
+  async close(): Promise<void> {}
 }
 
 interface FakeHostOptions {
@@ -37,32 +45,45 @@ function makeCtx(
 ): { ctx: RuntimeContext; logs: Array<{ level: string; msg: string }> } {
   const logs: Array<{ level: string; msg: string }> = [];
   const files = opts.files ?? {};
-  const host: Record<string, unknown> = {
+  const host: HostContext = {
     runtime: "node",
+    env: (name) => opts.env?.[name],
     log: (level: string, msg: string) => logs.push({ level, msg }),
     exists: async (p: string) => p in files,
     readTextFile: async (p: string) => {
       if (!(p in files)) throw new Error(`ENOENT ${p}`);
       return files[p];
     },
+    listDir: async () => [],
+    openSqlite: () => {
+      throw new Error("sqlite not used in this test");
+    },
     importModule: () => Promise.reject(new Error("no modules in this test")),
+    serveHttp: async () => ({ port: 0, stop: async () => {} }),
+    now: () => 0,
   };
   if (!opts.noConnectorHost) {
     host.importConnectorModule = async (entry: string) => {
       opts.onImport?.(entry);
     };
   }
-  const ctx = {
+  const ctx: RuntimeContext = {
     root: "/app",
-    manifest: { schemaVersion: 1, id: "t", name: "T", ...manifest } as AppManifest,
-    engine: engine as unknown as RuntimeContext["engine"],
+    manifest: { schemaVersion: 1, id: "t", name: "T", ...manifest },
+    engine,
     host,
-  } as unknown as RuntimeContext;
+  };
   return { ctx, logs };
 }
 
 function makeApp(env: Record<string, string> = {}): AppApi {
-  return { env: (n: string) => env[n], log: () => {} } as unknown as AppApi;
+  return {
+    manifest: { schemaVersion: 1, id: "t", name: "T" },
+    data: new DataLayer(new Map(), undefined, {}),
+    engine: new MiniEngine(),
+    env: (n: string) => env[n],
+    log: () => {},
+  };
 }
 
 const PKG = "@nanobpm/nano-ide-connector-slack";

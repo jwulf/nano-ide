@@ -92,13 +92,14 @@ test("stop() during an in-flight reload does not start a replacement app", async
       const id = `a${starts.length}`;
       starts.push(id);
       if (id === "a0") {
-        return {
+        const app: UrbanApp = {
           ...fakeApp(stops, id),
           async stop() {
             await stopGate; // block the first reload inside app.stop()
             stops.push(id);
           },
-        } as UrbanApp;
+        };
+        return app;
       }
       return fakeApp(stops, id);
     },
@@ -195,18 +196,30 @@ test("a change during an in-flight reload doesn't detach stop() from it", async 
 function fakeHost(): { host: HostContext; fire: (p: string) => void; closed: () => boolean } {
   let cb: ((p: string) => void) | undefined;
   let closed = false;
-  const host = {
+  const host: HostContext = {
+    runtime: "node",
+    env: () => undefined,
+    readTextFile: async () => "",
+    listDir: async () => [],
+    exists: async () => false,
+    openSqlite: () => {
+      throw new Error("sqlite not used in this test");
+    },
+    importModule: async () => ({}),
+    serveHttp: async () => ({ port: 0, stop: async () => {} }),
     watch(onChange: (p: string) => void) {
       cb = onChange;
       return { close: () => (closed = true) };
     },
-  } as unknown as HostContext;
+    now: () => 0,
+    log: () => {},
+  };
   return { host, fire: (p) => cb?.(p), closed: () => closed };
 }
 
 function fakeApp(stops: string[], id: string): UrbanApp {
   return {
-    manifest: { id } as UrbanApp["manifest"],
+    manifest: { schemaVersion: 1, id, name: id },
     root: ".",
     async start() {},
     async stop() {

@@ -64,8 +64,19 @@ export function imperativeToBpmn(wf: ImperativeWorkflow): string {
 export type Journal = Record<string, Json>;
 
 const SUSPEND = Symbol("nanobpm.workflow.suspend");
-interface SuspendCarrier {
-  [SUSPEND]?: { key: string; result: Json };
+
+class SuspendError extends Error {
+  readonly [SUSPEND]: { key: string; result: Json };
+
+  constructor(key: string, result: Json) {
+    super("nanobpm.workflow suspend");
+    this[SUSPEND] = { key, result };
+  }
+}
+
+function assertReplayValue<T extends Json>(_value: Json, _name: string): asserts _value is T {
+  // The journal value was recorded from the same ordinal/name run call on an
+  // earlier pass; TypeScript cannot express that cross-replay invariant.
 }
 
 /** Outcome of a single replay pass. */
@@ -92,20 +103,20 @@ export async function replayOnce(
     async run<T extends Json = Json>(name: string, fn: () => Promise<T> | T): Promise<T> {
       const key = `${++ordinal}:${name}`;
       if (Object.prototype.hasOwnProperty.call(journal, key)) {
-        return journal[key] as T; // replay: return recorded value, no side effect
+        const value = journal[key];
+        assertReplayValue<T>(value, name);
+        return value; // replay: return recorded value, no side effect
       }
-      const result = ((await fn()) ?? null) as T; // frontier: the ONE real side effect this turn
-      const carrier = new Error("nanobpm.workflow suspend") as Error & SuspendCarrier;
-      carrier[SUSPEND] = { key, result };
-      throw carrier;
+      const result = (await fn()) ?? null; // frontier: the ONE real side effect this turn
+      assertReplayValue<T>(result, name);
+      throw new SuspendError(key, result);
     },
   };
   try {
     await wf.orchestrate(ctx);
     return { done: true };
   } catch (e) {
-    const s = (e as SuspendCarrier)[SUSPEND];
-    if (s) return { done: false, frontier: s };
+    if (e instanceof SuspendError) return { done: false, frontier: e[SUSPEND] };
     throw e; // a genuine error in the orchestration or a handler
   }
 }

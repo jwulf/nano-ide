@@ -14,6 +14,24 @@ import type {
   SqliteDb,
 } from "../core/host.ts";
 
+type SqliteParam = string | number | bigint | Uint8Array | null;
+
+function sqliteParams(params: unknown[]): SqliteParam[] {
+  return params.map((param) => {
+    if (
+      param === null ||
+      typeof param === "string" ||
+      typeof param === "number" ||
+      typeof param === "bigint" ||
+      param instanceof Uint8Array
+    ) {
+      return param;
+    }
+    if (typeof param === "boolean") return param ? 1 : 0;
+    throw new TypeError(`unsupported SQLite parameter type: ${typeof param}`);
+  });
+}
+
 interface DenoHttpServer {
   finished: Promise<void>;
   shutdown(): Promise<void>;
@@ -84,7 +102,8 @@ export function createDenoHost(opts: DenoHostOptions = {}): HostContext {
     importModule: (p) => {
       const href =
         pathToFileURL(abs(p)).href + (opts.importNonce ? `?v=${opts.importNonce}` : "");
-      return import(href) as Promise<Record<string, unknown>>;
+      const mod: Promise<Record<string, unknown>> = import(href);
+      return mod;
     },
     async serveHttp(port, handler) {
       return startDenoServer(port, handler);
@@ -124,12 +143,13 @@ function wrapSqlite(db: DatabaseSync): SqliteDb {
     exec: (sql) => db.exec(sql),
     run: (sql, params = []) => {
       const stmt = db.prepare(sql);
-      const r = stmt.run(...(params as never[]));
+      const r = stmt.run(...sqliteParams(params));
       return { changes: Number(r.changes), lastInsertRowid: r.lastInsertRowid };
     },
     all: <T>(sql: string, params: unknown[] = []) => {
       const stmt = db.prepare(sql);
-      return stmt.all(...(params as never[])) as T[];
+      // biome-ignore lint/plugin: Deno sqlite returns untyped row objects; SqliteDb.all<T> is the host adapter boundary.
+      return stmt.all(...sqliteParams(params)) as T[];
     },
     close: () => db.close(),
   };

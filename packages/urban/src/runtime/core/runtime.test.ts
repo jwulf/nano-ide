@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { createNodeHost } from "../adapters/node.ts";
 import { createUrbanApp, resolvePort } from "./runtime.ts";
 import { runFromEnv } from "../run.ts";
+import { isRecord } from "./guards.ts";
 import type {
   EngineClient,
   EngineJob,
@@ -52,6 +53,16 @@ class FakeEngine implements EngineClient {
     if (!h) throw new Error(`no worker for ${jobType}`);
     return h(job);
   }
+}
+
+function expectRecord(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) throw new TypeError("expected record");
+  return value;
+}
+
+function expectArray(value: unknown): unknown[] {
+  if (!Array.isArray(value)) throw new TypeError("expected array");
+  return value;
 }
 
 async function makeFixture(): Promise<string> {
@@ -104,8 +115,10 @@ test("runtime materializes the manifest end-to-end against a fake engine", async
     assert.equal(engine.deployed, 3, "3 model files deployed");
 
     // migrations applied
-    const insp = app.inspect() as Record<string, any>;
-    assert.deepEqual(insp.data.sources[0].migrations, 1);
+    const insp = app.inspect();
+    const data = expectRecord(insp.data);
+    const sources = expectArray(data.sources).map(expectRecord);
+    assert.deepEqual(sources[0].migrations, 1);
 
     // workers registered + data injected: deliver a job and see a DB row
     await engine.deliver("wf.claim", {
@@ -124,7 +137,7 @@ test("runtime materializes the manifest end-to-end against a fake engine", async
 
     const tasksRes = await fetch(`http://localhost:${port}/tasks/api/tasks`);
     assert.equal(tasksRes.status, 200);
-    assert.equal((await tasksRes.json() as unknown[]).length, 1);
+    assert.equal(expectArray(await tasksRes.json()).length, 1);
 
     const hookRes = await fetch(`http://localhost:${port}/hooks/task`, {
       method: "POST",
@@ -148,7 +161,7 @@ test("runtime materializes the manifest end-to-end against a fake engine", async
 
     // healthz
     const health = await fetch(`http://localhost:${port}/healthz`);
-    assert.equal((await health.json() as { ok: boolean }).ok, true);
+    assert.equal(expectRecord(await health.json()).ok, true);
 
     // field-drift guard
     assert.throws(() => app.data!.repo("task").insert({ bogus: 1 }));
@@ -175,11 +188,11 @@ test("threads the engine SDK client onto app.sdk for handlers (SDK-backed engine
   await app.start();
 
   try {
-    const out = (await engine.deliver("wf.claim", {
+    const out = expectRecord(await engine.deliver("wf.claim", {
       jobKey: "j1",
       jobType: "wf.claim",
       variables: { title: "Fix bug" },
-    })) as Record<string, unknown>;
+    }));
     assert.equal(out.hasSdk, true, "handler saw app.sdk");
     assert.equal(out.sdkMarker, "engine-sdk", "app.sdk is the engine's own client");
   } finally {
@@ -196,11 +209,11 @@ test("app.sdk is undefined when the engine exposes no SDK client", async () => {
   await app.start();
 
   try {
-    const out = (await engine.deliver("wf.claim", {
+    const out = expectRecord(await engine.deliver("wf.claim", {
       jobKey: "j1",
       jobType: "wf.claim",
       variables: { title: "Fix bug" },
-    })) as Record<string, unknown>;
+    }));
     assert.equal(out.hasSdk, false, "no app.sdk for a non-SDK engine");
     assert.equal(out.sdkMarker, undefined);
   } finally {
@@ -222,7 +235,7 @@ test("stop() resets state so the app can be cleanly restarted", async () => {
     await app.stop();
 
     // after stop, inspect() no longer carries stale describe data / port
-    const stopped = app.inspect() as Record<string, unknown>;
+    const stopped = app.inspect();
     assert.equal(stopped.httpPort, undefined);
     assert.equal(stopped.workers, undefined);
 
@@ -255,7 +268,7 @@ test("a failed start() tears down and resets state (no 'already started' wedge)"
   try {
     await assert.rejects(() => app.start(), /boom during deploy/);
     // state reset: not wedged, no leaked port/describe
-    const s = app.inspect() as Record<string, unknown>;
+    const s = app.inspect();
     assert.equal(s.httpPort, undefined);
     assert.equal(s.workers, undefined);
     // a subsequent start() succeeds rather than throwing "app already started"

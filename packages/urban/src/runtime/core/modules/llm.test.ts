@@ -21,15 +21,13 @@ function fakeFetch(
   content: string,
   opts: { ok?: boolean; status?: number; capture?: (url: string, init: RequestInit) => void } = {},
 ): typeof fetch {
-  return (async (url: string, init: RequestInit) => {
-    opts.capture?.(String(url), init);
-    return {
-      ok: opts.ok ?? true,
-      status: opts.status ?? 200,
-      json: async () => ({ choices: [{ message: { content } }] }),
-      text: async () => content,
-    };
-  }) as unknown as typeof fetch;
+  return async (url: string | URL | Request, init?: RequestInit) => {
+    opts.capture?.(String(url), init ?? {});
+    return new Response(
+      JSON.stringify({ choices: [{ message: { content } }] }),
+      { status: opts.status ?? 200 },
+    );
+  };
 }
 
 // --- resolveProvider -------------------------------------------------------
@@ -113,8 +111,8 @@ test("callLlm posts to /chat/completions and returns the message content", async
   assert.equal(out, "hello world");
   assert.equal(seen?.url, "http://h/v1/chat/completions");
   assert.equal(seen?.init.method, "POST");
-  const headers = seen?.init.headers as Record<string, string>;
-  assert.equal(headers.authorization, "Bearer k");
+  const headers = new Headers(seen?.init.headers);
+  assert.equal(headers.get("authorization"), "Bearer k");
   const body = JSON.parse(String(seen?.init.body));
   assert.equal(body.model, "m");
   assert.equal(body.response_format, undefined);
@@ -139,7 +137,7 @@ test("callLlm throws on a non-ok provider response", async () => {
 });
 
 test("callLlm throws when the provider returns no content", async () => {
-  const f = (async () => ({ ok: true, status: 200, json: async () => ({ choices: [] }) })) as unknown as typeof fetch;
+  const f: typeof fetch = async () => new Response(JSON.stringify({ choices: [] }));
   await assert.rejects(
     callLlm({ baseUrl: "http://h/v1", model: "m" }, [{ role: "user", content: "hi" }], { fetch: f }),
     /no message content/,

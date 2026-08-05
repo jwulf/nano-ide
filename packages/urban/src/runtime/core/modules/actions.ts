@@ -11,8 +11,8 @@
 // while an unmatched process still falls through to the generic `/app/actions/start/` route.
 
 import type { AppApi, RuntimeContext } from "../context.ts";
+import { errorMessage } from "../guards.ts";
 import type { HttpRequest } from "../host.ts";
-import type { ActionDecl } from "../manifest.ts";
 import { json, normalizeRoutePath, type Route } from "../router.ts";
 
 /** The request handed to an action handler: the raw request plus its parsed JSON body. */
@@ -46,14 +46,18 @@ export type ActionHandler = (
   app: AppApi,
 ) => Promise<ActionResult | void> | ActionResult | void;
 
+function isActionHandler(value: unknown): value is ActionHandler {
+  return typeof value === "function";
+}
+
 /**
  * Resolve an action handler from a loaded module, in priority order:
  *   1. `default` (when it is a function — the common one-handler-per-file case)
  *   2. a named export `handler`
  */
 export function resolveActionHandler(mod: Record<string, unknown>): ActionHandler | undefined {
-  if (typeof mod.default === "function") return mod.default as ActionHandler;
-  if (typeof mod.handler === "function") return mod.handler as ActionHandler;
+  if (isActionHandler(mod.default)) return mod.default;
+  if (isActionHandler(mod.handler)) return mod.handler;
   return undefined;
 }
 
@@ -69,7 +73,7 @@ export interface ActionsHandle {
  * surfaces as a clear `500` on that route rather than failing the whole boot.
  */
 export function mountActions(ctx: RuntimeContext, app: AppApi): ActionsHandle {
-  const decls = (ctx.manifest.actions ?? []) as ActionDecl[];
+  const decls = ctx.manifest.actions ?? [];
   const routes: Route[] = [];
   const mounted: Array<{ path: string; method: string; module: string; prefix: boolean }> = [];
 
@@ -96,7 +100,7 @@ export function mountActions(ctx: RuntimeContext, app: AppApi): ActionsHandle {
   for (const decl of decls) {
     if (!decl?.path || !decl?.module) {
       ctx.host.log("warn", "skipping action: needs both `path` and `module`", {
-        action: decl as unknown as Record<string, unknown>,
+        action: decl,
       });
       continue;
     }
@@ -130,7 +134,7 @@ export function mountActions(ctx: RuntimeContext, app: AppApi): ActionsHandle {
           ctx.host.log("error", "action handler module failed to load", {
             path,
             module: decl.module,
-            error: String((e as Error)?.message ?? e),
+            error: errorMessage(e),
           });
           return json({ error: `action handler ${decl.module} failed to load` }, 500);
         }
@@ -150,7 +154,7 @@ export function mountActions(ctx: RuntimeContext, app: AppApi): ActionsHandle {
             body: result.body === undefined ? undefined : JSON.stringify(result.body),
           };
         } catch (e) {
-          return json({ error: String((e as Error)?.message ?? e) }, 500);
+          return json({ error: errorMessage(e) }, 500);
         }
       },
     });

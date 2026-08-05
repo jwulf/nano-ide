@@ -132,11 +132,11 @@ export class BpmnError extends Error {
  *  BpmnError constructed against a different copy of this module still routes as
  *  a BPMN error rather than a generic failure). */
 export function isBpmnError(err: unknown): err is { errorCode: string; message?: string } {
+  if (typeof err !== "object" || err === null) return false;
+  const errorCode = "errorCode" in err ? err.errorCode : undefined;
   return (
-    typeof err === "object" &&
-    err !== null &&
-    typeof (err as { errorCode?: unknown }).errorCode === "string" &&
-    (err as { errorCode: string }).errorCode.length > 0
+    typeof errorCode === "string" &&
+    errorCode.length > 0
   );
 }
 

@@ -141,7 +141,7 @@ test("Table.insert throws when the driver reports no lastInsertId", async () => 
     table: (name, pk) => new Table(fake, name, pk),
   };
   const t = fake.table("orders");
-  await assert.rejects(t.insert({ status: "x" } as Record<string, unknown>), /no lastInsertId/);
+  await assert.rejects(t.insert({ status: "x" }), /no lastInsertId/);
 });
 
 test("Table.all ignores a non-finite limit", async () => {
@@ -158,8 +158,8 @@ test("query/exec run raw parameterised SQL", async () => {
   await withGateway(async (src) => {
     const r = await src.exec("INSERT INTO orders (status, total) VALUES (?, ?)", ["raw", 42]);
     assert.equal(r.changed, 1);
-    const rows = await src.query("SELECT total FROM orders WHERE status = ?", ["raw"]);
-    assert.equal(Number((rows[0] as { total: number }).total), 42);
+    const rows = await src.query<{ total: number }>("SELECT total FROM orders WHERE status = ?", ["raw"]);
+    assert.equal(Number(rows[0]?.total), 42);
   });
 });
 
@@ -216,6 +216,7 @@ test("insert throws when every provided value is undefined", async () => {
 test("insert throws a distinct message for a genuinely empty row", async () => {
   await withGateway(async (src) => {
     const orders = src.table<Order>("orders");
-    await assert.rejects(orders.insert({} as Partial<Order>), /empty row/);
+    const empty: Partial<Order> = {};
+    await assert.rejects(orders.insert(empty), /empty row/);
   });
 });

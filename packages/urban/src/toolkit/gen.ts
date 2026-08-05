@@ -110,9 +110,9 @@ async function collectAll(opts: GenOptions): Promise<{ artifacts: DerivedArtifac
   const { root, io } = opts;
   const emitModels = opts.emitModels ?? true;
   const manifestPath = join(root, opts.manifestFile ?? "nano.app.json");
-  const manifest = JSON.parse(await io.readText(manifestPath)) as ToolkitManifest & {
+  const manifest: ToolkitManifest & {
     models?: { processes?: string[]; workflows?: string[] };
-  };
+  } = JSON.parse(await io.readText(manifestPath));
 
   const artifacts: DerivedArtifact[] = [];
 
@@ -186,8 +186,8 @@ export { dirOf, join as joinPath };
 export async function previewModels(opts: GenOptions): Promise<DerivedModels> {
   const { root, io } = opts;
   const manifestPath = join(root, opts.manifestFile ?? "nano.app.json");
-  const manifest = JSON.parse(await io.readText(manifestPath)) as {
+  const manifest: {
     models?: { processes?: string[]; workflows?: string[] };
-  };
+  } = JSON.parse(await io.readText(manifestPath));
   return deriveModels(root, io, manifest);
 }

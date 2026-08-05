@@ -50,7 +50,8 @@ export function createNodeGenIO(): GenIO {
         // stat failed (e.g. a virtual path); fall back to no cache key and let import() surface it.
       }
       const href = `${pathToFileURL(abs).href}${version}`;
-      return import(href) as Promise<Record<string, unknown>>;
+      const mod: Promise<Record<string, unknown>> = import(href);
+      return mod;
     },
   };
 }

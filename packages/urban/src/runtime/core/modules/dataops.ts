@@ -19,6 +19,7 @@
 // #576) and errors clearly for now.
 
 import type { HostContext, SqliteDb } from "../host.ts";
+import { isRecord } from "../guards.ts";
 import type { AppManifest, DataSource as ManifestDataSource } from "../manifest.ts";
 import { loadManifest } from "../manifest.ts";
 import { validateManifest } from "../validate.ts";
@@ -70,7 +71,7 @@ export function jsonSafe(v: unknown): unknown {
   if (Array.isArray(v)) return v.map(jsonSafe);
   if (v && typeof v === "object") {
     const out: Record<string, unknown> = {};
-    for (const [k, val] of Object.entries(v as Record<string, unknown>)) out[k] = jsonSafe(val);
+    for (const [k, val] of Object.entries(v)) out[k] = jsonSafe(val);
     return out;
   }
   return v;
@@ -188,8 +189,9 @@ export async function runDataOp(
     case "query": {
       const { gw, db } = await openGateway(host, root, manifest, req.source);
       try {
-        const rows = (await gw.query(req.sql ?? "", req.params ?? [])) as Record<string, unknown>[];
-        return { columns: columnsOf(rows), rows: jsonSafe(rows) as unknown[] };
+        const rows: Record<string, unknown>[] = await gw.query(req.sql ?? "", req.params ?? []);
+        const safeRows: unknown[] = rows.map(jsonSafe);
+        return { columns: columnsOf(rows), rows: safeRows };
       } finally {
         db.close();
       }
@@ -197,7 +199,8 @@ export async function runDataOp(
     case "exec": {
       const { gw, db } = await openGateway(host, root, manifest, req.source);
       try {
-        return jsonSafe(await gw.exec(req.sql ?? "", req.params ?? [])) as Record<string, unknown>;
+        const result = jsonSafe(await gw.exec(req.sql ?? "", req.params ?? []));
+        return isRecord(result) ? result : {};
       } finally {
         db.close();
       }

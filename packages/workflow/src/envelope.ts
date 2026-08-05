@@ -93,6 +93,15 @@ const SCALARS: ReadonlySet<string> = new Set([
   "datetime",
 ]);
 
+class EnvelopeDef<S extends Record<string, FieldSpec>> implements Envelope<S> {
+  readonly type!: EnvelopeType<S>;
+
+  constructor(
+    readonly name: string,
+    readonly fields: EnvelopeField[],
+  ) {}
+}
+
 function normaliseField(name: string, spec: FieldSpec): EnvelopeField {
   if (spec === null || (typeof spec !== "string" && typeof spec !== "object")) {
     throw new Error(`envelope field "${name}": must be a scalar type or a { type, optional?, list? } object`);
@@ -124,7 +133,5 @@ export function envelope<const S extends Record<string, FieldSpec>>(
   const list = Object.entries(fields).map(([k, v]) => normaliseField(k, v));
   if (list.length === 0) throw new Error(`envelope "${name}" declares no fields`);
   for (const f of list) assertIdent("envelope field name", f.name);
-  // `type` is phantom: never read at runtime; the cast keeps the value shape
-  // minimal while the declared type carries the inference.
-  return { name, fields: list, type: undefined as unknown as EnvelopeType<S> };
+  return new EnvelopeDef(name, list);
 }

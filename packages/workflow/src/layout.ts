@@ -19,6 +19,10 @@
 import type { DeclarativeFlow } from "./types.js";
 import { declarativeToBpmn } from "./declarative.js";
 
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
 /**
  * Generate BPMN diagram interchange (DI) for a BPMN XML string using bpmn-io's
  * `bpmn-auto-layout`, returning the same model with an auto-laid-out diagram
@@ -38,7 +42,7 @@ export async function layoutBpmn(bpmnXml: string): Promise<string> {
     // genuinely cannot be resolved. A different failure (the package is present
     // but fails to load — syntax, a broken transitive dep, a runtime throw at
     // import time) must surface as-is so it isn't masked as a missing dependency.
-    if ((cause as NodeJS.ErrnoException | undefined)?.code !== "ERR_MODULE_NOT_FOUND") {
+    if (!isRecord(cause) || cause.code !== "ERR_MODULE_NOT_FOUND") {
       throw cause;
     }
     throw new Error(

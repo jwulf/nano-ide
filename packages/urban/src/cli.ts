@@ -21,6 +21,8 @@ import {
   runFromEnv,
   selectHost,
 } from "./runtime/index.ts";
+import { denoGlobal, processGlobal } from "./runtime/adapters/globals.ts";
+import { errorMessage, isRecord } from "./runtime/core/guards.ts";
 import { scaffold, slugify } from "create-urban-app";
 import type { DataRequest } from "./runtime/index.ts";
 import { addConnector, createNodeGenIO, previewModels, runGen, scaffoldWorkers } from "./toolkit/index.ts";
@@ -33,7 +35,8 @@ import { spawnSync } from "node:child_process";
 function readVersion(): string {
   try {
     const url = new URL("../package.json", import.meta.url);
-    return (JSON.parse(readFileSync(url, "utf8")) as { version?: string }).version ?? "0.0.0";
+    const pkg: unknown = JSON.parse(readFileSync(url, "utf8"));
+    return isRecord(pkg) && typeof pkg.version === "string" ? pkg.version : "0.0.0";
   } catch {
     return "0.0.0";
   }
@@ -278,19 +281,17 @@ async function cmdDeploy(f: Flags): Promise<number> {
 
 /** Read all of stdin as UTF-8 text (Node or Deno). Returns "" if stdin is empty/closed. */
 async function readStdin(): Promise<string> {
-  const g = globalThis as {
-    Deno?: { stdin?: { readable?: ReadableStream<Uint8Array> } };
-    process?: { stdin: AsyncIterable<Uint8Array | string> & { setEncoding?(e: string): void } };
-  };
+  const deno = denoGlobal();
+  const proc = processGlobal();
   const chunks: string[] = [];
   const dec = new TextDecoder();
-  if (g.Deno?.stdin?.readable) {
-    for await (const chunk of g.Deno.stdin.readable) chunks.push(dec.decode(chunk, { stream: true }));
+  if (deno?.stdin?.readable) {
+    for await (const chunk of deno.stdin.readable) chunks.push(dec.decode(chunk, { stream: true }));
     chunks.push(dec.decode());
     return chunks.join("");
   }
-  if (g.process?.stdin) {
-    for await (const chunk of g.process.stdin) {
+  if (proc?.stdin) {
+    for await (const chunk of proc.stdin) {
       chunks.push(typeof chunk === "string" ? chunk : dec.decode(chunk, { stream: true }));
     }
     chunks.push(dec.decode());
@@ -397,7 +398,7 @@ async function cmdAdd(f: Flags): Promise<number> {
     }
     return 0;
   } catch (err) {
-    console.error(`✖ ${(err as Error).message}`);
+    console.error(`✖ ${errorMessage(err)}`);
     return 1;
   }
 }
@@ -407,7 +408,7 @@ export async function main(argv: string[]): Promise<number> {
   try {
     f = parse(argv);
   } catch (err) {
-    console.error(String((err as Error).message));
+    console.error(errorMessage(err));
     return 1;
   }
   if (f.version) {
@@ -448,29 +449,27 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
-const g = globalThis as {
-  process?: { argv: string[]; exit(code: number): void };
-  Deno?: { args?: string[]; exit?: (code: number) => void };
-};
-const meta = import.meta as unknown as { main?: boolean; url: string };
-const argv1 = g.process?.argv?.[1];
-const nodeMain = argv1 ? meta.url === pathToFileURL(argv1).href : false;
-if (meta.main === true || nodeMain) {
+const proc = processGlobal();
+const deno = denoGlobal();
+const importMetaMain: unknown = Reflect.get(import.meta, "main");
+const argv1 = proc?.argv?.[1];
+const nodeMain = argv1 ? import.meta.url === pathToFileURL(argv1).href : false;
+if (importMetaMain === true || nodeMain) {
   // Node passes args via process.argv (slice off exec+script); Deno (run directly)
   // exposes them on Deno.args. Prefer whichever actually carries args.
-  const fromNode = g.process?.argv?.slice(2);
-  const fromDeno = g.Deno?.args;
+  const fromNode = proc?.argv?.slice(2);
+  const fromDeno = deno?.args;
   const argv = (fromNode && fromNode.length ? fromNode : fromDeno) ?? fromNode ?? [];
   const exit = (code: number) => {
-    if (g.process?.exit) g.process.exit(code);
-    else if (g.Deno?.exit) g.Deno.exit(code);
+    if (proc?.exit) proc.exit(code);
+    else if (deno?.exit) deno.exit(code);
   };
   main(argv).then(
     (code) => {
       if (code >= 0) exit(code);
     },
     (err) => {
-      console.error(String((err as Error)?.message ?? err));
+      console.error(errorMessage(err));
       exit(1);
     },
   );

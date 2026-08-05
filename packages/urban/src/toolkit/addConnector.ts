@@ -13,6 +13,7 @@
 // unit-testable.
 
 import type { GenIO } from "./gen.ts";
+import { errorMessage, isRecord } from "../runtime/core/guards.ts";
 
 /** A config field a pack declares (subset of ext-types `ConfigField`). */
 interface PackConfigField {
@@ -90,9 +91,9 @@ export async function addConnector(opts: AddConnectorOptions): Promise<AddConnec
   }
   let pack: PackManifest;
   try {
-    pack = JSON.parse(await io.readText(packManifestPath)) as PackManifest;
+    pack = JSON.parse(await io.readText(packManifestPath));
   } catch (err) {
-    throw new Error(`failed to parse ${packManifestPath}: ${(err as Error).message}`);
+    throw new Error(`failed to parse ${packManifestPath}: ${errorMessage(err)}`);
   }
   if (typeof pack.id !== "string" || !pack.id) {
     throw new Error(`${packManifestPath} has no string "id" (a pack must declare its id).`);
@@ -123,7 +124,7 @@ export async function addConnector(opts: AddConnectorOptions): Promise<AddConnec
   try {
     app = JSON.parse(await io.readText(appManifestPath));
   } catch (err) {
-    throw new Error(`failed to parse ${appManifestPath}: ${(err as Error).message}`);
+    throw new Error(`failed to parse ${appManifestPath}: ${errorMessage(err)}`);
   }
   if (app === null || typeof app !== "object" || Array.isArray(app)) {
     throw new Error(`${appManifestPath} is not a JSON object.`);
@@ -168,10 +169,10 @@ export async function addConnector(opts: AddConnectorOptions): Promise<AddConnec
       // A pre-existing connection of this name must be a compatible object of the
       // same pack `type`; otherwise wiring workers to it would produce an invalid
       // or misleading manifest. Fail loudly instead of silently reusing it.
-      if (existing === null || typeof existing !== "object" || Array.isArray(existing)) {
+      if (!isRecord(existing)) {
         throw new Error(`connection "${connection}" already exists and is not an object.`);
       }
-      const conn = existing as Record<string, unknown>;
+      const conn = existing;
       if (conn.type !== undefined && conn.type !== pack.id) {
         throw new Error(
           `connection "${connection}" already exists with type "${String(conn.type)}", ` +

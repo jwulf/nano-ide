@@ -4,12 +4,59 @@
 // signals; the low-level job protocol used by the Worker runtime is the SDK's
 // own job worker, reached through the exposed `sdk` client.
 
-import { createCamundaClient } from "@nanobpm/nano-sdk";
+import { createCamundaClient, JobActionReceiptSymbol, ProcessDefinitionId, ProcessInstanceKey } from "@nanobpm/nano-sdk";
 import { declarativeToBpmn, walkNodes } from "./declarative.js";
 import { imperativeToBpmn } from "./imperative.js";
 import { layoutBpmn } from "./layout.js";
-import type { DeclarativeFlow, DeployResult, Job, JsonObject, StartResult, Workflow } from "./types.js";
+import type { DeclarativeFlow, DeployResult, Job, Json, JsonObject, StartResult, Workflow } from "./types.js";
 import { assertWorkflowIds, messageName } from "./xml.js";
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null;
+}
+
+function errorCause(e: unknown): unknown {
+  return isRecord(e) ? e.cause : undefined;
+}
+
+function errorCode(e: unknown): unknown {
+  return isRecord(e) ? e.code : undefined;
+}
+
+function errorMessage(e: unknown): string {
+  return isRecord(e) && typeof e.message === "string" ? e.message : String(e);
+}
+
+function errorStatus(e: unknown): number | undefined {
+  if (!isRecord(e)) return undefined;
+  if (typeof e.status === "number") return e.status;
+  const response = e.response;
+  return isRecord(response) && typeof response.status === "number" ? response.status : undefined;
+}
+
+function isJson(v: unknown): v is Json {
+  if (v === null) return true;
+  switch (typeof v) {
+    case "boolean":
+    case "number":
+    case "string":
+      return true;
+    case "object":
+      if (Array.isArray(v)) return v.every(isJson);
+      return Object.values(v).every(isJson);
+    default:
+      return false;
+  }
+}
+
+function toJsonObject(v: unknown): JsonObject {
+  if (!isRecord(v)) throw new Error("SDK response was not an object");
+  const result: JsonObject = {};
+  for (const [key, value] of Object.entries(v)) {
+    if (isJson(value)) result[key] = value;
+  }
+  return result;
+}
 
 /** Render a workflow (either surface) to its executable BPMN model. */
 export function toBpmn(wf: Workflow): string {
@@ -43,8 +90,8 @@ export async function toDeployableBpmn(
     // Only fall back for the "optional dep not installed" case (layoutBpmn wraps
     // it with an ERR_MODULE_NOT_FOUND cause). Any other failure is a real layout
     // problem and must surface rather than silently deploy an uninspectable model.
-    const cause = (e as { cause?: NodeJS.ErrnoException })?.cause;
-    if (cause?.code !== "ERR_MODULE_NOT_FOUND") throw e;
+    const cause = errorCause(e);
+    if (errorCode(cause) !== "ERR_MODULE_NOT_FOUND") throw e;
     if (!warnedNoLayout) {
       warnedNoLayout = true;
       console.warn(
@@ -69,20 +116,20 @@ export interface NanoSdkClient {
   createDeployment(
     input: { resources: File[]; [k: string]: unknown },
     options?: unknown,
-  ): Promise<Record<string, unknown>>;
+  ): Promise<unknown>;
   createProcessInstance(
     input: { processDefinitionId: string; variables?: JsonObject },
     options?: unknown,
-  ): Promise<Record<string, unknown>>;
+  ): Promise<unknown>;
   correlateMessage(
     input: { name: string; correlationKey: string; variables?: JsonObject },
     options?: unknown,
-  ): Promise<Record<string, unknown>>;
+  ): Promise<unknown>;
   getProcessInstance(
     input: { processInstanceKey: string },
     consistency: { consistency: { waitUpToMs: number } },
     options?: unknown,
-  ): Promise<Record<string, unknown>>;
+  ): Promise<unknown>;
   createJobWorker(cfg: JobWorkerConfig): NanoJobWorker;
 }
 
@@ -156,9 +203,8 @@ export class WorkflowError extends Error {
  *  HTTP status when the SDK attached one. */
 function asWorkflowError(e: unknown, what: string): WorkflowError {
   if (e instanceof WorkflowError) return e;
-  const err = e as { message?: string; status?: number; response?: { status?: number } };
-  const status = err?.status ?? err?.response?.status;
-  return new WorkflowError(`${what} failed: ${err?.message ?? String(e)}`, status);
+  const status = errorStatus(e);
+  return new WorkflowError(`${what} failed: ${errorMessage(e)}`, status);
 }
 
 export class WorkflowClient {
@@ -175,13 +221,49 @@ export class WorkflowClient {
       return;
     }
     if (!opts?.baseUrl) throw new Error("WorkflowClient needs a baseUrl or a client");
-    this.sdk = createCamundaClient({
+    const raw = createCamundaClient({
       config: {
         CAMUNDA_REST_ADDRESS: opts.baseUrl.replace(/\/+$/, ""),
         ...(opts.token ? { CAMUNDA_TOKEN: opts.token } : {}),
         CAMUNDA_TRANSPORT: opts.transport ?? "auto",
       },
-    }) as unknown as NanoSdkClient;
+    });
+    this.sdk = {
+      createDeployment: (input) => raw.createDeployment(input),
+      createProcessInstance: (input) =>
+        raw.createProcessInstance(
+          {
+            ...input,
+            processDefinitionId: ProcessDefinitionId.assumeExists(input.processDefinitionId),
+          },
+        ),
+      correlateMessage: (input) => raw.correlateMessage(input),
+      getProcessInstance: (input, consistency) =>
+        raw.getProcessInstance(
+          {
+            processInstanceKey: ProcessInstanceKey.assumeExists(input.processInstanceKey),
+          },
+          consistency,
+        ),
+      createJobWorker: (cfg) => {
+        const worker = raw.createJobWorker({
+          ...cfg,
+          jobHandler: async (job) => {
+            await cfg.jobHandler(job);
+            return JobActionReceiptSymbol;
+          },
+        });
+        return {
+          start: () => {
+            void worker.start();
+          },
+          stop: () => worker.stop(),
+          stopGracefully: async (opts) => {
+            await worker.stopGracefully(opts);
+          },
+        };
+      },
+    };
   }
 
   /**
@@ -195,7 +277,7 @@ export class WorkflowClient {
     const xml = await toDeployableBpmn(wf, opts);
     const file = new File([xml], `${wf.id}.bpmn`, { type: "text/xml" });
     try {
-      return (await this.sdk.createDeployment({ resources: [file] })) as DeployResult;
+      return toJsonObject(await this.sdk.createDeployment({ resources: [file] }));
     } catch (e) {
       throw asWorkflowError(e, "deploy");
     }
@@ -210,10 +292,10 @@ export class WorkflowClient {
     const variables: JsonObject =
       wf.kind === "imperative" ? { input, journal: {}, wfDone: false } : input;
     try {
-      return (await this.sdk.createProcessInstance({
+      return toJsonObject(await this.sdk.createProcessInstance({
         processDefinitionId: wf.id,
         variables,
-      })) as StartResult;
+      }));
     } catch (e) {
       throw asWorkflowError(e, "start");
     }
@@ -242,11 +324,11 @@ export class WorkflowClient {
       );
     }
     try {
-      return (await this.sdk.correlateMessage({
+      return toJsonObject(await this.sdk.correlateMessage({
         name: messageName(flow.id, signalName),
         correlationKey,
         variables,
-      })) as JsonObject;
+      }));
     } catch (e) {
       throw asWorkflowError(e, `signal "${signalName}"`);
     }
@@ -256,10 +338,10 @@ export class WorkflowClient {
    *  zero-wait consistency; returns null when the instance is not (yet) visible. */
   async getInstance(processInstanceKey: string): Promise<JsonObject | null> {
     try {
-      return (await this.sdk.getProcessInstance(
+      return toJsonObject(await this.sdk.getProcessInstance(
         { processInstanceKey },
         { consistency: { waitUpToMs: 0 } },
-      )) as JsonObject;
+      ));
     } catch {
       return null;
     }

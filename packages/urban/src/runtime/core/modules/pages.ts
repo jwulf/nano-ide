@@ -16,6 +16,7 @@
 //   POST /app/actions/message                       → engine.publishMessage
 
 import type { AppApi, RuntimeContext } from "../context.ts";
+import { errorMessage, isRecord } from "../guards.ts";
 import type { EngineClient } from "../host.ts";
 import { html, json, type Route } from "../router.ts";
 import { quoteIdent } from "./gateway.ts";
@@ -197,7 +198,7 @@ export function createPagesRoutes(opts: PagesOptions, deps: PagesDeps): Route[] 
         );
         return json({ rows });
       } catch (e) {
-        return json({ error: String((e as Error)?.message ?? e) }, 500);
+        return json({ error: errorMessage(e) }, 500);
       }
     },
   });
@@ -215,12 +216,12 @@ export function createPagesRoutes(opts: PagesOptions, deps: PagesDeps): Route[] 
       let variables: Record<string, unknown> = {};
       try {
         const body = JSON.parse((await req.text()) || "{}");
-        if (body && typeof body === "object") {
-          const v = (body as { variables?: unknown }).variables;
+        if (isRecord(body)) {
+          const v = body.variables;
           // Only a plain object is a valid variable map — reject arrays/scalars/null so a
           // malformed body can't reach the engine as bad `variables`.
-          if (v && typeof v === "object" && !Array.isArray(v)) {
-            variables = v as Record<string, unknown>;
+          if (isRecord(v)) {
+            variables = v;
           }
         }
       } catch {
@@ -230,7 +231,7 @@ export function createPagesRoutes(opts: PagesOptions, deps: PagesDeps): Route[] 
         const res = await engine.createInstance({ processDefinitionId: process, variables });
         return json({ processInstanceKey: res.processInstanceKey ?? null });
       } catch (e) {
-        return json({ error: String((e as Error)?.message ?? e) }, 502);
+        return json({ error: errorMessage(e) }, 502);
       }
     },
   });
@@ -244,7 +245,7 @@ export function createPagesRoutes(opts: PagesOptions, deps: PagesDeps): Route[] 
       let key: string | number | undefined;
       try {
         const body = JSON.parse((await req.text()) || "{}");
-        const k = (body as { processInstanceKey?: unknown })?.processInstanceKey;
+        const k = isRecord(body) ? body.processInstanceKey : undefined;
         if (typeof k === "string" || typeof k === "number") key = k;
       } catch {
         return json({ error: "body must be JSON" }, 400);
@@ -254,7 +255,7 @@ export function createPagesRoutes(opts: PagesOptions, deps: PagesDeps): Route[] 
         await engine.cancelInstance({ processInstanceKey: String(key) });
         return json({ ok: true });
       } catch (e) {
-        return json({ error: String((e as Error)?.message ?? e) }, 502);
+        return json({ error: errorMessage(e) }, 502);
       }
     },
   });
@@ -269,18 +270,15 @@ export function createPagesRoutes(opts: PagesOptions, deps: PagesDeps): Route[] 
       let correlationKey = "";
       let variables: Record<string, unknown> = {};
       try {
-        const body = JSON.parse((await req.text()) || "{}") as {
-          name?: unknown;
-          correlationKey?: unknown;
-          variables?: unknown;
-        };
+        const parsed: unknown = JSON.parse((await req.text()) || "{}");
+        const body = isRecord(parsed) ? parsed : {};
         if (typeof body?.name === "string") name = body.name;
         if (typeof body?.correlationKey === "string" || typeof body?.correlationKey === "number") {
           correlationKey = String(body.correlationKey);
         }
         const v = body?.variables;
-        if (v && typeof v === "object" && !Array.isArray(v)) {
-          variables = v as Record<string, unknown>;
+        if (isRecord(v)) {
+          variables = v;
         }
       } catch {
         return json({ error: "body must be JSON" }, 400);
@@ -291,7 +289,7 @@ export function createPagesRoutes(opts: PagesOptions, deps: PagesDeps): Route[] 
         await engine.publishMessage({ name, correlationKey, variables });
         return json({ ok: true });
       } catch (e) {
-        return json({ error: String((e as Error)?.message ?? e) }, 502);
+        return json({ error: errorMessage(e) }, 502);
       }
     },
   });

@@ -45,7 +45,12 @@ export interface StepContract {
 export type FlowContracts = Record<string, StepContract>;
 
 /** Handler for a declarative `run` step: does real work, returns variables. */
-export type StepHandler = (job: Job) => Promise<JsonObject | void> | JsonObject | void;
+export type StepHandler<
+  V extends JsonObject = JsonObject,
+  R extends JsonObject = JsonObject,
+> = {
+  bivarianceHack(job: Job<V>): Promise<R | void> | R | void;
+}["bivarianceHack"];
 
 /** A node in a declarative flow tree. Leaf activities carry optional data
  *  envelopes (lifted to `nano:shape` + `dataEnvelope` in the model); structural

@@ -27,7 +27,8 @@ interface FakeEngineCalls {
 
 function fakeEngine(): { engine: EngineClient; calls: FakeEngineCalls } {
   const calls: FakeEngineCalls = { created: [], canceled: [], messages: [] };
-  const engine = {
+  const engine: EngineClient = {
+    deployResources: async () => ({ deployed: 0 }),
     async createInstance(input: { processDefinitionId: string; variables?: Record<string, unknown> }) {
       calls.created.push(input);
       return { processInstanceKey: "pi-42" };
@@ -38,7 +39,11 @@ function fakeEngine(): { engine: EngineClient; calls: FakeEngineCalls } {
     async publishMessage(input: { name: string; correlationKey?: string; variables?: Record<string, unknown> }) {
       calls.messages.push(input);
     },
-  } as unknown as EngineClient;
+    async searchUserTasks() { return []; },
+    async completeUserTask() {},
+    async registerWorker(jobType) { return { jobType, unsubscribe: async () => {} }; },
+    async close() {},
+  };
   return { engine, calls };
 }
 

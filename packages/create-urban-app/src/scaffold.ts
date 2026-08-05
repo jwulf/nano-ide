@@ -118,11 +118,11 @@ export async function scaffold(opts: ScaffoldOptions): Promise<ScaffoldResult> {
 
 /** headless preset: drop the human-facing surfaces, triggers and form models. */
 function toHeadlessManifest(json: string): string {
-  const m = JSON.parse(json) as {
+  const m: {
     surfaces?: unknown;
     triggers?: unknown;
     models?: { forms?: unknown };
-  };
+  } = JSON.parse(json);
   delete m.surfaces;
   delete m.triggers;
   if (m.models) delete m.models.forms;

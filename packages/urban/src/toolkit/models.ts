@@ -14,6 +14,7 @@ import type { DerivedArtifact } from "./artifact.ts";
 import type { GenIO } from "./gen.ts";
 import { expandPattern, joinPath } from "./gen.ts";
 import type { ModelSource } from "./derivers/worker-io.ts";
+import { isRecord } from "../runtime/core/guards.ts";
 
 /** Default source glob for code-first flows (matches the code-first scaffold layout). */
 export const DEFAULT_WORKFLOW_PATTERNS = ["workflows/*.ts"];
@@ -34,9 +35,7 @@ export interface ModelsManifest {
 
 /** A `defineFlow` export: has a string `id` and an `imperative`/`declarative` `kind`. */
 export function isWorkflow(v: unknown): v is Workflow {
-  if (!v || typeof v !== "object") return false;
-  const o = v as { id?: unknown; kind?: unknown };
-  return typeof o.id === "string" && (o.kind === "imperative" || o.kind === "declarative");
+  return isRecord(v) && typeof v.id === "string" && (v.kind === "imperative" || v.kind === "declarative");
 }
 
 /** Sanitize a flow id into a safe `.bpmn` filename (mirrors the host generator). */
@@ -113,7 +112,7 @@ function messageOf(e: unknown): string {
 /** Append an actionable hint when a `.ts` import fails because the runtime can't strip types. */
 function importHint(rel: string, e: unknown): string {
   const base = messageOf(e);
-  const code = (e as { code?: string })?.code ?? "";
+  const code = isRecord(e) && typeof e.code === "string" ? e.code : "";
   const looksLikeNoTsLoader =
     rel.endsWith(".ts") &&
     (code === "ERR_UNKNOWN_FILE_EXTENSION" || /Unknown file extension "\.ts"/.test(base));

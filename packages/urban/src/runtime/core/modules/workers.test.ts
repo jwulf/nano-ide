@@ -1,13 +1,21 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { AppApi, RuntimeContext } from "../context.ts";
-import type { EngineJob, JobHandler, WorkerSubscription } from "../host.ts";
+import type { EngineClient, EngineJob, HostContext, JobHandler, WorkerSubscription } from "../host.ts";
 import type { AppManifest } from "../manifest.ts";
+import { DataLayer } from "./datasource.ts";
 import { mountWorkers, sdkDecisionEvaluator, type AppJobHandler } from "./workers.ts";
 
 /** A tiny engine that records registrations and can deliver a job to a handler. */
-class MiniEngine {
+class MiniEngine implements EngineClient {
   workers = new Map<string, JobHandler>();
+  async deployResources(): Promise<{ deployed: number }> { return { deployed: 0 }; }
+  async createInstance(): Promise<{ processInstanceKey: string }> { return { processInstanceKey: "pi" }; }
+  async cancelInstance(): Promise<void> {}
+  async publishMessage(): Promise<void> {}
+  async searchUserTasks(): Promise<[]> { return []; }
+  async completeUserTask(): Promise<void> {}
+  async close(): Promise<void> {}
   async registerWorker(jobType: string, handler: JobHandler): Promise<WorkerSubscription> {
     this.workers.set(jobType, handler);
     return { jobType, unsubscribe: async () => void this.workers.delete(jobType) };
@@ -24,33 +32,46 @@ function makeCtx(
   engine: MiniEngine,
 ): { ctx: RuntimeContext; logs: Array<{ level: string; msg: string }> } {
   const logs: Array<{ level: string; msg: string }> = [];
-  const ctx = {
-    root: "/app",
-    manifest: { schemaVersion: 1, id: "t", name: "T", ...manifest } as AppManifest,
-    engine: engine as unknown as RuntimeContext["engine"],
-    host: {
-      log: (level: string, msg: string) => logs.push({ level, msg }),
-      importModule: () => Promise.reject(new Error("no modules in this test")),
+  const host: HostContext = {
+    runtime: "node",
+    env: () => undefined,
+    readTextFile: async () => "",
+    listDir: async () => [],
+    exists: async () => false,
+    openSqlite: () => {
+      throw new Error("sqlite not used in this test");
     },
-  } as unknown as RuntimeContext;
+    importModule: () => Promise.reject(new Error("no modules in this test")),
+    serveHttp: async () => ({ port: 0, stop: async () => {} }),
+    now: () => 0,
+    log: (level: string, msg: string) => logs.push({ level, msg }),
+  };
+  const ctx: RuntimeContext = {
+    root: "/app",
+    manifest: { schemaVersion: 1, id: "t", name: "T", ...manifest },
+    engine,
+    host,
+  };
   return { ctx, logs };
 }
 
 function makeApp(over: Partial<AppApi> = {}): AppApi {
+  const env: Record<string, string> = { NANO_APP_LLM_MODEL: "m" };
   return {
-    env: (n) => ({ NANO_APP_LLM_MODEL: "m" } as Record<string, string>)[n],
+    manifest: { schemaVersion: 1, id: "t", name: "T" },
+    data: new DataLayer(new Map(), undefined, {}),
+    engine: new MiniEngine(),
+    env: (n) => env[n],
     log: () => {},
     ...over,
-  } as AppApi;
+  };
 }
 
 function fakeFetch(content: string): typeof fetch {
-  return (async () => ({
-    ok: true,
-    status: 200,
-    json: async () => ({ choices: [{ message: { content } }] }),
-    text: async () => content,
-  })) as unknown as typeof fetch;
+  return async () => new Response(
+    JSON.stringify({ choices: [{ message: { content } }] }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
 }
 
 const orig = globalThis.fetch;
@@ -118,7 +139,9 @@ test("an llm worker with decision rails uses app.sdk to evaluate the decision", 
     },
     engine,
   );
-  await mountWorkers(ctx, makeApp({ sdk: sdk as unknown as AppApi["sdk"] }));
+  const app = makeApp();
+  Object.defineProperty(app, "sdk", { value: sdk });
+  await mountWorkers(ctx, app);
 
   await withFetch('{"amount":100}', async () => {
     const out = await engine.deliver("risk", {
@@ -214,7 +237,7 @@ test("AppJobHandler carries optional In/Out variable types", async () => {
     jobType: "pr.finalize",
     variables: { prKey: "p1", round: 2 },
   };
-  const app = {} as AppApi;
+  const app = makeApp();
 
   assert.deepEqual(await typed(job, app), { ok: true });
   assert.deepEqual(await inOnly(job, app), { echoed: "p1" });

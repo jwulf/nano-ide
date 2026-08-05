@@ -54,9 +54,9 @@ import { assertIdent, assertJobType, assertTimerCycle, assertTimerDate, assertTi
 // --- Authoring surface -------------------------------------------------------
 
 /** The TS payload type of a contract's input envelope (untyped fallback). */
-type InPayload<Ct> = Ct extends { in: Envelope } ? Ct["in"]["type"] : JsonObject;
+type InPayload<Ct> = Ct extends { in: Envelope } ? Ct["in"]["type"] & JsonObject : JsonObject;
 /** The TS payload type of a contract's output envelope (untyped fallback). */
-type OutPayload<Ct> = Ct extends { out: Envelope } ? Ct["out"]["type"] : JsonObject;
+type OutPayload<Ct> = Ct extends { out: Envelope } ? Ct["out"]["type"] & JsonObject : JsonObject;
 /** The input payload type of step `K` under contracts `C`. */
 type VarsOf<C, K extends string> = K extends keyof C ? InPayload<C[K]> : JsonObject;
 /** The output payload type of step `K` under contracts `C`. */
@@ -64,7 +64,7 @@ type ResultOf<C, K extends string> = K extends keyof C ? OutPayload<C[K]> : Json
 
 /** A typed handler for a `run` step: its job variables and result are resolved
  *  from the flow contracts by the step name. */
-type TypedHandler<V, R> = (job: {
+type TypedHandler<V extends JsonObject, R extends JsonObject> = (job: {
   jobKey: string;
   processInstanceKey: string;
   elementId: string;
@@ -209,6 +209,21 @@ interface BuilderCtx {
  *  name that collides with one of these would produce a duplicate BPMN id and an
  *  invalid model, so reject them at authoring time. */
 const RESERVED_PREFIXES = /^(Gw_|Loop_|Sub_|Msg_|f_)/;
+const TIMER_START_KEYS = ["cycle", "after", "at"] as const;
+
+function timerStartValue(
+  spec: { cycle: string } | { after: string } | { at: string },
+  key: (typeof TIMER_START_KEYS)[number],
+): string | undefined {
+  switch (key) {
+    case "cycle":
+      return "cycle" in spec ? spec.cycle : undefined;
+    case "after":
+      return "after" in spec ? spec.after : undefined;
+    case "at":
+      return "at" in spec ? spec.at : undefined;
+  }
+}
 
 function claimName(ctx: BuilderCtx, id: string, name: string): void {
   assertIdent("step name", name);
@@ -255,81 +270,88 @@ function makeBuilder<C extends object>(
     fn(makeBuilder<C>(id, body, { ...ctx, loopDepth: 0 }));
     return body;
   };
-  const b = {
-    run(name: string, handler: StepHandler): FlowBuilder<C> {
+  const b: FlowBuilder<C> = {
+    run<K extends string>(
+      name: K,
+      handler: TypedHandler<VarsOf<C, K>, ResultOf<C, K>>,
+    ): FlowBuilder<C> {
       claimName(ctx, id, name);
       if (typeof handler !== "function") throw new Error(`run("${name}") needs a handler function`);
       ctx.handlers[name] = handler;
       out.push({ kind: "run", name, envelopes: contractEnvelopes(ctx, name) });
-      return b as unknown as FlowBuilder<C>;
+      return b;
     },
     task(name: string, opts?: { jobType?: string }): FlowBuilder<C> {
       claimName(ctx, id, name);
       const override = opts?.jobType;
       if (override !== undefined) assertJobType("task jobType", override);
       out.push({ kind: "task", name, envelopes: contractEnvelopes(ctx, name), jobType: override });
-      return b as unknown as FlowBuilder<C>;
+      return b;
     },
     signal(name: string, opts: { correlationKey: string }): FlowBuilder<C> {
       claimName(ctx, id, name);
       if (!opts || !opts.correlationKey) throw new Error(`signal("${name}") needs { correlationKey }`);
       assertIdent("correlationKey", opts.correlationKey);
       out.push({ kind: "signal", name, correlationKey: opts.correlationKey, payload: ctx.contracts[name]?.in });
-      return b as unknown as FlowBuilder<C>;
+      return b;
     },
-    timer(name: string, opts: { after?: string; at?: string }): FlowBuilder<C> {
+    timer(name: string, opts: { after: string } | { at: string }): FlowBuilder<C> {
       claimName(ctx, id, name);
-      const hasAfter = typeof opts?.after === "string";
-      const hasAt = typeof opts?.at === "string";
+      const hasAfter = "after" in opts && typeof opts.after === "string";
+      const hasAt = "at" in opts && typeof opts.at === "string";
       if (hasAfter === hasAt) {
         throw new Error(`timer("${name}") needs exactly one of { after } (a delay) or { at } (an instant)`);
       }
-      if (hasAfter) {
-        const after = (opts.after as string).trim();
+      if ("after" in opts) {
+        const after = opts.after.trim();
         assertTimerDuration(`timer("${name}") after`, after);
         out.push({ kind: "timer", name, after });
       } else {
-        const at = (opts.at as string).trim();
+        const at = opts.at.trim();
         assertTimerDate(`timer("${name}") at`, at);
         out.push({ kind: "timer", name, at });
       }
-      return b as unknown as FlowBuilder<C>;
+      return b;
     },
-    startOn(spec: { cycle?: string; after?: string; at?: string }): FlowBuilder<C> {
+    startOn(spec: { cycle: string } | { after: string } | { at: string }): FlowBuilder<C> {
       if (!isRoot) {
         throw new Error(`startOn() is only valid at the top level of flow "${id}" (not inside switch/branch/loop)`);
       }
       if (out.length !== 0) throw new Error(`startOn() must be the first statement in flow "${id}"`);
       if (ctx.startTimer) throw new Error(`startOn() may be called only once in flow "${id}"`);
-      const set = (["cycle", "after", "at"] as const).filter((k) => typeof spec?.[k] === "string");
-      if (set.length !== 1) {
+      const setCount = TIMER_START_KEYS.filter((key) => typeof timerStartValue(spec, key) === "string").length;
+      if (setCount !== 1) {
         throw new Error(`startOn() needs exactly one of { cycle }, { after }, or { at } in flow "${id}"`);
       }
-      if (spec.cycle !== undefined) {
+      if ("cycle" in spec) {
         const cycle = spec.cycle.trim();
         assertTimerCycle(`startOn cycle`, cycle);
         ctx.startTimer = { cycle };
-      } else if (spec.after !== undefined) {
+      } else if ("after" in spec) {
         const after = spec.after.trim();
         assertTimerDuration(`startOn after`, after);
         ctx.startTimer = { after };
       } else {
-        const at = (spec.at as string).trim();
+        const at = spec.at.trim();
         assertTimerDate(`startOn at`, at);
         ctx.startTimer = { at };
       }
-      return b as unknown as FlowBuilder<C>;
+      return b;
     },
     switch(subject: string, cases: Record<string, Block<C>> & { default?: Block<C> }): FlowBuilder<C> {
       if (typeof subject !== "string" || subject.trim() === "") {
         throw new Error(`switch() needs a non-empty subject expression`);
       }
-      const entries = Object.entries(cases).filter(([k]) => k !== "default") as [string, Block<C>][];
-      if (entries.length === 0) throw new Error(`switch("${subject}") needs at least one case`);
-      const caseNodes: SwitchCase[] = entries.map(([value, fn]) => ({ value, body: child(fn, false) }));
+      const caseNodes: SwitchCase[] = [];
+      for (const [value, fn] of Object.entries(cases)) {
+        if (value === "default") continue;
+        if (typeof fn !== "function") throw new Error(`switch("${subject}") cases must be blocks (b) => {…}`);
+        caseNodes.push({ value, body: child(fn, false) });
+      }
+      if (caseNodes.length === 0) throw new Error(`switch("${subject}") needs at least one case`);
       const def = cases.default ? child(cases.default, false) : undefined;
       out.push({ kind: "switch", subject, cases: caseNodes, default: def });
-      return b as unknown as FlowBuilder<C>;
+      return b;
     },
     branch(condition: string, arms: { then: Block<C>; else?: Block<C> }): FlowBuilder<C> {
       if (typeof condition !== "string" || condition.trim() === "") {
@@ -342,12 +364,12 @@ function makeBuilder<C extends object>(
         then: child(arms.then, false),
         else: arms.else ? child(arms.else, false) : undefined,
       });
-      return b as unknown as FlowBuilder<C>;
+      return b;
     },
     loop(body: Block<C>): FlowBuilder<C> {
       if (typeof body !== "function") throw new Error(`loop() needs a body function`);
       out.push({ kind: "loop", body: child(body, true) });
-      return b as unknown as FlowBuilder<C>;
+      return b;
     },
     parallel(branches: Block<C>[]): FlowBuilder<C> {
       if (!Array.isArray(branches) || branches.length < 2) {
@@ -361,7 +383,7 @@ function makeBuilder<C extends object>(
       // loop. Scope branches (loopDepth resets to 0) so cross-boundary
       // break/continue is rejected at build time, matching forEach.
       out.push({ kind: "parallel", branches: branches.map((fn) => childScoped(fn)) });
-      return b as unknown as FlowBuilder<C>;
+      return b;
     },
     forEach(
       collection: string,
@@ -422,20 +444,20 @@ function makeBuilder<C extends object>(
         throw new Error(`forEach("${itemVar}") outputElement needs an outputCollection to collect into`);
       }
       out.push(node);
-      return b as unknown as FlowBuilder<C>;
+      return b;
     },
     break(): FlowBuilder<C> {
       if (ctx.loopDepth === 0) throw new Error(`break() is only valid inside a loop`);
       out.push({ kind: "break" });
-      return b as unknown as FlowBuilder<C>;
+      return b;
     },
     continue(): FlowBuilder<C> {
       if (ctx.loopDepth === 0) throw new Error(`continue() is only valid inside a loop`);
       out.push({ kind: "continue" });
-      return b as unknown as FlowBuilder<C>;
+      return b;
     },
   };
-  return b as unknown as FlowBuilder<C>;
+  return b;
 }
 
 /**
@@ -459,14 +481,21 @@ export function defineFlow(
     throw new Error(`defineFlow("${id}"): the contracts argument must be an object`);
   }
   const contracts: FlowContracts = typeof second === "function" ? {} : second;
-  const build = (typeof second === "function" ? second : third) as (w: FlowBuilder<FlowContracts>) => void;
-  if (typeof build !== "function") {
+  if (typeof second !== "function" && typeof third !== "function") {
     throw new Error(`defineFlow("${id}"): a build callback (w) => {…} is required`);
   }
   const steps: FlowNode[] = [];
   const handlers: Record<string, StepHandler> = {};
   const ctx: BuilderCtx = { contracts, handlers, seen: new Set(), loopDepth: 0 };
-  build(makeBuilder<FlowContracts>(id, steps, ctx, true));
+  if (typeof second === "function") {
+    second(makeBuilder(id, steps, ctx, true));
+  } else {
+    const build = third;
+    if (typeof build !== "function") {
+      throw new Error(`defineFlow("${id}"): a build callback (w) => {…} is required`);
+    }
+    build(makeBuilder<FlowContracts>(id, steps, ctx, true));
+  }
   if (steps.length === 0) throw new Error(`flow "${id}" declared no steps`);
   const flow: DeclarativeFlow = { kind: "declarative", id, steps, handlers };
   if (ctx.startTimer) flow.startTimer = ctx.startTimer;
@@ -520,6 +549,16 @@ export function externalJobTypes(flow: DeclarativeFlow): string[] {
     types.push(type);
   });
   return types;
+}
+
+function requireTimerAt(node: { at?: string }): string {
+  if (node.at === undefined) throw new Error(`timer event is missing its { at } value`);
+  return node.at;
+}
+
+function requireStartAt(timer: TimerStart): string {
+  if (timer.at === undefined) throw new Error(`timer start is missing its { at } value`);
+  return timer.at;
 }
 
 // --- Model emitter (two-phase graph compiler) --------------------------------
@@ -645,7 +684,7 @@ class Compiler {
     const body =
       node.after !== undefined
         ? `        <bpmn:timeDuration>${escapeXml(node.after)}</bpmn:timeDuration>\n`
-        : `        <bpmn:timeDate>${escapeXml(node.at as string)}</bpmn:timeDate>\n`;
+        : `        <bpmn:timeDate>${escapeXml(requireTimerAt(node))}</bpmn:timeDate>\n`;
     this.nodes.push({
       id,
       scope: this.currentScope(),
@@ -888,7 +927,7 @@ class Compiler {
         ? `<bpmn:timeCycle>${escapeXml(t.cycle)}</bpmn:timeCycle>`
         : t.after !== undefined
           ? `<bpmn:timeDuration>${escapeXml(t.after)}</bpmn:timeDuration>`
-          : `<bpmn:timeDate>${escapeXml(t.at as string)}</bpmn:timeDate>`;
+          : `<bpmn:timeDate>${escapeXml(requireStartAt(t))}</bpmn:timeDate>`;
     return (
       `    <bpmn:startEvent id="Start">\n` +
       `      ${outgoingOnly(outg)}\n` +
