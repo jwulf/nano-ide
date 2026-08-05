@@ -89,6 +89,18 @@ test("GET /app/runtime.js serves the renderer module", async () => {
   assert.match(res.body ?? "", /pc:refresh/);
 });
 
+test("renderer preserves grid row-detail expansion across refreshes", async () => {
+  // Regression: the 5s poll rebuilds the whole tbody, which used to collapse an open
+  // detail row (e.g. the escalation-answer form). The client now tracks open rowKeys
+  // and reuses their built detail node so expansion (and a half-typed answer) survives.
+  const res = await dispatch("GET", "/app/runtime.js");
+  const js = res.body ?? "";
+  assert.match(js, /const expanded = new Set\(\)/);
+  assert.match(js, /const detailNodes = new Map\(\)/);
+  assert.match(js, /expanded\.add\(key\)/);
+  assert.match(js, /expanded\.delete\(key\)/);
+});
+
 test("renderer wires a column's linkField to a new-tab anchor", async () => {
   const res = await dispatch("GET", "/app/runtime.js");
   const js = res.body ?? "";
