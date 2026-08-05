@@ -141,6 +141,41 @@ wiring; `WorkflowClient` deploys and starts, `Worker` hosts your `run` steps.
 inspectable in a modeller/Operate — `@nanobpm/urban` bundles `bpmn-auto-layout`
 so this works out of the box.
 
+### Deploy-time model templates (`{{name}}`)
+
+A model file can carry `{{name}}` placeholders that are substituted at deploy
+time — handy for inlining a large asset (e.g. an agent prompt authored as its own
+file) into a `zeebe:header` value instead of hand-pasting it into XML or shipping
+it as a bulky per-instance process variable. Declare the template sources under
+`models.templates` (globs, a bare directory that is scanned, or literal files); a
+template's name is its file **stem**, so `prompts/review.md` fills `{{review}}`:
+
+```jsonc
+{
+  "models": {
+    "processes": ["processes/*.bpmn"],
+    "templates": ["prompts/*.md"]
+  }
+}
+```
+
+```xml
+<!-- processes/agent.bpmn -->
+<zeebe:header key="io.nanobpm.agentTask.task.prompt" value="{{review}}" />
+```
+
+Content is escaped for the resource's type: XML for `.bpmn`/`.dmn` (newlines/tabs
+become character references so a multi-line prompt survives XML attribute-value
+normalization), JSON for `.form`. Substitution is single-pass (a template's own
+`{{…}}` is not re-expanded); an unknown placeholder is left verbatim and logged as
+a warning. Templates can also be supplied programmatically via the `templates`
+run option (globs or an explicit `name → content` map), which wins over the
+manifest on a name collision:
+
+```ts
+await runFromEnv({ templates: { review: await readPrompt("review.md") } });
+```
+
 ### Triggers — the inbound I/O edge
 
 Declare `triggers[]` in the app manifest to turn outside events into engine

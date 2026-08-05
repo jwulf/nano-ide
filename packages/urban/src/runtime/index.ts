@@ -103,6 +103,11 @@ export type {
 } from "./core/modules/llm.ts";
 export { evalCorrelation } from "./core/modules/triggers.ts";
 
+// Model deploy + `{{name}}` template substitution
+export { deployModels } from "./core/modules/deploy.ts";
+export { applyTemplates, resolveTemplates } from "./core/modules/templates.ts";
+export type { TemplateApplication, TemplateSource } from "./core/modules/templates.ts";
+
 // Adapters + engine + run entrypoint
 export { createNodeHost } from "./adapters/node.ts";
 export { createDenoHost } from "./adapters/deno.ts";

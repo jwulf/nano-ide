@@ -10,6 +10,7 @@ import { loadManifest, type AppManifest } from "./manifest.ts";
 import { validateManifest } from "./validate.ts";
 import { makeRouter, type Route } from "./router.ts";
 import { deployModels } from "./modules/deploy.ts";
+import type { TemplateSource } from "./modules/templates.ts";
 import { provisionData, DataLayer } from "./modules/datasource.ts";
 import { mountWorkers } from "./modules/workers.ts";
 import { mountConnectors } from "./modules/connectors.ts";
@@ -66,6 +67,10 @@ export interface CreateUrbanAppOptions {
   port?: number;
   /** Which modules to mount (all true by default). */
   mount?: MountFlags;
+  /** Programmatic `{{name}}` template source for deploy-time substitution (globs or a
+   *  `name → content` map). Merged over the manifest's `models.templates` (this wins on
+   *  collision). See `deployModels`. */
+  templates?: TemplateSource;
 }
 
 export interface UrbanApp {
@@ -100,7 +105,7 @@ export async function createUrbanApp(opts: CreateUrbanAppOptions): Promise<Urban
     triggers: opts.mount?.triggers ?? true,
     security: opts.mount?.security ?? true,
   };
-  const ctx = { manifest, host, engine, root };
+  const ctx = { manifest, host, engine, root, templates: opts.templates };
 
   let data: DataLayer | undefined;
   let security: SecurityPolicy | undefined;
