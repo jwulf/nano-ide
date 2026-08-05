@@ -302,14 +302,16 @@ async function readStdin(): Promise<string> {
 /**
  * `urban data` — the DB-manager op gateway. Reads a single JSON request from stdin
  * (`{ op, source?, sql?, params?, statements? }`) and writes a single JSON response to stdout
- * (`{ ok: true, ...result }` or `{ ok: false, error }`). Handled errors still exit 0 so the caller
- * can parse them; only an unreadable request exits non-zero. This is the seam the Nano console
+ * (`{ ok: true, ...result }` or `{ ok: false, error }`). Every response — a handled op error *or*
+ * an unreadable request — is a parseable `{ ok: false, error }` envelope and still exits 0, so the
+ * caller can always parse the reply off stdout and never has to treat a non-zero exit as a lost
+ * error; the process only exits non-zero on an unexpected crash. This is the seam the Nano console
  * re-points its Data panel at (host dry-out nano-bpm#576), replacing the vendored data-cli.ts.
  */
-async function cmdData(f: Flags): Promise<number> {
+export async function cmdData(f: Flags, readInput: () => Promise<string> = readStdin): Promise<number> {
   let req: DataRequest;
   try {
-    req = JSON.parse(await readStdin());
+    req = JSON.parse(await readInput());
   } catch (err) {
     console.log(
       JSON.stringify({
@@ -317,7 +319,7 @@ async function cmdData(f: Flags): Promise<number> {
         error: `bad request: ${err instanceof Error ? err.message : String(err)}`,
       }),
     );
-    return 1;
+    return 0;
   }
   const host = selectHost({ cwd: f.root });
   try {

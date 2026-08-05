@@ -19,13 +19,21 @@ export function sqlitePathFromUrl(url: string): string {
  * layers migrations on top; the `urban data` DB-manager gateway (dataops.ts) wants the raw handle
  * so read/`migrations`-list ops don't silently mutate the schema on open.
  */
+/** Resolve a datasource `url` to its absolute on-disk SQLite path against `root`. The single
+ * source of truth for this resolution, shared by `openSqliteSource` (to open the file) and
+ * `provisionSqlite` (to report where it provisioned), so the opened path and the logged path
+ * can never drift. */
+export function resolveSqlitePath(root: string, url: string): string {
+  const dbPath = sqlitePathFromUrl(url);
+  return dbPath.startsWith("/") ? dbPath : `${root.replace(/\/+$/, "")}/${dbPath}`;
+}
+
 export async function openSqliteSource(
   host: HostContext,
   root: string,
   url: string,
 ): Promise<SqliteDb> {
-  const dbPath = sqlitePathFromUrl(url);
-  const abs = dbPath.startsWith("/") ? dbPath : `${root.replace(/\/+$/, "")}/${dbPath}`;
+  const abs = resolveSqlitePath(root, url);
   const dir = parentDir(abs);
   if (dir && !(await host.exists(dir))) {
     // The host API doesn't expose mkdir and openSqlite won't create parent dirs,
@@ -261,6 +269,7 @@ async function provisionSqlite(
     : [];
   ctx.host.log("info", `datasource: provisioned "${name}"`, {
     driver: "sqlite",
+    path: resolveSqlitePath(ctx.root, src.url),
     migrationsApplied,
   });
   return {
