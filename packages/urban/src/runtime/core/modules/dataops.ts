@@ -134,6 +134,17 @@ async function openGateway(
 }
 
 /**
+ * Resolve a `--manifest` argument against the app `root`. An absolute path (`/abs/nano.app.json`)
+ * is honoured as-is; a relative path is joined onto `root`. Mirrors `resolveSqlitePath` so manifest
+ * and datasource path resolution stay consistent.
+ */
+function resolveManifestPath(root: string, manifestPath: string): string {
+  return manifestPath.startsWith("/")
+    ? manifestPath
+    : `${root.replace(/\/+$/, "")}/${manifestPath}`;
+}
+
+/**
  * Dispatch one DB-manager op against the app at `root`. Returns the op's result object (the CLI
  * wraps it as `{ ok: true, ...result }`); throws on a handled error (wrapped as `{ ok: false }`).
  */
@@ -144,7 +155,7 @@ export async function runDataOp(
   req: DataRequest,
 ): Promise<Record<string, unknown>> {
   const manifest = validateManifest(
-    await loadManifest(host, `${root.replace(/\/+$/, "")}/${manifestPath}`),
+    await loadManifest(host, resolveManifestPath(root, manifestPath)),
   );
 
   switch (req.op) {

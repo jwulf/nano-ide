@@ -13,12 +13,6 @@ export function sqlitePathFromUrl(url: string): string {
   return url.replace(/^(file|sqlite):(\/\/)?/, "");
 }
 
-/**
- * Open (creating if needed) the SQLite file a `file:`/`sqlite:` URL points at, resolved against
- * `root`, with WAL journalling — but WITHOUT applying migrations. Provisioning (`provisionSqlite`)
- * layers migrations on top; the `urban data` DB-manager gateway (dataops.ts) wants the raw handle
- * so read/`migrations`-list ops don't silently mutate the schema on open.
- */
 /** Resolve a datasource `url` to its absolute on-disk SQLite path against `root`. The single
  * source of truth for this resolution, shared by `openSqliteSource` (to open the file) and
  * `provisionSqlite` (to report where it provisioned), so the opened path and the logged path
@@ -28,6 +22,12 @@ export function resolveSqlitePath(root: string, url: string): string {
   return dbPath.startsWith("/") ? dbPath : `${root.replace(/\/+$/, "")}/${dbPath}`;
 }
 
+/**
+ * Open (creating if needed) the SQLite file a `file:`/`sqlite:` URL points at, resolved against
+ * `root`, with WAL journalling — but WITHOUT applying migrations. Provisioning (`provisionSqlite`)
+ * layers migrations on top; the `urban data` DB-manager gateway (dataops.ts) wants the raw handle
+ * so read/`migrations`-list ops don't silently mutate the schema on open.
+ */
 export async function openSqliteSource(
   host: HostContext,
   root: string,

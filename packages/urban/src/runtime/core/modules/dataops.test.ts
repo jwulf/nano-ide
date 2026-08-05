@@ -250,3 +250,20 @@ test("a failing source open names which datasource failed", async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("an absolute --manifest path is honoured as-is (not re-prefixed with root)", async () => {
+  const { dir, cleanup } = await fixture();
+  try {
+    // root is irrelevant when the manifest path is absolute — it must not be prefixed onto it.
+    const r = (await runDataOp(
+      createNodeHost({ cwd: dir }),
+      "/some/unrelated/root",
+      join(dir, "nano.app.json"),
+      { op: "sources" },
+    )) as { default: string; sources: { name: string }[] };
+    assert.equal(r.default, "app");
+    assert.deepEqual(r.sources.map((s) => s.name), ["app"]);
+  } finally {
+    await cleanup();
+  }
+});
