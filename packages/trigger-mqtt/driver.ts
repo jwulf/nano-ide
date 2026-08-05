@@ -78,7 +78,7 @@ try {
 }
 
 function isConnection(v: unknown): v is Connection {
-  return typeof v === "object" && v !== null;
+  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 let connection: Connection = {};

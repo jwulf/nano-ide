@@ -135,8 +135,8 @@ export class SdkEngineClient implements EngineClient {
    * the same connection. Surfaced to handlers as `AppApi.sdk`.
    */
   get sdk(): EngineSdkClient {
-    if (isEngineSdkClient(this.client)) return this.client;
-    throw new Error("nano-sdk client does not satisfy the EngineSdkClient surface");
+    // biome-ignore lint/plugin: `this.client` is the same `@nanobpm/nano-sdk` client at runtime; exposing its full EngineSdkClient surface is the adapter boundary (see EngineSdkClient in ./sdk.ts).
+    return this.client as NanoSdkClient & EngineSdkClient;
   }
 
   async deployResources(
@@ -353,10 +353,6 @@ function isNanoSdkModule(value: unknown): value is {
   createCamundaClient: (opts: Record<string, unknown>) => NanoSdkClient;
 } {
   return isRecord(value) && typeof value.createCamundaClient === "function";
-}
-
-function isEngineSdkClient(client: NanoSdkClient): client is NanoSdkClient & EngineSdkClient {
-  return typeof client === "object" && client !== null;
 }
 
 /**

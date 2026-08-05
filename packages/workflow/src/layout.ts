@@ -20,7 +20,7 @@ import type { DeclarativeFlow } from "./types.js";
 import { declarativeToBpmn } from "./declarative.js";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
+  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 /**

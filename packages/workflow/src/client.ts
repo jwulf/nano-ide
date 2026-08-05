@@ -12,7 +12,7 @@ import type { DeclarativeFlow, DeployResult, Job, Json, JsonObject, StartResult,
 import { assertWorkflowIds, messageName } from "./xml.js";
 
 function isRecord(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null;
+  return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 function errorCause(e: unknown): unknown {
