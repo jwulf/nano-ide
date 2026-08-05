@@ -19,6 +19,7 @@
 import type { HostContext, SqliteDb } from "../host.ts";
 import type { AppManifest, DataSource as ManifestDataSource } from "../manifest.ts";
 import { loadManifest } from "../manifest.ts";
+import { validateManifest } from "../validate.ts";
 import { makeGateway, type DataSource as GatewayDataSource } from "./gateway.ts";
 import { applyMigrations, openSqliteSource } from "./datasource.ts";
 
@@ -121,7 +122,14 @@ async function openGateway(
       `data source "${chosen}" uses driver "${String(src.driver)}"; only "sqlite" is implemented`,
     );
   }
-  const db = await openSqliteSource(host, root, src.url);
+  let db: SqliteDb;
+  try {
+    db = await openSqliteSource(host, root, src.url);
+  } catch (err) {
+    // Prefix the source name onto openSqliteSource's runtime-agnostic message so the CLI/console
+    // error names which datasource failed (mirrors provisionSqlite).
+    throw new Error(`datasource "${chosen}": ${err instanceof Error ? err.message : String(err)}`);
+  }
   return { gw: makeGateway(db), db };
 }
 
@@ -135,7 +143,9 @@ export async function runDataOp(
   manifestPath: string,
   req: DataRequest,
 ): Promise<Record<string, unknown>> {
-  const manifest = await loadManifest(host, `${root.replace(/\/+$/, "")}/${manifestPath}`);
+  const manifest = validateManifest(
+    await loadManifest(host, `${root.replace(/\/+$/, "")}/${manifestPath}`),
+  );
 
   switch (req.op) {
     case "sources": {

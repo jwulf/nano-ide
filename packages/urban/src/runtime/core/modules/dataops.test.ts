@@ -15,6 +15,7 @@ async function fixture(): Promise<{ dir: string; cleanup: () => Promise<void> }>
   await writeFile(
     join(dir, "nano.app.json"),
     JSON.stringify({
+      schemaVersion: 1,
       id: "shop",
       name: "Shop",
       data: {
@@ -207,5 +208,45 @@ test("an unknown op and an unknown source error", async () => {
     await assert.rejects(run(dir, { op: "schema", source: "ghost" }), /no such data source/);
   } finally {
     await cleanup();
+  }
+});
+
+test("an invalid manifest fails with ManifestValidationError (consistent with the app runtime)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-dataops-bad-"));
+  try {
+    // A source declared without a url: valid JSON, but the runtime binding rule rejects it —
+    // just as createUrbanApp/runFromEnv would, rather than failing confusingly downstream.
+    await writeFile(
+      join(dir, "nano.app.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        id: "shop",
+        name: "Shop",
+        data: { default: "app", sources: { app: { driver: "sqlite" } } },
+      }),
+    );
+    await assert.rejects(run(dir, { op: "sources" }), /Invalid Urban manifest[\s\S]*data\.sources\.app\.url/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("a failing source open names which datasource failed", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-dataops-openfail-"));
+  try {
+    // url points into a directory that does not exist: openSqliteSource fails fast, and
+    // openGateway prefixes the datasource name so the error is actionable (like provisionSqlite).
+    await writeFile(
+      join(dir, "nano.app.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        id: "shop",
+        name: "Shop",
+        data: { default: "app", sources: { app: { driver: "sqlite", url: "file:./nope/app.db" } } },
+      }),
+    );
+    await assert.rejects(run(dir, { op: "schema" }), /datasource "app":/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
   }
 });
