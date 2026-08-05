@@ -31,16 +31,18 @@ export function isAbsolutePath(p: string): boolean {
  * which Windows/UNC resolution and some tooling mishandle: a root that already uses backslashes is
  * Windows-style and joins with "\\" — normalizing the relative segment's forward slashes to match —
  * while everything else (POSIX, a "C:/…" forward-slash root, or a relative ".") joins with "/" —
- * normalizing the relative segment's backslashes to match. Either way the relative segment is
- * rewritten to the chosen separator, so the result is never mixed even when `p` itself is mixed.
- * The single canonical implementation shared by `resolveSqlitePath` (datasource urls) and
- * `resolveManifestPath` (`--manifest`), so those two path resolutions can never drift and both
- * behave the same cross-platform. */
+ * normalizing the relative segment's backslashes to match. Both `root` AND the relative segment are
+ * rewritten to the chosen separator, so the result is never mixed even when `root` itself is mixed
+ * (e.g. "C:/srv\\app") or `p` is. The single canonical implementation shared by `resolveSqlitePath`
+ * (datasource urls) and `resolveManifestPath` (`--manifest`) — and by `applyMigrations` to join each
+ * migration file onto its dir — so those path resolutions can never drift and all behave the same
+ * cross-platform. */
 export function resolveAppPath(root: string, p: string): string {
   if (isAbsolutePath(p)) return p;
   const sep = root.includes("\\") ? "\\" : "/";
-  const base = root.replace(/[/\\]+$/, "");
-  const rel = sep === "\\" ? p.replace(/\//g, "\\") : p.replace(/\\/g, "/");
+  const norm = (s: string): string => (sep === "\\" ? s.replace(/\//g, "\\") : s.replace(/\\/g, "/"));
+  const base = norm(root).replace(/[/\\]+$/, "");
+  const rel = norm(p);
   return `${base}${sep}${rel}`;
 }
 
@@ -270,7 +272,10 @@ export async function applyMigrations(
   const newlyApplied: string[] = [];
   for (const file of files) {
     if (applied.has(file)) continue;
-    const sql = await host.readTextFile(`${dir}/${file}`);
+    // Join via `resolveAppPath` (not a literal "/") so the migration file path adopts `dir`'s own
+    // separator style; a Windows/UNC-style `dir` (backslashes) would otherwise reintroduce a
+    // mixed-separator path (e.g. "C:\\app\\db\\migrations/001.sql") that breaks reads on Windows.
+    const sql = await host.readTextFile(resolveAppPath(dir, file));
     // Apply the migration and record it in the ledger atomically. SQLite DDL is
     // transactional, so wrapping both in one BEGIN/COMMIT makes a migration all-or-nothing:
     // either the schema change AND its `_urban_migrations` row commit together, or neither

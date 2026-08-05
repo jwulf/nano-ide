@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isAbsolutePath, MIGRATIONS_TABLE, parentDir, resolveAppPath, resolveSqlitePath, sqlitePathFromUrl } from "./datasource.ts";
+import { applyMigrations, isAbsolutePath, MIGRATIONS_TABLE, parentDir, resolveAppPath, resolveSqlitePath, sqlitePathFromUrl } from "./datasource.ts";
+import type { HostContext, SqliteDb } from "../host.ts";
 
 // `resolveSqlitePath` is the single source of truth for turning a datasource `url` into its
 // on-disk SQLite path (absolute when `root` is absolute, relative when `root` is relative, e.g.
@@ -52,6 +53,10 @@ test("resolveAppPath trims a trailing separator of either kind off root before j
   // segment to "/", so the result is never mixed-separator ("C:/srv/app/db\\migrations").
   assert.equal(resolveAppPath("C:/srv/app", "db\\migrations"), "C:/srv/app/db/migrations");
   assert.equal(resolveAppPath(".", "db\\migrations"), "./db/migrations");
+  // A mixed-separator root is normalized to the chosen style too (it contains a backslash, so the
+  // whole path becomes backslash-style), so the result is never mixed even when `root` itself is.
+  assert.equal(resolveAppPath("C:/srv\\app", "db/app.db"), "C:\\srv\\app\\db\\app.db");
+  assert.equal(resolveAppPath("C:/srv\\app\\", "db/app.db"), "C:\\srv\\app\\db\\app.db");
 });
 
 test("parentDir keeps the trailing separator on a Windows drive root", () => {
@@ -80,4 +85,33 @@ test("MIGRATIONS_TABLE is the single canonical ledger name shared by application
   // `applyMigrations` (datasource) writes this ledger and dataops' `migrations` op reads it; both
   // import this constant so the name can never drift between the two sites.
   assert.equal(MIGRATIONS_TABLE, "_urban_migrations");
+});
+
+test("applyMigrations joins each migration file onto its dir without reintroducing mixed separators", async () => {
+  // When the resolved migrations dir is Windows/UNC-style (backslashes), the per-file read path
+  // must adopt that separator too — a literal "/" join would emit e.g.
+  // "C:\\app\\db\\migrations/001.sql", which breaks reads on Windows. `applyMigrations` routes the
+  // join through `resolveAppPath`, so we assert the exact path handed to `readTextFile`.
+  const readPaths: string[] = [];
+  const host = {
+    now: () => 0,
+    exists: async () => true,
+    listDir: async () => ["002_b.sql", "001_a.sql"],
+    readTextFile: async (path: string) => {
+      readPaths.push(path);
+      return "";
+    },
+  } as unknown as HostContext;
+  const db = {
+    exec: () => {},
+    run: () => ({ changes: 0, lastInsertRowid: 0 }),
+    all: <T>() => [] as T[],
+  } as unknown as SqliteDb;
+  // A backslash root makes `resolveAppPath` pick "\\", so the migrations dir is backslash-style.
+  const applied = await applyMigrations(host, db, "C:\\srv\\app", "db\\migrations");
+  assert.deepEqual(applied, ["001_a.sql", "002_b.sql"]);
+  assert.deepEqual(readPaths, [
+    "C:\\srv\\app\\db\\migrations\\001_a.sql",
+    "C:\\srv\\app\\db\\migrations\\002_b.sql",
+  ]);
 });
