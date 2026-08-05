@@ -137,6 +137,15 @@ test("resolveTemplates resolves a literal file entry", async () => {
   assert.deepEqual(map, { one: "ONE" });
 });
 
+test("resolveTemplates ignores a directory with no readable files without warning", async () => {
+  // A directory that exists (has nested content) but no files directly under it: previously the
+  // non-glob fallback treated it as a literal file and logged a misleading "unreadable entry" warn.
+  const { ctx, logs } = makeHarness({ "/app/prompts/nested/x.md": "X" }, {});
+  const map = await resolveTemplates(ctx.host, ROOT, [["prompts"]]);
+  assert.deepEqual(map, {});
+  assert.equal(logs.filter((l) => l.level === "warn").length, 0);
+});
+
 test("resolveTemplates merges a programmatic map, letting later sources win", async () => {
   const { ctx } = makeHarness({ "/app/prompts/review.md": "FROM-FILE" }, {});
   const map = await resolveTemplates(ctx.host, ROOT, [
@@ -189,6 +198,21 @@ test("deployModels warns on an unresolved placeholder but still deploys", async 
   const warn = logs.find((l) => l.msg.includes("unresolved template placeholders"));
   assert.ok(warn, "expected an unresolved-placeholder warning");
   assert.deepEqual(warn?.fields?.unresolved, ["missing"]);
+});
+
+test("deployModels leaves unknown-extension resources untouched (no XML escaping)", async () => {
+  // Unknown extensions (application/octet-stream) have no safe escaper, so substitution must be
+  // skipped rather than run the default XML escaper and risk corrupting the resource.
+  const { ctx, deployed } = makeHarness(
+    {
+      "/app/models/notes.txt": "raw {{review}} & <stuff>",
+      "/app/prompts/review.md": "R",
+    },
+    { models: { processes: ["models/*.txt"], templates: ["prompts/*.md"] } },
+  );
+  await deployModels(ctx);
+  assert.equal(deployed[0].contentType, "application/octet-stream");
+  assert.equal(deployed[0].content, "raw {{review}} & <stuff>");
 });
 
 test("deployModels is a no-op on content when no templates are configured", async () => {

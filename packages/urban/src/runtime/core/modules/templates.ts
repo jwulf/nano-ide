@@ -29,13 +29,22 @@ function stem(path: string): string {
  *  or a literal file. Returns root-prefixed paths, matching `expandPatterns`. */
 async function filesFor(host: HostContext, root: string, entry: string): Promise<string[]> {
   if (entry.includes("*")) return expandPatterns(host, root, [entry]);
-  // A non-glob entry is either a directory (scan it) or a literal file. `listDir` can't be used to
-  // tell them apart (the host adapters return `[]` for both a file and an empty directory), so
-  // scan as a directory first; if that yields nothing, fall back to treating the entry as a file.
-  // A stray directory path surviving to the read step is handled there (readTextFile guarded).
-  const scanned = await expandPatterns(host, root, [`${entry.replace(/\/+$/, "")}/*`]);
+  const trimmed = entry.replace(/\/+$/, "");
+  // A non-glob entry is either a directory (scan it) or a literal file. Scan as a directory first;
+  // a non-empty directory resolves here.
+  const scanned = await expandPatterns(host, root, [`${trimmed}/*`]);
   if (scanned.length > 0) return scanned;
-  return expandPatterns(host, root, [entry]);
+  // No children matched: the entry is an empty (or subdir-only) directory, a literal file, or
+  // missing. A directory never appears in its parent's `listDir` (which yields file names only),
+  // so if the parent lists this basename it is a real file to read; otherwise treat the entry as an
+  // empty template directory that contributes nothing — and, crucially, emit no misleading
+  // "unreadable entry" warning for a valid-but-empty directory (readTextFile on it would EISDIR).
+  const slash = trimmed.lastIndexOf("/");
+  const base = trimmed.slice(slash + 1);
+  const parent = slash > 0 ? trimmed.slice(0, slash) : "";
+  const parentDir = parent ? `${root.replace(/\/+$/, "")}/${parent}` : root;
+  const siblings = await host.listDir(parentDir);
+  return siblings.includes(base) ? expandPatterns(host, root, [trimmed]) : [];
 }
 
 /** Build the `name → content` template map from the given sources in order (later sources win on

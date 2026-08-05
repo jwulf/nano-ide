@@ -40,12 +40,16 @@ export async function deployModels(ctx: RuntimeContext): Promise<{ deployed: num
     files.map(async (path) => {
       const contentType = contentTypeFor(path);
       let content = await ctx.host.readTextFile(path);
-      if (hasTemplates) {
+      // Only substitute into the model content types we know how to escape (XML for .bpmn/.dmn,
+      // JSON for .form). Unknown extensions map to application/octet-stream; running the default
+      // XML escaper over them could deterministically corrupt a non-XML/JSON resource that a
+      // manifest pattern matched by accident, so leave those files untouched.
+      if (hasTemplates && contentType !== "application/octet-stream") {
         const applied = applyTemplates(content, contentType, templates);
         content = applied.content;
         if (applied.unresolved.length > 0) {
           ctx.host.log("warn", "deploy: unresolved template placeholders", {
-            file: baseName(path),
+            file: path,
             unresolved: applied.unresolved,
           });
         }
