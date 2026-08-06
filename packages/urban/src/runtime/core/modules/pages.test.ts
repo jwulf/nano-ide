@@ -138,6 +138,30 @@ test("the renderer honours numeric actionForm fields", async () => {
   assert.match(js, /if \(!Number\.isFinite\(num\)\) continue;/);
 });
 
+test("renderer makes collapsible nodes persist their state across sessions", async () => {
+  // A node with `collapsible` gets a clickable header that hides/shows the card
+  // body, and the collapsed state is written to localStorage keyed by the home
+  // page id + node id so it survives a full reload / new session (not just the
+  // refresh poll). Storage access is guarded so private-mode browsers can't
+  // break render.
+  const res = await dispatch("GET", "/app/runtime.js");
+  const js = res.body ?? "";
+  assert.match(js, /function makeCollapsible\(node, card\)/);
+  assert.match(js, /if \(!props\.collapsible\) return card;/);
+  // Seed from defaultCollapsed the first time, then from persisted state.
+  assert.match(js, /readCollapsed\(storageKey, !!props\.defaultCollapsed\)/);
+  // Namespaced, per-node storage key.
+  assert.match(js, /"pc:collapsed:" \+ HOME \+ ":" \+ \(node\.id/);
+  // Persist on toggle.
+  assert.match(js, /writeCollapsed\(storageKey, collapsed\)/);
+  // Every storage access is wrapped so a throwing localStorage can't break the UI.
+  assert.match(js, /localStorage\.getItem\(key\)/);
+  assert.match(js, /localStorage\.setItem\(key, val \? "1" : "0"\)/);
+  assert.match(js, /catch \(e\) \{\s*return dflt;/);
+  // And the wrapper is actually applied at the dispatch layer.
+  assert.match(js, /makeCollapsible\(n, \(RENDERERS\[n\.type\]/);
+});
+
 test("GET /app/pages/<id> returns the page json, 404 for unknown", async () => {
   const ok = await dispatch("GET", "/app/pages/home");
   assert.equal(ok.status, 200);
