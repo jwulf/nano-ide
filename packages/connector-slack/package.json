@@ -1,6 +1,6 @@
 {
   "name": "@nanobpm/nano-ide-connector-slack",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Slack connector pack for the Nano/Urban RAD console: a two-edge I/O connector — a 'Send Slack Message' component/worker (outbound) and a Slack events/slash-command trigger source (inbound). ADR 0033 / 0025 / 0050.",
   "license": "Apache-2.0",
   "type": "module",
