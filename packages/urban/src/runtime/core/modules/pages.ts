@@ -391,6 +391,9 @@ table.pc-grid th { font-weight:600; opacity:.75; }
 .pc-subform-title { font-weight:600; font-size:.85rem; margin-bottom:.4rem; }
 .pc-prompt { font-size:.85rem; opacity:.8; margin-bottom:.4rem; white-space:pre-wrap; }
 .pc-textarea { width:100%; min-height:4rem; padding:.5rem; border:1px solid var(--pc-edge); border-radius:.4rem; font:inherit; }
+.pc-collapse-header { display:flex; align-items:center; gap:.5rem; width:100%; margin:0 0 .75rem; padding:0; background:transparent; border:0; color:inherit; font:inherit; font-size:1rem; font-weight:600; cursor:pointer; text-align:left; }
+.pc-chevron-inline { opacity:.6; font-size:.75rem; width:1em; }
+.pc-card-body[hidden] { display:none; }
 `;
 
 // The schema-driven browser renderer (ADR 0042 §3). Plain ES module string served at
@@ -775,11 +778,83 @@ function renderDataGrid(node) {
 
 const RENDERERS = { text: renderText, actionForm: renderActionForm, dataGrid: renderDataGrid };
 
+// Durable per-node UI state. localStorage is keyed by the home page id + node
+// id so two grids on the same page (or the same grid across pages) don't clash,
+// and the collapsed state survives a full reload / new session — not just the
+// refresh poll. Every access is guarded: private-mode or storage-disabled
+// browsers throw on localStorage, and a UI preference must never break render.
+function readCollapsed(key, dflt) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? dflt : v === "1";
+  } catch (e) {
+    return dflt;
+  }
+}
+function writeCollapsed(key, val) {
+  try {
+    localStorage.setItem(key, val ? "1" : "0");
+  } catch (e) {
+    // Preference is best-effort; ignore storage failures.
+  }
+}
+
+// Wrap a rendered node so its card can be collapsed from a clickable header.
+// Opt-in via the node's "collapsible" prop; "defaultCollapsed" seeds the state
+// the first time (before the user has toggled it). Generic across node types —
+// the body (everything the renderer produced, minus its own <h2> title, which
+// becomes the header label) is hidden as one unit.
+function makeCollapsible(node, card) {
+  const props = node.props || {};
+  if (!props.collapsible) return card;
+  // Normalize to a card container. Card renderers already return
+  // <section class="pc-card"> — we unwrap those in place (lift out the <h2>
+  // title, reparent the rest into the body). A non-card renderer (e.g. text
+  // returning <p>/<h1>) is nested whole inside a fresh section instead:
+  // appending a <button>/<div> directly into a <p> is invalid markup the
+  // browser silently re-parents, breaking layout and click handling.
+  const isCard = card.tagName === "SECTION";
+  const container = isCard ? card : el("section", { class: "pc-card" });
+  const h2 = isCard && card.querySelector ? card.querySelector("h2") : null;
+  const titleText = props.title || (h2 ? h2.textContent : "") || "Section";
+  if (h2) h2.remove();
+  const body = el("div", { class: "pc-card-body" });
+  if (isCard) {
+    while (card.firstChild) body.append(card.firstChild);
+  } else {
+    body.append(card);
+  }
+  const chevron = el("span", { class: "pc-chevron-inline" }, "▾");
+  const header = el(
+    "button",
+    { class: "pc-collapse-header", type: "button" },
+    chevron,
+    el("span", { class: "pc-collapse-title" }, titleText),
+  );
+  const storageKey = "pc:collapsed:" + HOME + ":" + (node.id || titleText);
+  let collapsed = readCollapsed(storageKey, !!props.defaultCollapsed);
+  function apply() {
+    body.hidden = collapsed;
+    chevron.textContent = collapsed ? "▸" : "▾";
+    header.setAttribute("aria-expanded", String(!collapsed));
+  }
+  header.addEventListener("click", () => {
+    collapsed = !collapsed;
+    writeCollapsed(storageKey, collapsed);
+    apply();
+  });
+  apply();
+  container.append(header, body);
+  return container;
+}
+
 async function main() {
   try {
     const doc = await getJSON("/app/pages/" + encodeURIComponent(HOME));
     if (doc.title) document.title = doc.title;
-    root.replaceChildren(...(doc.nodes || []).map((n) => (RENDERERS[n.type] || (() => el("div")))(n)));
+    root.replaceChildren(
+      ...(doc.nodes || []).map((n) => makeCollapsible(n, (RENDERERS[n.type] || (() => el("div")))(n))),
+    );
   } catch (e) {
     root.replaceChildren(el("p", { class: "pc-msg err" }, "Failed to load page: " + String(e.message || e)));
   }
