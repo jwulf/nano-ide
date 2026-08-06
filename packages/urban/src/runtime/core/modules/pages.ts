@@ -778,14 +778,25 @@ function renderDataGrid(node) {
       // very same node is re-attached (an open, still-present row), put the caret back.
       const active = document.activeElement;
       const keepFocus = !!active && tbody.contains(active);
-      let selStart = null, selEnd = null;
-      if (keepFocus) { try { selStart = active.selectionStart; selEnd = active.selectionEnd; } catch (e) { /* non-text field */ } }
+      let selStart = null, selEnd = null, savedRange = null;
+      if (keepFocus) {
+        if (active.isContentEditable) {
+          // contenteditable has no selectionStart — its caret lives in the document
+          // selection. The reused node is re-attached, so the cloned range still points
+          // at live containers and can be restored after focus.
+          try { const s = document.getSelection(); if (s && s.rangeCount) savedRange = s.getRangeAt(0).cloneRange(); } catch (e) { /* selection unavailable */ }
+        } else {
+          try { selStart = active.selectionStart; selEnd = active.selectionEnd; } catch (e) { /* non-text field */ }
+        }
+      }
       tbody.replaceChildren();
       for (const row of rows) renderRow(row);
       if (!rows.length) tbody.append(el("tr", {}, el("td", { colspan: span }, "No rows")));
       if (keepFocus && active.isConnected) {
         active.focus();
-        if (selStart != null && typeof active.setSelectionRange === "function") {
+        if (savedRange) {
+          try { const s = document.getSelection(); s.removeAllRanges(); s.addRange(savedRange); } catch (e) { /* selection unavailable */ }
+        } else if (selStart != null && typeof active.setSelectionRange === "function") {
           try { active.setSelectionRange(selStart, selEnd); } catch (e) { /* non-text field */ }
         }
       }

@@ -118,13 +118,16 @@ test("renderer keeps the detail input focused across the refresh poll", async ()
   const res = await dispatch("GET", "/app/runtime.js");
   const js = res.body ?? "";
   // (1) The automatic poll is gated on not-editing; an explicit pc:refresh still runs.
-  assert.match(js, /const editingInGrid = \(\) =>/);
-  assert.match(js, /setInterval\(\(\) => \{ if \(!editingInGrid\(\)\) refresh\(\); \}, p\.refreshMs\)/);
+  assert.match(js, /const editingInGrid = \(\)\s*=>/);
+  assert.match(js, /setInterval\(\s*\(\)\s*=>\s*\{\s*if\s*\(\s*!editingInGrid\(\)\s*\)\s*refresh\(\)\s*;?\s*\}\s*,\s*p\.refreshMs\s*\)/);
   // (2) Focus + caret are captured before replaceChildren() and restored to the reused node.
   assert.match(js, /const keepFocus = !!active && tbody\.contains\(active\)/);
   assert.match(js, /active\.selectionStart/);
   assert.match(js, /if \(keepFocus && active\.isConnected\)/);
   assert.match(js, /active\.setSelectionRange\(selStart, selEnd\)/);
+  // contenteditable carets are preserved via the document selection range.
+  assert.match(js, /active\.isContentEditable/);
+  assert.match(js, /s\.addRange\(savedRange\)/);
 });
 
 test("renderer wires a column's linkField to a new-tab anchor", async () => {
