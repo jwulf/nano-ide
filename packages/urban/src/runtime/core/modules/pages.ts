@@ -752,6 +752,16 @@ function renderDataGrid(node) {
     }
   }
 
+  // Is the user actively typing inside this grid? tbody.replaceChildren() in refresh()
+  // detaches the subtree, and detaching the node that holds document.activeElement blurs
+  // it — so an open detail form (where you answer an escalation) loses focus every
+  // refreshMs even though #103 preserves its half-typed value. Used to skip the poll.
+  const editingInGrid = () => {
+    const a = document.activeElement;
+    if (!a || !tbody.contains(a)) return false;
+    return a.tagName === "INPUT" || a.tagName === "TEXTAREA" || a.tagName === "SELECT" || a.isContentEditable;
+  };
+
   async function refresh() {
     try {
       const { rows } = await getJSON(dataUrl(p.data.source, p.data.table, activeFilter, p.data.orderBy));
@@ -763,15 +773,42 @@ function renderDataGrid(node) {
         for (const k of [...detailNodes.keys()]) if (!live.has(k)) detailNodes.delete(k);
         for (const k of [...expanded]) if (!live.has(k)) expanded.delete(k);
       }
+      // Capture focus + caret before the DOM swap. replaceChildren() detaches (and so blurs)
+      // the reused detail node; re-appending it restores its value but not its focus. If the
+      // very same node is re-attached (an open, still-present row), put the caret back.
+      const active = document.activeElement;
+      const keepFocus = !!active && tbody.contains(active);
+      let selStart = null, selEnd = null, savedRange = null;
+      if (keepFocus) {
+        if (active.isContentEditable) {
+          // contenteditable has no selectionStart — its caret lives in the document
+          // selection. The reused node is re-attached, so the cloned range still points
+          // at live containers and can be restored after focus.
+          try { const s = document.getSelection(); if (s && s.rangeCount) savedRange = s.getRangeAt(0).cloneRange(); } catch (e) { /* selection unavailable */ }
+        } else {
+          try { selStart = active.selectionStart; selEnd = active.selectionEnd; } catch (e) { /* non-text field */ }
+        }
+      }
       tbody.replaceChildren();
       for (const row of rows) renderRow(row);
       if (!rows.length) tbody.append(el("tr", {}, el("td", { colspan: span }, "No rows")));
+      if (keepFocus && active.isConnected) {
+        active.focus();
+        if (savedRange) {
+          try { const s = document.getSelection(); s.removeAllRanges(); s.addRange(savedRange); } catch (e) { /* selection unavailable */ }
+        } else if (selStart != null && typeof active.setSelectionRange === "function") {
+          try { active.setSelectionRange(selStart, selEnd); } catch (e) { /* non-text field */ }
+        }
+      }
     } catch (e) {
       tbody.replaceChildren(el("tr", {}, el("td", { colspan: span }, String(e.message || e))));
     }
   }
   document.addEventListener("pc:refresh", refresh);
-  if (p.refreshMs && p.refreshMs > 0) setInterval(refresh, p.refreshMs);
+  // Skip the automatic poll while the user is typing in the grid — an explicit pc:refresh
+  // (e.g. after submitting an answer) still runs — so rows never shift under an in-progress
+  // answer and the detail input keeps focus across ticks.
+  if (p.refreshMs && p.refreshMs > 0) setInterval(() => { if (!editingInGrid()) refresh(); }, p.refreshMs);
   refresh();
   return card;
 }

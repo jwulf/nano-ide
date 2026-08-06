@@ -110,6 +110,26 @@ test("renderer preserves grid row-detail expansion across refreshes", async () =
   assert.match(js, /v == null \? null : String\(v\)/);
 });
 
+test("renderer keeps the detail input focused across the refresh poll", async () => {
+  // Regression: #103 reused the open detail node so a half-typed answer survived, but
+  // tbody.replaceChildren() still detaches (and so blurs) that node, dropping the caret
+  // every refreshMs. The client now (1) skips the timer-driven poll while the user is
+  // editing in the grid, and (2) restores focus + selection across any refresh that runs.
+  const res = await dispatch("GET", "/app/runtime.js");
+  const js = res.body ?? "";
+  // (1) The automatic poll is gated on not-editing; an explicit pc:refresh still runs.
+  assert.match(js, /const editingInGrid = \(\)\s*=>/);
+  assert.match(js, /setInterval\(\s*\(\)\s*=>\s*\{\s*if\s*\(\s*!editingInGrid\(\)\s*\)\s*refresh\(\)\s*;?\s*\}\s*,\s*p\.refreshMs\s*\)/);
+  // (2) Focus + caret are captured before replaceChildren() and restored to the reused node.
+  assert.match(js, /const keepFocus = !!active && tbody\.contains\(active\)/);
+  assert.match(js, /active\.selectionStart/);
+  assert.match(js, /if \(keepFocus && active\.isConnected\)/);
+  assert.match(js, /active\.setSelectionRange\(selStart, selEnd\)/);
+  // contenteditable carets are preserved via the document selection range.
+  assert.match(js, /active\.isContentEditable/);
+  assert.match(js, /s\.addRange\(savedRange\)/);
+});
+
 test("renderer wires a column's linkField to a new-tab anchor", async () => {
   const res = await dispatch("GET", "/app/runtime.js");
   const js = res.body ?? "";
