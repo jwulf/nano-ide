@@ -807,11 +807,23 @@ function writeCollapsed(key, val) {
 function makeCollapsible(node, card) {
   const props = node.props || {};
   if (!props.collapsible) return card;
-  const h2 = card.querySelector ? card.querySelector("h2") : null;
+  // Normalize to a card container. Card renderers already return
+  // <section class="pc-card"> — we unwrap those in place (lift out the <h2>
+  // title, reparent the rest into the body). A non-card renderer (e.g. text
+  // returning <p>/<h1>) is nested whole inside a fresh section instead:
+  // appending a <button>/<div> directly into a <p> is invalid markup the
+  // browser silently re-parents, breaking layout and click handling.
+  const isCard = card.tagName === "SECTION";
+  const container = isCard ? card : el("section", { class: "pc-card" });
+  const h2 = isCard && card.querySelector ? card.querySelector("h2") : null;
   const titleText = props.title || (h2 ? h2.textContent : "") || "Section";
   if (h2) h2.remove();
   const body = el("div", { class: "pc-card-body" });
-  while (card.firstChild) body.append(card.firstChild);
+  if (isCard) {
+    while (card.firstChild) body.append(card.firstChild);
+  } else {
+    body.append(card);
+  }
   const chevron = el("span", { class: "pc-chevron-inline" }, "▾");
   const header = el(
     "button",
@@ -832,8 +844,8 @@ function makeCollapsible(node, card) {
     apply();
   });
   apply();
-  card.append(header, body);
-  return card;
+  container.append(header, body);
+  return container;
 }
 
 async function main() {

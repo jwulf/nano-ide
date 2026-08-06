@@ -160,6 +160,13 @@ test("renderer makes collapsible nodes persist their state across sessions", asy
   assert.match(js, /catch \(e\) \{\s*return dflt;/);
   // And the wrapper is actually applied at the dispatch layer.
   assert.match(js, /makeCollapsible\(n, \(RENDERERS\[n\.type\]/);
+  // Non-card renderer output (e.g. text -> <p>) is nested whole inside a fresh
+  // <section class="pc-card"> rather than having a <button>/<div> injected into
+  // it — so the feature is valid markup across every node type, not just cards.
+  assert.match(js, /const isCard = card\.tagName === "SECTION";/);
+  assert.match(js, /const container = isCard \? card : el\("section", \{ class: "pc-card" \}\)/);
+  assert.match(js, /body\.append\(card\)/);
+  assert.match(js, /container\.append\(header, body\);\s*return container;/);
 });
 
 test("GET /app/pages/<id> returns the page json, 404 for unknown", async () => {
