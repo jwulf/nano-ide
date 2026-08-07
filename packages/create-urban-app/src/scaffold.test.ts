@@ -23,6 +23,33 @@ test("slugify normalizes names", () => {
   assert.equal(slugify("!!!"), "urban-app");
 });
 
+test("full preset scaffolds an opt-in ui block with the app name as its label", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-ui-"));
+  await scaffold({ name: "Hello Urban", dir, preset: "full" });
+  const manifest = JSON.parse(await readFile(join(dir, "nano.app.json"), "utf8"));
+  assert.deepEqual(manifest.ui, {
+    enabled: false,
+    label: "Hello Urban",
+    portEnv: "PORT",
+    path: "/",
+  });
+});
+
+test("code-first style also scaffolds the ui block", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-ui-code-"));
+  await scaffold({ name: "Coder", dir, style: "code" });
+  const manifest = JSON.parse(await readFile(join(dir, "nano.app.json"), "utf8"));
+  assert.equal(manifest.ui?.enabled, false);
+  assert.equal(manifest.ui?.label, "Coder");
+});
+
+test("headless preset keeps the control-only ui block (enabled:false)", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "urban-ui-headless-"));
+  await scaffold({ name: "Batch Job", dir, preset: "headless" });
+  const manifest = JSON.parse(await readFile(join(dir, "nano.app.json"), "utf8"));
+  assert.equal(manifest.ui?.enabled, false, "headless stays listed as control-only");
+});
+
 test("full preset scaffolds a runnable app with substituted tokens", async () => {
   const dir = await mkdtemp(join(tmpdir(), "urban-full-"));
   const res = await scaffold({ name: "Hello Urban", dir, preset: "full" });
