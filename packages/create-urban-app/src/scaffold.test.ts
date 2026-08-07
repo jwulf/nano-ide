@@ -39,15 +39,24 @@ test("code-first style also scaffolds the ui block", async () => {
   const dir = await mkdtemp(join(tmpdir(), "urban-ui-code-"));
   await scaffold({ name: "Coder", dir, style: "code" });
   const manifest = JSON.parse(await readFile(join(dir, "nano.app.json"), "utf8"));
-  assert.equal(manifest.ui?.enabled, false);
-  assert.equal(manifest.ui?.label, "Coder");
+  assert.deepEqual(manifest.ui, {
+    enabled: false,
+    label: "Coder",
+    portEnv: "PORT",
+    path: "/",
+  });
 });
 
 test("headless preset keeps the control-only ui block (enabled:false)", async () => {
   const dir = await mkdtemp(join(tmpdir(), "urban-ui-headless-"));
   await scaffold({ name: "Batch Job", dir, preset: "headless" });
   const manifest = JSON.parse(await readFile(join(dir, "nano.app.json"), "utf8"));
-  assert.equal(manifest.ui?.enabled, false, "headless stays listed as control-only");
+  assert.deepEqual(manifest.ui, {
+    enabled: false,
+    label: "Batch Job",
+    portEnv: "PORT",
+    path: "/",
+  });
 });
 
 test("full preset scaffolds a runnable app with substituted tokens", async () => {
