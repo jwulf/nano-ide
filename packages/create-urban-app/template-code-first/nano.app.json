@@ -36,5 +36,12 @@
 
   "surfaces": {
     "taskInbox": { "enabled": true, "path": "/tasks" }
+  },
+
+  "ui": {
+    "enabled": false,
+    "label": "__APP_NAME__",
+    "portEnv": "PORT",
+    "path": "/"
   }
 }

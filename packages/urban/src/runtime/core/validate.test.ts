@@ -37,6 +37,14 @@ test("an `actions` array is an accepted top-level key (ADR 0055 §3)", () => {
   assert.deepEqual(issues, []);
 });
 
+test("a `ui` block is an accepted top-level key (Studio App View, ADR 0057 / nano-bpm #638)", () => {
+  const issues = collectManifestIssues({
+    ...valid,
+    ui: { enabled: true, portEnv: "PORT", path: "/", label: "Nano Workforce" },
+  });
+  assert.deepEqual(issues, []);
+});
+
 test("bad schemaVersion and bad slug id are reported", () => {
   const issues = collectManifestIssues({ ...valid, schemaVersion: 2, id: "Not A Slug" });
   assert.ok(issues.some((i) => i.path === "schemaVersion"));
