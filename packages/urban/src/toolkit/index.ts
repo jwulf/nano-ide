@@ -28,28 +28,50 @@ export {
   deriveDomain,
   emitDomain,
   emitDomainModel,
+  emitDomainBindings,
   emitDomainDts,
   emitDomainDtsForSources,
   emitDomainTypeRegistry,
   domainDeriver,
+  isPrimitiveKeyword,
   sourcesFromManifest,
   registryFromManifest,
   sqliteAffinityToTs,
   interfaceName,
+  DOMAIN_BINDINGS,
 } from "./derivers/domain.ts";
 export type {
   SourceSchema,
   DomainFieldDef,
   DomainTypeDef,
   DomainTypeRegistry,
+  ColumnMeta,
+  TableMeta,
 } from "./derivers/domain.ts";
+
+export {
+  resolveShapes,
+  columnToField,
+  emitDomainModelJson,
+  DOMAIN_MODEL_JSON,
+} from "./derivers/shapes.ts";
+export type {
+  ShapeOp,
+  ShapeDecl,
+  ShapeDiagnostic,
+  ShapeResolution,
+  FusedMetaDecl,
+} from "./derivers/shapes.ts";
 
 export {
   deriveWorkerBindings,
   emitWorkerBindings,
+  emitWorkerBindingsRuntime,
+  overlayDerivedWorkerIo,
   workerIoDeriver,
   scanModelWorkers,
   WORKER_BINDINGS_DTS,
+  WORKER_BINDINGS_TS,
   DOMAIN_DTS,
 } from "./derivers/worker-io.ts";
 export type { ModelSource, WorkerIo, WorkerBindingDecl } from "./derivers/worker-io.ts";
@@ -68,9 +90,11 @@ export type { MetaDecl } from "./derivers/meta.ts";
 export {
   deriveMessageBindings,
   emitMessageBindings,
+  emitMessageBindingsRuntime,
   messagesDeriver,
   scanModelMessages,
   MESSAGE_BINDINGS_DTS,
+  MESSAGE_BINDINGS_TS,
 } from "./derivers/messages.ts";
 export type { MessageIo, MessageBindingDecl } from "./derivers/messages.ts";
 
