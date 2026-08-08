@@ -380,9 +380,15 @@ export function resolveShapes(
       }
     }
 
-    // same-id collision: the shape id shadows a leaf entity it does not source.
-    const sourcesRef = new Set(shape.ops.flatMap((o) => (o.op === "extend" ? [] : [o.ref])));
-    if (index.has(shape.id) && !sourcesRef.has(shape.id)) {
+    // same-id collision: the shape id shadows a leaf entity it does not source. The shape composes
+    // that entity when it references it under any id (bare or `source.table` alias) — since the
+    // index maps every alias to the same `FuseEntity` instance, compare by identity rather than by
+    // the bare id alone.
+    const collidingEntity = index.get(shape.id);
+    const composesColliding =
+      collidingEntity !== undefined &&
+      shape.ops.some((o) => o.op !== "extend" && index.get(o.ref) === collidingEntity);
+    if (collidingEntity !== undefined && !composesColliding) {
       diagnostics.push({
         shape: shape.id,
         kind: "same-id-collision",

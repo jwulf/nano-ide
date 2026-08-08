@@ -351,7 +351,9 @@ test("domaintypes write:false is a side-effect-free preview (no migrate, null pa
     const r = await run(dir, { op: "domaintypes", write: false });
     // The preview never migrates — nothing applied, DB stays fresh.
     assert.deepEqual(r.migrated, {});
-    // …and it never introspects a migrated schema, so no tables are reified.
+    // …and because this fixture's DB is fresh (unmigrated), introspecting the *current* live schema
+    // finds no tables. (An existing DB could legitimately report tables here; this count is scoped
+    // to the fresh fixture, not a general preview guarantee.)
     assert.equal(r.tables, 0);
     // Content is still returned (the composer preview needs `text`)…
     assert.equal(typeof r.text, "string");

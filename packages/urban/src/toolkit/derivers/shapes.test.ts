@@ -5,7 +5,7 @@ import {
   resolveShapes,
   type ShapeDecl,
 } from "./shapes.ts";
-import type { DomainTypeRegistry } from "./domain.ts";
+import type { DomainTypeRegistry, SourceSchema } from "./domain.ts";
 
 // The fuse + its drift guards, ported byte-for-byte from the console's `resolveShapes` /
 // `emitDomainModelJson` tests (server domain_types_test.ts) — the toolkit is now the single source
@@ -108,6 +108,33 @@ test("resolveShapes drift-guards a shape id colliding with a manifest type", () 
   assert.equal(diagnostics[0].kind, "same-id-collision");
   assert.equal(diagnostics[0].severity, "error");
   assert.equal(diagnostics[0].shape, "Order");
+});
+
+test("resolveShapes treats a qualified-alias carry of the colliding leaf as composed", () => {
+  // The shape id `orders` collides with the `app.orders` leaf, but it composes that same leaf via
+  // its unambiguous `app.orders` alias. Since both ids point at the one entity, this is a legitimate
+  // compose — not a same-id shadow — so no collision is raised.
+  const sources: SourceSchema[] = [
+    {
+      source: "app",
+      tables: [
+        {
+          name: "orders",
+          columns: [{ name: "id", type: "INTEGER", notNull: true, primaryKey: true }],
+          indexes: [],
+          foreignKeys: [],
+        },
+      ],
+    },
+  ];
+  const shapes: ShapeDecl[] = [{ id: "orders", ops: [{ op: "carry", ref: "app.orders" }] }];
+  const { types, diagnostics } = resolveShapes(shapes, {}, sources);
+  assert.equal(
+    diagnostics.some((d) => d.kind === "same-id-collision"),
+    false,
+  );
+  assert.ok(types.orders); // the shape resolves rather than being omitted
+  assert.deepEqual(Object.keys(types.orders.fields), ["id"]);
 });
 
 test("resolveShapes rejects a duplicate shape id as a fuse-identity collision", () => {
