@@ -191,9 +191,11 @@ export async function createUrbanApp(opts: CreateUrbanAppOptions): Promise<Urban
         }
 
         const routes: Route[] = [];
+        let hasUiSurfaces = false;
         if (flags.surfaces) {
           const s = mountSurfaces(ctx, api);
           routes.push(...s.routes);
+          hasUiSurfaces = s.routes.length > 0;
           describe.surfaces = s.describe();
         }
         if (flags.triggers) {
@@ -219,6 +221,22 @@ export async function createUrbanApp(opts: CreateUrbanAppOptions): Promise<Urban
           server = await host.serveHttp(port, makeRouter(routes));
           httpPort = server.port;
           host.log("info", "urban app serving surfaces/triggers", { port: httpPort, routes: routes.length });
+          // ADR 0057 boot handshake: under a supervising host (the nano-bpm
+          // Studio sets NANOBPMN_APP_HANDSHAKE), announce the port we actually
+          // bound on a machine-readable stdout control line so the host can
+          // locate the app's UI even when the app picks its port at runtime.
+          // Only emitted when the app actually serves UI surfaces (a trigger- or
+          // worker-only app binds a port too, but it has no webview for the host
+          // to frame), and gated on the env var so direct terminal runs aren't
+          // cluttered. `=== "1"` so an app that sets the var to "0" opts out.
+          if (httpPort !== undefined && hasUiSurfaces && host.env("NANOBPMN_APP_HANDSHAKE") === "1") {
+            try {
+              console.log(`@@NBPM_LISTENING@@${JSON.stringify({ port: httpPort })}`);
+            } catch {
+              // stdout may be closed / non-writable — the handshake is
+              // best-effort telemetry, never fatal to the app.
+            }
+          }
         }
         host.log("info", `urban app "${manifest.id}" started`, {});
       } catch (err) {

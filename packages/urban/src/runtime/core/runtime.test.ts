@@ -324,3 +324,81 @@ test("runFromEnv anchors the host at a non-'.' root without double-prefixing pat
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+// Captures console.log for the duration of `fn`, restoring it after.
+async function captureStdout(fn: () => Promise<void>): Promise<string[]> {
+  const lines: string[] = [];
+  const original = console.log;
+  console.log = (...args: unknown[]) => {
+    lines.push(args.map((a) => (typeof a === "string" ? a : String(a))).join(" "));
+  };
+  try {
+    await fn();
+  } finally {
+    console.log = original;
+  }
+  return lines;
+}
+
+test("emits the ADR 0057 boot handshake when NANOBPMN_APP_HANDSHAKE is set", async () => {
+  const dir = await makeFixture();
+  const host = createNodeHost({ cwd: dir, log: () => {} });
+  const engine = new FakeEngine();
+  const app = await createUrbanApp({ host, engine, root: ".", port: 0 });
+  const prev = process.env.NANOBPMN_APP_HANDSHAKE;
+  process.env.NANOBPMN_APP_HANDSHAKE = "1";
+  try {
+    const lines = await captureStdout(() => app.start());
+    const handshake = lines.find((l) => l.startsWith("@@NBPM_LISTENING@@"));
+    assert.ok(handshake, "a @@NBPM_LISTENING@@ line was emitted");
+    const payload = JSON.parse(handshake!.slice("@@NBPM_LISTENING@@".length));
+    assert.equal(payload.port, app.httpPort, "handshake reports the actual bound port");
+    assert.ok(payload.port > 0);
+  } finally {
+    if (prev === undefined) delete process.env.NANOBPMN_APP_HANDSHAKE;
+    else process.env.NANOBPMN_APP_HANDSHAKE = prev;
+    await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("does NOT emit the boot handshake without NANOBPMN_APP_HANDSHAKE", async () => {
+  const dir = await makeFixture();
+  const host = createNodeHost({ cwd: dir, log: () => {} });
+  const engine = new FakeEngine();
+  const app = await createUrbanApp({ host, engine, root: ".", port: 0 });
+  const prev = process.env.NANOBPMN_APP_HANDSHAKE;
+  delete process.env.NANOBPMN_APP_HANDSHAKE;
+  try {
+    const lines = await captureStdout(() => app.start());
+    assert.ok(
+      !lines.some((l) => l.startsWith("@@NBPM_LISTENING@@")),
+      "no handshake line when the supervisor env is unset (clean terminal runs)",
+    );
+  } finally {
+    if (prev !== undefined) process.env.NANOBPMN_APP_HANDSHAKE = prev;
+    await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("treats NANOBPMN_APP_HANDSHAKE other than \"1\" as opt-out", async () => {
+  const dir = await makeFixture();
+  const host = createNodeHost({ cwd: dir, log: () => {} });
+  const engine = new FakeEngine();
+  const app = await createUrbanApp({ host, engine, root: ".", port: 0 });
+  const prev = process.env.NANOBPMN_APP_HANDSHAKE;
+  process.env.NANOBPMN_APP_HANDSHAKE = "0";
+  try {
+    const lines = await captureStdout(() => app.start());
+    assert.ok(
+      !lines.some((l) => l.startsWith("@@NBPM_LISTENING@@")),
+      '"0" is not the opt-in sentinel ("1"), so no handshake is emitted',
+    );
+  } finally {
+    if (prev === undefined) delete process.env.NANOBPMN_APP_HANDSHAKE;
+    else process.env.NANOBPMN_APP_HANDSHAKE = prev;
+    await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
