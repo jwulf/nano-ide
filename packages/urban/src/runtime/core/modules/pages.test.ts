@@ -86,12 +86,22 @@ test("GET / serves the renderer shell with the home marker", async () => {
   assert.equal(res.status, 200);
   assert.match(res.headers?.["content-type"] ?? "", /text\/html/);
   assert.match(res.body ?? "", /data-home="home"/);
+  // The runtime module is loaded by a *relative* src so it resolves against the
+  // document's mount path — works both at the origin root and under the Nano
+  // console's /console/app-view/<name>/ reverse proxy. A root-absolute
+  // "/app/runtime.js" would 404 against the console origin and never hydrate.
+  assert.match(res.body ?? "", /src="\.\/app\/runtime\.js"/);
+  assert.doesNotMatch(res.body ?? "", /src="\/app\/runtime\.js"/);
 });
 
 test("GET /app/runtime.js serves the renderer module", async () => {
   const res = await dispatch("GET", "/app/runtime.js");
   assert.match(res.headers?.["content-type"] ?? "", /javascript/);
   assert.match(res.body ?? "", /pc:refresh/);
+  // Endpoints are rebased against the served module URL so the app works under a
+  // path-prefixed reverse proxy (Nano console embed), not just at the origin root.
+  assert.match(res.body ?? "", /new URL\("\.\.\/", import\.meta\.url\)/);
+  assert.match(res.body ?? "", /function apiUrl\(u\)/);
 });
 
 test("renderer preserves grid row-detail expansion across refreshes", async () => {

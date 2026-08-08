@@ -348,7 +348,7 @@ function rendererShell(homePage: string): string {
 </head>
 <body>
   <main id="page" data-home="${escapeAttr(homePage)}"><p class="pc-empty">Loading…</p></main>
-  <script type="module" src="/app/runtime.js"></script>
+  <script type="module" src="./app/runtime.js"></script>
 </body>
 </html>`;
 }
@@ -404,8 +404,22 @@ const RENDERER_JS = String.raw`
 const root = document.getElementById("page");
 const HOME = root.dataset.home || "home";
 
+// Resolve every app endpoint against where THIS module was actually served from,
+// so absolute-looking "/app/…" paths work both at the origin root (direct run,
+// e.g. the CLI on :3000) and under a path-prefixed reverse proxy (the Nano
+// console embeds the app at /console/app-view/<name>/). "../" drops the trailing
+// "app/runtime.js" to land on the app's mount root (always ends in "/").
+const APP_BASE = new URL("../", import.meta.url);
+function apiUrl(u) {
+  // Rebase root-absolute app paths onto the mount root; leave anything else
+  // (already-absolute URLs, or non-"/" strings) untouched.
+  return typeof u === "string" && u.startsWith("/")
+    ? new URL(u.slice(1), APP_BASE).toString()
+    : u;
+}
+
 async function getJSON(url, opts) {
-  const r = await fetch(url, opts);
+  const r = await fetch(apiUrl(url), opts);
   const body = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(body.error || ("HTTP " + r.status));
   return body;
