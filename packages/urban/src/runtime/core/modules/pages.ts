@@ -411,9 +411,10 @@ const HOME = root.dataset.home || "home";
 // "app/runtime.js" to land on the app's mount root (always ends in "/").
 const APP_BASE = new URL("../", import.meta.url);
 function apiUrl(u) {
-  // Rebase root-absolute app paths onto the mount root; leave anything else
-  // (already-absolute URLs, or non-"/" strings) untouched.
-  return typeof u === "string" && u.startsWith("/")
+  // Rebase root-absolute app paths ("/app/…") onto the mount root. Leave a
+  // protocol-relative ("//host/…") or otherwise non-root-relative string alone —
+  // only a single leading slash denotes an app path we own.
+  return typeof u === "string" && u.startsWith("/") && !u.startsWith("//")
     ? new URL(u.slice(1), APP_BASE).toString()
     : u;
 }
