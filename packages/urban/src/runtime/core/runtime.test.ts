@@ -381,3 +381,24 @@ test("does NOT emit the boot handshake without NANOBPMN_APP_HANDSHAKE", async ()
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("treats NANOBPMN_APP_HANDSHAKE other than \"1\" as opt-out", async () => {
+  const dir = await makeFixture();
+  const host = createNodeHost({ cwd: dir, log: () => {} });
+  const engine = new FakeEngine();
+  const app = await createUrbanApp({ host, engine, root: ".", port: 0 });
+  const prev = process.env.NANOBPMN_APP_HANDSHAKE;
+  process.env.NANOBPMN_APP_HANDSHAKE = "0";
+  try {
+    const lines = await captureStdout(() => app.start());
+    assert.ok(
+      !lines.some((l) => l.startsWith("@@NBPM_LISTENING@@")),
+      '"0" is not the opt-in sentinel ("1"), so no handshake is emitted',
+    );
+  } finally {
+    if (prev === undefined) delete process.env.NANOBPMN_APP_HANDSHAKE;
+    else process.env.NANOBPMN_APP_HANDSHAKE = prev;
+    await app.stop();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
