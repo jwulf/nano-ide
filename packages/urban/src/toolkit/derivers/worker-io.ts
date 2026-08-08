@@ -34,6 +34,9 @@ export interface WorkerIo {
 
 /** Filename the console uses; kept identical so the artifact is a drop-in. */
 export const WORKER_BINDINGS_DTS = "worker-io.d.ts";
+/** The generated typed-`defineWorker` wrapper's basename — re-exports the worker SDK and overrides
+ * `defineWorker` with a taskType-keyed typed signature. */
+export const WORKER_BINDINGS_TS = "workers.ts";
 /** The domain type declarations `worker-io.d.ts` imports from (console: domain-rows.d.ts). */
 export const DOMAIN_DTS = "domain-rows.d.ts";
 
@@ -93,6 +96,28 @@ export interface WorkerBindingDecl {
   taskType?: string;
   inputType?: string;
   outputType?: string;
+  /** The `zeebe:header` keys declared on the task; reified into a typed `job.customHeaders` shape
+   * (known keys, `string` values — headers are strings on the wire). Empty/absent leaves
+   * `customHeaders` the untyped fallback. */
+  headerKeys?: string[];
+}
+
+/** The TS type expression for a worker's declared custom-header keys: an object type mapping each
+ * declared key to `string` (Zeebe headers are strings on the wire) plus a `string` index signature
+ * so undeclared headers stay accessible with the same honest wire type. Returns `undefined` when no
+ * keys are declared (the caller omits the entry so the taskType falls back to `WorkerHdrs`). */
+function headerRefFor(keys: string[] | undefined): string | undefined {
+  const clean = [
+    ...new Set(
+      (keys ?? [])
+        .filter((k) => typeof k === "string")
+        .map((k) => k.trim())
+        .filter((k) => k.length > 0),
+    ),
+  ];
+  if (clean.length === 0) return undefined;
+  const fields = clean.map((k) => `${JSON.stringify(k)}: string`).join("; ");
+  return `{ ${fields}; [key: string]: string }`;
 }
 
 /** Emit `worker-io.d.ts` from worker bindings + the set of declared domain type ids. */
@@ -114,12 +139,15 @@ export function emitWorkerBindings(
     : "string";
   const inputs: string[] = [];
   const outputs: string[] = [];
+  const headers: string[] = [];
   for (const w of workers) {
     if (typeof w?.taskType !== "string" || w.taskType.length === 0) continue;
     const inRef = typeRefFor(w.inputType, declared);
     if (inRef) inputs.push(`  ${propKey(w.taskType)}: ${inRef};`);
     const outRef = typeRefFor(w.outputType, declared);
     if (outRef) outputs.push(`  ${propKey(w.taskType)}: ${outRef};`);
+    const hdrRef = headerRefFor(w.headerKeys);
+    if (hdrRef) headers.push(`  ${propKey(w.taskType)}: ${hdrRef};`);
   }
 
   const header =
@@ -141,7 +169,9 @@ export function emitWorkerBindings(
   const outputsIface = outputs.length > 0
     ? `export interface WorkerOutputs {\n${outputs.join("\n")}\n}\n`
     : `export interface WorkerOutputs {}\n`;
-  const headersIface = `export interface WorkerHeaders {}\n`;
+  const headersIface = headers.length > 0
+    ? `export interface WorkerHeaders {\n${headers.join("\n")}\n}\n`
+    : `export interface WorkerHeaders {}\n`;
 
   return `${header}\n` +
     importTypes +
@@ -186,3 +216,75 @@ export const workerIoDeriver: Deriver<{ models: ModelSource[]; declaredTypeIds: 
   describe: "Derive worker-io.d.ts (task type + data-envelope in/out) from BPMN models.",
   derive: ({ models, declaredTypeIds }) => deriveWorkerBindings(models, declaredTypeIds),
 };
+
+/**
+ * Overlay the model-derived worker-IO map onto the manifest `workers[]`. The model is authoritative
+ * for the envelope (`inputType`/`outputType`), so every scanned `taskType` takes its I/O from
+ * `derived` (clearing a stale manifest value when the model carries none); manifest entries the scan
+ * did not cover (e.g. a worker declared only for an `llm` binding, with no service task) are
+ * preserved. New `taskType`s seen only in the model are appended. A byte-faithful port of the
+ * console's `overlayDerivedWorkerIo` (server `data_cli.ts`).
+ */
+export function overlayDerivedWorkerIo(
+  manifest: WorkerBindingDecl[],
+  derived: WorkerBindingDecl[],
+): WorkerBindingDecl[] {
+  const byType = new Map<string, WorkerBindingDecl>();
+  for (const w of manifest) {
+    if (typeof w.taskType === "string") byType.set(w.taskType, { ...w });
+  }
+  for (const d of derived) {
+    if (typeof d.taskType !== "string") continue;
+    const existing = byType.get(d.taskType);
+    const merged: WorkerBindingDecl = existing
+      ? { ...existing, taskType: d.taskType }
+      : { taskType: d.taskType };
+    if (d.inputType) merged.inputType = d.inputType;
+    else delete merged.inputType;
+    if (d.outputType) merged.outputType = d.outputType;
+    else delete merged.outputType;
+    // Header keys are authored on the model, so the derived set is authoritative: replace (not
+    // union) the manifest's, and clear when the model declares none.
+    if (d.headerKeys && d.headerKeys.length > 0) merged.headerKeys = [...d.headerKeys];
+    else delete merged.headerKeys;
+    byType.set(d.taskType, merged);
+  }
+  return [...byType.values()];
+}
+
+/**
+ * The static typed-`defineWorker` wrapper (`workers.ts`). It re-exports the whole worker SDK and
+ * overrides `defineWorker` with a signature that keys off the `type:` string literal: when a job
+ * type is present in the generated `WorkerInputs`/`WorkerOutputs` (ADR 0033 §3), the handler's
+ * `job.variables` and result are typed from the declared domain type; otherwise they fall back to
+ * `WorkerVars`. The body is a pass-through — the wire stays untyped JSON (ADR 0029 §3). This file
+ * never changes with the schema, so it is written verbatim (unlike the regenerated
+ * `worker-io.d.ts`). A byte-faithful port of the console's `emitWorkerBindingsRuntime`.
+ */
+export function emitWorkerBindingsRuntime(): string {
+  return "// AUTO-GENERATED by nanobpmn (ADR 0033 §3): the typed `defineWorker`.\n" +
+    "// Re-exports the worker SDK and overrides `defineWorker` with a taskType-keyed\n" +
+    "// typed signature (job.variables, job.customHeaders + result typed from the\n" +
+    "// worker's declared input/output/header contract). Erased to a pass-through at\n" +
+    "// runtime. Do not edit.\n" +
+    "// eslint-disable\n\n" +
+    `import { defineWorker as defineWorkerRaw } from "./worker-sdk.ts";\n` +
+    `import type { WorkerOptions } from "./worker-sdk.ts";\n` +
+    `import type { WorkerInputs, WorkerOutputs, WorkerHeaders, WorkerTaskType, WorkerVars, WorkerHdrs } from "./${WORKER_BINDINGS_DTS}";\n\n` +
+    `export * from "./worker-sdk.ts";\n\n` +
+    `type InFor<K extends WorkerTaskType> = K extends keyof WorkerInputs ? WorkerInputs[K] : WorkerVars;\n` +
+    `type OutFor<K extends WorkerTaskType> = K extends keyof WorkerOutputs ? WorkerOutputs[K] : WorkerVars;\n` +
+    `type HdrFor<K extends WorkerTaskType> = K extends keyof WorkerHeaders ? WorkerHeaders[K] : WorkerHdrs;\n\n` +
+    `/**\n` +
+    ` * Typed \`defineWorker\`: \`type\` is constrained to the model's declared job types\n` +
+    ` * (\`WorkerTaskType\`, ADR 0033 §3) so it autocompletes and rejects unknown jobs,\n` +
+    ` * and the handler's \`job.variables\`, \`job.customHeaders\` + result are typed from\n` +
+    ` * the worker's declared \`inputType\`/\`outputType\`/header keys. A declared job type\n` +
+    ` * with no declared type falls back to WorkerVars / WorkerHdrs.\n` +
+    ` */\n` +
+    `export function defineWorker<K extends WorkerTaskType>(\n` +
+    `  opts: { type: K } & WorkerOptions<InFor<K> & object, OutFor<K> & object, HdrFor<K> & object>,\n` +
+    `): void {\n` +
+    `  defineWorkerRaw(opts as unknown as WorkerOptions);\n` +
+    `}\n`;
+}

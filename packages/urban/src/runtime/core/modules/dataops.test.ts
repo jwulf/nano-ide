@@ -46,6 +46,11 @@ function expectRecords(value: unknown): Record<string, unknown>[] {
   return value;
 }
 
+function expectString(value: unknown): string {
+  if (typeof value !== "string") throw new TypeError("expected a string");
+  return value;
+}
+
 test("sources lists declared datasources and the default", async () => {
   const { dir, cleanup } = await fixture();
   try {
@@ -225,15 +230,6 @@ test("migrations treats a missing migrations dir as an empty list", async () => 
   }
 });
 
-test("domaintypes is not yet implemented and errors clearly", async () => {
-  const { dir, cleanup } = await fixture();
-  try {
-    await assert.rejects(run(dir, { op: "domaintypes" }), /not yet implemented/);
-  } finally {
-    await cleanup();
-  }
-});
-
 test("an unknown op and an unknown source error", async () => {
   const { dir, cleanup } = await fixture();
   try {
@@ -300,6 +296,133 @@ test("an absolute --manifest path is honoured as-is (not re-prefixed with root)"
     );
     assert.equal(r.default, "app");
     assert.deepEqual(expectRecords(r.sources).map((s) => s.name), ["app"]);
+  } finally {
+    await cleanup();
+  }
+});
+
+// --- domaintypes: live-schema reification + shape fuse (ADR 0029 §4/§6, ADR 0040 §9/§10) ---
+//
+// The op ported off the console's vendored data_cli (host dry-out nano-bpm#576). It migrates each
+// sqlite source (write mode only), introspects the live schema, folds the manifest `types` + the
+// model's composed shapes through the fuse, and RETURNS every artifact's content (the read-only
+// host never writes files — the caller persists). These lock that contract.
+
+test("domaintypes migrates, introspects the live schema, and returns every artifact", async () => {
+  const { dir, cleanup } = await fixture();
+  try {
+    const r = await run(dir, { op: "domaintypes" });
+    // Both migrations ran on the shared `_urban_migrations` ledger before introspection.
+    assert.deepEqual(r.migrated, { app: ["001_orders.sql", "002_customers.sql"] });
+    // Two tables reified from the live schema.
+    assert.equal(r.tables, 2);
+    // The domain `.d.ts` carries an interface per live table.
+    assert.equal(typeof r.text, "string");
+    assert.match(expectString(r.text), /export interface Orders\b/);
+    assert.match(expectString(r.text), /export interface Customers\b/);
+    // Persisting: every `*Path` is the app-relative nano-generated target.
+    assert.equal(r.path, "nano-generated/domain-rows.d.ts");
+    assert.equal(r.bindingsPath, "nano-generated/domain.ts");
+    assert.equal(r.workerBindingsPath, "nano-generated/worker-io.d.ts");
+    assert.equal(r.workerRuntimePath, "nano-generated/workers.ts");
+    assert.equal(r.messageBindingsPath, "nano-generated/message-io.d.ts");
+    assert.equal(r.messageRuntimePath, "nano-generated/messages.ts");
+    assert.equal(r.metaPath, "nano-generated/meta.ts");
+    assert.equal(r.domainModelPath, "nano-generated/domain.json");
+    // The Fused Domain Model is emitted and lists both live tables.
+    assert.equal(typeof r.domainModel, "string");
+    const model = JSON.parse(expectString(r.domainModel));
+    assert.deepEqual(
+      model.entities.map((e: { id: string }) => e.id).sort(),
+      ["app.customers", "app.orders"],
+    );
+    // The static runtime wrappers are returned verbatim for the caller to write.
+    assert.equal(typeof r.workerRuntime, "string");
+    assert.equal(typeof r.messageRuntime, "string");
+    assert.deepEqual(r.shapeDiagnostics, []);
+  } finally {
+    await cleanup();
+  }
+});
+
+test("domaintypes write:false is a side-effect-free preview (no migrate, null paths)", async () => {
+  const { dir, cleanup } = await fixture();
+  try {
+    const r = await run(dir, { op: "domaintypes", write: false });
+    // The preview never migrates — nothing applied, DB stays fresh.
+    assert.deepEqual(r.migrated, {});
+    // …and because this fixture's DB is fresh (unmigrated), introspecting the *current* live schema
+    // finds no tables. (An existing DB could legitimately report tables here; this count is scoped
+    // to the fresh fixture, not a general preview guarantee.)
+    assert.equal(r.tables, 0);
+    // Content is still returned (the composer preview needs `text`)…
+    assert.equal(typeof r.text, "string");
+    // …but every persistence target is null and the largest artifact is skipped.
+    assert.equal(r.path, null);
+    assert.equal(r.bindingsPath, null);
+    assert.equal(r.workerBindingsPath, null);
+    assert.equal(r.workerRuntimePath, null);
+    assert.equal(r.messageBindingsPath, null);
+    assert.equal(r.messageRuntimePath, null);
+    assert.equal(r.metaPath, null);
+    assert.equal(r.domainModelPath, null);
+    assert.equal(r.domainModel, null);
+    // A second preview did not leave a migrated DB behind for the next write.
+    const applied = await run(dir, { op: "migrations" });
+    assert.ok(expectRecords(applied.entries).every((e) => e.applied === false));
+  } finally {
+    await cleanup();
+  }
+});
+
+test("domaintypes folds a composed shape into DomainTypes and reports its diagnostics", async () => {
+  const { dir, cleanup } = await fixture();
+  try {
+    const r = await run(dir, {
+      op: "domaintypes",
+      derivedShapes: [
+        {
+          id: "ReviewRound",
+          ops: [
+            { op: "extend", name: "prUrl", type: "string" },
+            { op: "extend", name: "approved", type: "boolean" },
+          ],
+        },
+        // A broken shape: unresolved extend type → error diagnostic, omitted from the emit.
+        { id: "Broken", ops: [{ op: "extend", name: "ref", type: "NoSuchType" }] },
+      ],
+    });
+    // The good shape reifies into the `DomainTypes` registry surfaced by the domain `.d.ts`.
+    assert.match(expectString(r.text), /ReviewRound/);
+    assert.doesNotMatch(expectString(r.text), /Broken/);
+    // The broken shape's diagnostic is returned so the panel can surface it.
+    const diags = expectRecords(r.shapeDiagnostics);
+    assert.equal(diags.length, 1);
+    assert.equal(diags[0].shape, "Broken");
+    assert.equal(diags[0].severity, "error");
+  } finally {
+    await cleanup();
+  }
+});
+
+test("domaintypes emits worker/message bindings from the injected model IO maps", async () => {
+  const { dir, cleanup } = await fixture();
+  try {
+    const r = await run(dir, {
+      op: "domaintypes",
+      derivedShapes: [
+        { id: "Order", ops: [{ op: "extend", name: "total", type: "integer" }] },
+      ],
+      derivedWorkers: [
+        { taskType: "review", inputType: "Order", outputType: "Order", headerKeys: ["priority"] },
+      ],
+      derivedMessages: [{ messageName: "approved", inputType: "Order" }],
+    });
+    // The worker binding names the task type and threads the declared header key.
+    assert.match(expectString(r.workerBindings), /review/);
+    assert.match(expectString(r.workerBindings), /priority/);
+    // The message binding names the message.
+    assert.match(expectString(r.messageBindings), /approved/);
   } finally {
     await cleanup();
   }

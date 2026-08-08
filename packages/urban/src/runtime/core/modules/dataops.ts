@@ -14,9 +14,10 @@
 //   op = "sources" | "schema" | "query" | "exec" | "script" | "migrations" | "migrate"
 //      | "domaintypes"
 //
-// `domaintypes` (live-schema reification + shape resolution) is a known protocol op but is
-// intentionally NOT handled here yet — it is ported to `urban data` in a follow-up (PR 2 of
-// #576) and errors clearly for now.
+// `domaintypes` (live-schema reification + shape resolution) composes the domain reifier from the
+// pure toolkit derivers (ported from the console's `domain_types.ts`, host dry-out #576); it never
+// writes files (the host is read-only) — it returns every artifact's content and the caller
+// persists it.
 
 import type { HostContext, SqliteDb } from "../host.ts";
 import { isRecord } from "../guards.ts";
@@ -25,11 +26,48 @@ import { loadManifest } from "../manifest.ts";
 import { validateManifest } from "../validate.ts";
 import { makeGateway, type DataSource as GatewayDataSource } from "./gateway.ts";
 import { applyMigrations, MIGRATIONS_TABLE, openSqliteSource, resolveAppPath } from "./datasource.ts";
+// The `domaintypes` op composes the domain reifier from the pure toolkit derivers (single source of
+// truth for the IDE's codegen, host dry-out nano-bpm#576). Imported directly from the deriver files
+// (not the `toolkit/` barrel, which pulls the Node fs IO) so core stays free of `node:*`/Deno; the
+// derivers' only core dependency is the gateway's `TableMeta`/`ColumnMeta` *types*, which erase.
+import { GENERATED_DIR } from "../../../toolkit/artifact.ts";
+import {
+  DOMAIN_BINDINGS,
+  type DomainTypeDef,
+  type DomainTypeRegistry,
+  emitDomainBindings,
+  emitDomainModel,
+  registryFromManifest,
+  type SourceSchema,
+} from "../../../toolkit/derivers/domain.ts";
+import {
+  DOMAIN_MODEL_JSON,
+  emitDomainModelJson,
+  type FusedMetaDecl,
+  resolveShapes,
+  type ShapeDecl,
+} from "../../../toolkit/derivers/shapes.ts";
+import {
+  DOMAIN_DTS,
+  emitWorkerBindings,
+  emitWorkerBindingsRuntime,
+  overlayDerivedWorkerIo,
+  WORKER_BINDINGS_DTS,
+  WORKER_BINDINGS_TS,
+  type WorkerBindingDecl,
+} from "../../../toolkit/derivers/worker-io.ts";
+import {
+  emitMessageBindings,
+  emitMessageBindingsRuntime,
+  MESSAGE_BINDINGS_DTS,
+  MESSAGE_BINDINGS_TS,
+  type MessageBindingDecl,
+} from "../../../toolkit/derivers/messages.ts";
+import { emitMeta, META_TS, type MetaDecl } from "../../../toolkit/derivers/meta.ts";
 
-/** The DB-manager op protocol's known op set. `domaintypes` is part of the protocol but is not
- * yet handled here (it errors clearly — see the file header); every other op is dispatched by
- * `runDataOp`. Typing `op` as this union (instead of `string`) gives SDK/console callers
- * type-safety and catches typos at compile time. */
+/** The DB-manager op protocol's known op set — every op (including `domaintypes`) is dispatched by
+ * `runDataOp`. Typing `op` as this union (instead of `string`) gives SDK/console callers type-safety
+ * and catches typos at compile time. */
 export type DataOp =
   | "sources"
   | "schema"
@@ -46,6 +84,27 @@ export interface DataRequest {
   sql?: string;
   params?: unknown[];
   statements?: string[];
+  /**
+   * `domaintypes`: persist the derived artifacts (default true). A `write:false` request is the
+   * latency-sensitive composer preview — it introspects WITHOUT migrating the DB first and returns
+   * only the artifact *content* (never a DB side-effect per keystroke). `urban data` never writes
+   * files itself (the host is read-only); the caller persists the returned content when `write` is
+   * not false. This flag only gates the pre-introspection migration side-effect.
+   */
+  write?: boolean;
+  /** `domaintypes`: the model-derived worker-IO map (`taskType → {in,out,headerKeys}`), scanned
+   * from the process models by the caller. Overlaid on the manifest `workers[]` (authoritative for
+   * the envelope). Absent → the manifest projection alone. */
+  derivedWorkers?: WorkerBindingDecl[];
+  /** `domaintypes`: the model-derived message-payload map (`messageName → {in,out}`), scanned from
+   * the models' `bpmn:message` envelopes. Authoritative (no manifest projection). */
+  derivedMessages?: MessageBindingDecl[];
+  /** `domaintypes`: the model-derived composed shapes (`nano:shape`). Each is resolved through the
+   * fuse into a flat domain type folded into the `types` registry. Absent → no shapes. */
+  derivedShapes?: ShapeDecl[];
+  /** `domaintypes`: the model-derived model-level metadata (`nano:meta`). Folded into `meta.ts` and
+   * the structured `domain.json`. Absent → no metadata. */
+  derivedMeta?: MetaDecl[];
 }
 
 /** One datasource the manifest declares, resolved against the environment (env templates in
@@ -281,10 +340,120 @@ export async function runDataOp(
       }
     }
     case "domaintypes": {
-      throw new Error(
-        "`domaintypes` is not yet implemented in `urban data` — the Nano console still serves it " +
-          "(tracked as PR 2 of nano-bpm#576)",
-      );
+      // ADR 0029 §4.1/§4.2/§6 + ADR 0040 §9/§10: reify the domain model from the *live* schema.
+      // Union every declared datasource (the table spine), fold in the manifest `types` registry and
+      // the model's composed `nano:shape`s (resolved through the fuse), and derive the worker/message
+      // typed accessors. Unlike the vendored data_cli, this op NEVER writes files (the host is
+      // read-only): it returns every artifact's content and the caller persists it. `write:false` is
+      // the latency-sensitive composer preview — it skips the pre-introspection migration so a
+      // debounced keystroke has no DB side-effect and pays only for `text` + `shapeDiagnostics`.
+      const { default: def, sources } = listSources(manifest);
+      const persist = req.write !== false;
+      // Introspect each sqlite source's live schema. When persisting, migrate first (the domain
+      // model is derived from `gw.schema()`, so a regen that raced ahead of `migrate` on a fresh DB
+      // would emit an empty `Domain`); the migration runs on the shared `_urban_migrations` ledger.
+      const migrated: Record<string, string[]> = {};
+      const schemas: SourceSchema[] = [];
+      for (const s of sources) {
+        if (String(s.driver) !== "sqlite") continue; // only sqlite is introspectable (see openGateway)
+        const { gw, db } = await openGateway(host, root, manifest, s.name);
+        try {
+          if (persist) {
+            const applied = await applyMigrations(
+              host,
+              db,
+              root,
+              s.migrations ?? DEFAULT_MIGRATIONS_DIR,
+            );
+            if (applied.length) migrated[s.name] = applied;
+          }
+          schemas.push({ source: s.name, tables: await gw.schema() });
+        } finally {
+          db.close();
+        }
+      }
+
+      const types = registryFromManifest(manifest);
+      // Snapshot the manifest `types` *before* folding the resolved shapes so `domain.json` can tag
+      // each entity with its true provenance (manifest vs model) — once folded they are
+      // indistinguishable in `types`.
+      const manifestTypesSnapshot: DomainTypeRegistry = { ...types };
+      // Composed motion shapes (ADR 0040 §9/§10): resolve each `nano:shape` against the leaf fuse
+      // into a flat domain type and fold it into the registry *before* it feeds the domain model and
+      // the worker/message bindings, so a composed shape becomes a first-class `DomainTypes` entry.
+      // Broken shapes are omitted; their diagnostics are returned so the panel can surface them.
+      const shapeResolution = resolveShapes(req.derivedShapes ?? [], types, schemas);
+      const shapeDeclById = new Map((req.derivedShapes ?? []).map((s) => [s.id, s]));
+      const shapeEntities: { decl: ShapeDecl; def: DomainTypeDef }[] = [];
+      for (const [id, shapeDef] of Object.entries(shapeResolution.types)) {
+        types[id] = shapeDef;
+        shapeEntities.push({ decl: shapeDeclById.get(id) ?? { id, ops: [] }, def: shapeDef });
+      }
+      const declaredIds = Object.keys(types);
+
+      const text = emitDomainModel(schemas, def, types);
+      const bindings = emitDomainBindings(schemas, def);
+      const derivedMeta: MetaDecl[] = req.derivedMeta ?? [];
+      const metaAccessor = emitMeta(derivedMeta);
+      // Worker-IO map (ADR 0033 §3): the model is authoritative for the envelope, so an injected
+      // `derivedWorkers` is overlaid on the manifest `workers[]` (which still carries non-IO
+      // bindings such as `llm`); absent, the manifest projection stands alone.
+      const manifestWorkers: WorkerBindingDecl[] = (manifest.workers ?? []).map((w) => ({
+        taskType: w.taskType,
+        inputType: w.inputType,
+        outputType: w.outputType,
+      }));
+      const workers = req.derivedWorkers
+        ? overlayDerivedWorkerIo(manifestWorkers, req.derivedWorkers)
+        : manifestWorkers;
+      const workerBindings = emitWorkerBindings(workers, declaredIds);
+      const workerRuntime = emitWorkerBindingsRuntime();
+      // Message-payload registry (ADR 0040 slice 2): no manifest projection, so the model-derived
+      // map is authoritative and emitted directly.
+      const messages = req.derivedMessages ?? [];
+      const messageBindings = emitMessageBindings(messages, declaredIds);
+      const messageRuntime = emitMessageBindingsRuntime();
+      // The structured Fused Domain Model (`domain.json`, ADR 0040 §1): the largest artifact, so it
+      // is built only when persisting (the preview consumes only `text` + `shapeDiagnostics`).
+      const meta: FusedMetaDecl[] = derivedMeta;
+      const domainModel = persist
+        ? emitDomainModelJson({
+            sources: schemas,
+            default: def,
+            manifestTypes: manifestTypesSnapshot,
+            shapes: shapeEntities,
+            meta,
+            diagnostics: shapeResolution.diagnostics,
+          })
+        : null;
+
+      const rel = (name: string): string => `${GENERATED_DIR}/${name}`;
+      const tables = schemas.reduce((n, s) => n + s.tables.length, 0);
+      // The returned `*Path` fields are the app-relative targets the caller writes to when
+      // persisting (null on a preview). `urban data` returns content only — persisting is the
+      // caller's job (host dry-out nano-bpm#576). The static runtime wrappers (`workers.ts`,
+      // `messages.ts`) are returned too so the caller can write them verbatim.
+      return {
+        path: persist ? rel(DOMAIN_DTS) : null,
+        text,
+        tables,
+        bindingsPath: persist ? rel(DOMAIN_BINDINGS) : null,
+        bindings,
+        workerBindingsPath: persist ? rel(WORKER_BINDINGS_DTS) : null,
+        workerBindings,
+        workerRuntimePath: persist ? rel(WORKER_BINDINGS_TS) : null,
+        workerRuntime,
+        messageBindingsPath: persist ? rel(MESSAGE_BINDINGS_DTS) : null,
+        messageBindings,
+        messageRuntimePath: persist ? rel(MESSAGE_BINDINGS_TS) : null,
+        messageRuntime,
+        metaPath: persist ? rel(META_TS) : null,
+        meta: metaAccessor,
+        domainModelPath: persist ? rel(DOMAIN_MODEL_JSON) : null,
+        domainModel,
+        migrated,
+        shapeDiagnostics: shapeResolution.diagnostics,
+      };
     }
     default:
       throw new Error(`unknown op "${req.op}"`);
