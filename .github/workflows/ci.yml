@@ -29,7 +29,7 @@ jobs:
       # fields in the schema package and bump the dep instead.
       - name: Ban manifest-shape schema augmentations
         run: |
-          if grep -rn 'declare module "@nanobpm/nano-app-schema"' packages/*/src; then
+          if grep -rnE "declare[[:space:]]+module[[:space:]]+['\"]@nanobpm/nano-app-schema['\"]" packages/*/src; then
             echo "::error::Do not augment @nanobpm/nano-app-schema types; formalize the field in the schema package (spec-app) and bump the dependency."
             exit 1
           fi
