@@ -33,20 +33,6 @@ export type {
   Worker,
 } from "@nanobpm/nano-app-schema";
 
-// The published `@nanobpm/nano-app-schema` does not declare `models.templates`; the manifest
-// validator only enforces `additionalProperties:false` at the top level (see validate.ts), so the
-// nested key is accepted at runtime. Augment `Models` here so the deploy path can read it typed
-// (no cast) until it is formalized in the schema package. (The top-level `ui` block, by contrast,
-// now ships natively in the schema as `AppUi` — re-exported above — so it needs no shim.)
-declare module "@nanobpm/nano-app-schema" {
-  interface Models {
-    /** `{{name}}` template sources substituted into model resources at deploy time: globs, a bare
-     *  directory (scanned), or literal files. A template's name is its file stem
-     *  (`prompts/review-round.md` → `{{review-round}}`). See `deployModels`. */
-    templates?: string[];
-  }
-}
-
 /** The job type a worker subscribes to (schema key: `taskType`). */
 export function workerJobType(w: Worker): string | undefined {
   return w.taskType;
